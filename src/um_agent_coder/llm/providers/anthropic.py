@@ -14,7 +14,7 @@ class AnthropicLLM(LLM):
     
     API_URL = "https://api.anthropic.com/v1/messages"
     
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4",
+    def __init__(self, api_key: str, model: str = "claude-3.5-sonnet-20241022",
                  temperature: float = 0.7, max_tokens: int = 4096):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.model = model

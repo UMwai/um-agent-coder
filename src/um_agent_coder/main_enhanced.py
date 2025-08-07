@@ -44,7 +44,7 @@ def main():
     )
     parser.add_argument(
         "--model",
-        help="Override the model specified in config (e.g., claude-opus-4, gpt-4o)"
+        help="Override the model specified in config (e.g., claude-3.5-sonnet-20241022, gpt-4o)"
     )
     parser.add_argument(
         "--provider",
@@ -105,7 +105,7 @@ def main():
                 '    model: "gpt-4o"\n'
                 '  anthropic:\n'
                 '    api_key: "YOUR_ANTHROPIC_API_KEY"\n'
-                '    model: "claude-sonnet-4"\n'
+                '    model: "claude-3.5-sonnet-20241022"\n'
                 '  google:\n'
                 '    api_key: "YOUR_GOOGLE_API_KEY"\n'
                 '    model: "gemini-1.5-flash"\n'

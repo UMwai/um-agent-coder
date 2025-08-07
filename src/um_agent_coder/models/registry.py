@@ -32,15 +32,15 @@ class ModelRegistry:
     def _register_default_models(self):
         # High Performance Models
         self.register(ModelInfo(
-            name="claude-3.5-sonnet",
+            name="claude-3.5-sonnet-20241022",
             provider="anthropic",
             category=ModelCategory.HIGH_PERFORMANCE,
             context_window=200000,
             cost_per_1k_input=0.003,
             cost_per_1k_output=0.015,
-            capabilities=["coding", "reasoning", "extended_thinking", "tool_use"],
+            capabilities=["coding", "reasoning", "extended_thinking", "tool_use", "computer_use"],
             performance_score=94,
-            description="Claude 3.5 Sonnet - Best for coding with 93.7% on benchmarks"
+            description="Claude 3.5 Sonnet (Oct 2024) - Best for coding with 93.7% accuracy"
         ))
         
         self.register(ModelInfo(

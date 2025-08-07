@@ -14,12 +14,12 @@ An advanced AI coding agent with planning, context management, and cost tracking
 ### 🎯 Model Categories
 
 #### High Performance Models
-- **Claude Opus 4**: Best for complex coding (95/100 performance)
+- **Claude 3.5 Sonnet**: Best for complex coding (94/100 performance)
 - **GPT-4o**: Fast multimodal support (88/100 performance)
 - **Gemini 2.5 Pro**: Massive 1M token context (91/100 performance)
 
 #### Efficient Models
-- **Claude Haiku 4**: Ultra-fast responses
+- **Claude 3 Haiku**: Ultra-fast responses
 - **GPT-4o Mini**: Affordable with decent performance
 - **Gemini 1.5 Flash**: Extremely cost-effective
 
@@ -53,7 +53,7 @@ export GOOGLE_API_KEY="your-key"
 python -m src.um_agent_coder "implement a fibonacci function"
 
 # Use specific model
-python -m src.um_agent_coder "fix the bug in auth.py" --model claude-opus-4
+python -m src.um_agent_coder "fix the bug in auth.py" --model claude-3.5-sonnet-20241022
 
 # Use specific provider
 python -m src.um_agent_coder "refactor database.py" --provider anthropic
