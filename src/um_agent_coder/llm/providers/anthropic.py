@@ -2,33 +2,32 @@ import json
 import os
 from typing import Optional, Dict, Any, List
 import requests
-import time
 
 from um_agent_coder.llm.base import LLM
 from um_agent_coder.models import ModelRegistry
 
 
-class OpenAILLM(LLM):
+class AnthropicLLM(LLM):
     """
-    LLM provider for OpenAI models.
+    LLM provider for Anthropic Claude models.
     """
     
-    API_URL = "https://api.openai.com/v1/chat/completions"
-
-    def __init__(self, api_key: str, model: str = "gpt-4o", 
+    API_URL = "https://api.anthropic.com/v1/messages"
+    
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4",
                  temperature: float = 0.7, max_tokens: int = 4096):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.model_registry = ModelRegistry()
         
         if not self.api_key:
-            raise ValueError("OpenAI API key not provided")
+            raise ValueError("Anthropic API key not provided")
     
     def chat(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None) -> str:
         """
-        Send a chat request to OpenAI API.
+        Send a chat request to Anthropic API.
         
         Args:
             prompt: The user prompt
@@ -40,17 +39,26 @@ class OpenAILLM(LLM):
         if messages is None:
             messages = []
         
+        # Convert to Anthropic format
+        anthropic_messages = []
+        for msg in messages:
+            anthropic_messages.append({
+                "role": msg["role"] if msg["role"] != "system" else "user",
+                "content": msg["content"]
+            })
+        
         # Add the new user message
-        messages.append({"role": "user", "content": prompt})
+        anthropic_messages.append({"role": "user", "content": prompt})
         
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json"
         }
         
         data = {
             "model": self.model,
-            "messages": messages,
+            "messages": anthropic_messages,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens
         }
@@ -60,30 +68,38 @@ class OpenAILLM(LLM):
             response.raise_for_status()
             
             result = response.json()
-            return result["choices"][0]["message"]["content"]
+            return result["content"][0]["text"]
             
         except requests.exceptions.RequestException as e:
-            return f"Error calling OpenAI API: {str(e)}"
+            return f"Error calling Anthropic API: {str(e)}"
         except (KeyError, IndexError) as e:
-            return f"Error parsing OpenAI response: {str(e)}"
+            return f"Error parsing Anthropic response: {str(e)}"
     
     def stream_chat(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None):
         """
-        Stream a chat response from OpenAI API.
+        Stream a chat response from Anthropic API.
         """
         if messages is None:
             messages = []
         
-        messages.append({"role": "user", "content": prompt})
+        anthropic_messages = []
+        for msg in messages:
+            anthropic_messages.append({
+                "role": msg["role"] if msg["role"] != "system" else "user",
+                "content": msg["content"]
+            })
+        
+        anthropic_messages.append({"role": "user", "content": prompt})
         
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json"
         }
         
         data = {
             "model": self.model,
-            "messages": messages,
+            "messages": anthropic_messages,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "stream": True
@@ -97,22 +113,20 @@ class OpenAILLM(LLM):
                 if line:
                     line = line.decode('utf-8')
                     if line.startswith('data: '):
-                        if line.strip() == 'data: [DONE]':
-                            break
                         try:
                             chunk = json.loads(line[6:])
-                            if chunk['choices'][0]['delta'].get('content'):
-                                yield chunk['choices'][0]['delta']['content']
+                            if chunk.get('type') == 'content_block_delta':
+                                yield chunk['delta'].get('text', '')
                         except:
                             continue
                             
         except requests.exceptions.RequestException as e:
-            yield f"Error calling OpenAI API: {str(e)}"
+            yield f"Error calling Anthropic API: {str(e)}"
     
     def count_tokens(self, text: str) -> int:
         """
         Estimate token count for text.
-        Note: This is a rough estimate. For accurate counts, use tiktoken library.
+        Note: This is a rough estimate.
         """
         # Rough estimate: ~4 characters per token
         return len(text) // 4
