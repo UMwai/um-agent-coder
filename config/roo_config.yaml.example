@@ -1,0 +1,184 @@
+# Roo-Inspired Agent Configuration
+# This configuration file enables advanced features inspired by Roo-Code
+
+# LLM Provider Settings
+llm:
+  provider: openai  # Options: openai, anthropic, google
+  
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4
+    temperature: 0.7
+    max_tokens: 4000
+  
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    model: claude-3-opus-20240229
+    temperature: 0.7
+    max_tokens: 4000
+  
+  google:
+    api_key: ${GOOGLE_API_KEY}
+    model: gemini-pro
+    temperature: 0.7
+    max_tokens: 4000
+
+# Agent Behavior Settings
+agent:
+  verbose: true                    # Show detailed execution steps
+  auto_mode: true                  # Auto-detect appropriate mode from prompt
+  require_approval: false          # Require user approval for actions
+  auto_summarize: true             # Automatically summarize long contexts
+  interactive: false               # Start in interactive mode by default
+  max_context_tokens: 100000       # Maximum context window size
+
+# Mode Configuration
+modes:
+  default: code                    # Default mode when not auto-detected
+  custom_instructions: |
+    Follow the project's coding standards.
+    Prioritize clean, maintainable code.
+    Add appropriate error handling.
+  
+  # Actions that don't require approval in any mode
+  auto_approve_patterns:
+    - read
+    - search
+    - analyze
+    - list
+
+# Tool Settings
+tools:
+  safe_mode: true                  # Enable safety checks for commands
+  auto_backup: true                # Create backups before modifying files
+  format_code: true                # Auto-format code when writing
+  validate_writes: true            # Validate syntax before writing files
+  
+  # Command execution settings
+  command_timeout: 30              # Timeout for command execution (seconds)
+  allowed_commands:                # Additional safe commands
+    - npm test
+    - yarn test
+    - cargo build
+    - go test
+  
+  # Search settings
+  search_context_lines: 3          # Lines of context for search results
+  max_search_results: 50           # Maximum search results to return
+
+# Custom Mode Definitions
+custom_modes:
+  # Example: Documentation mode
+  documentation:
+    name: Documentation Mode
+    description: Focused on writing and updating documentation
+    system_prompt: |
+      You are a technical writer focused on clear, comprehensive documentation.
+      Prioritize clarity, completeness, and good examples.
+      Use appropriate formatting and structure.
+    temperature: 0.6
+    preferred_tools:
+      - SmartFileReader
+      - SmartFileWriter
+      - SmartProjectAnalyzer
+    auto_approve_actions:
+      - SmartFileReader
+      - SmartProjectAnalyzer
+    context_priorities:
+      documentation: 10
+      code_structure: 8
+      examples: 9
+  
+  # Example: Performance mode
+  performance:
+    name: Performance Mode
+    description: Focused on optimization and performance improvements
+    system_prompt: |
+      You are a performance engineer focused on optimization.
+      Identify bottlenecks, suggest improvements, and implement optimizations.
+      Consider time complexity, space complexity, and real-world performance.
+    temperature: 0.5
+    preferred_tools:
+      - SmartCodeSearcher
+      - SmartFileReader
+      - SmartCommandExecutor
+    auto_approve_actions:
+      - SmartCodeSearcher
+      - SmartFileReader
+    context_priorities:
+      performance_metrics: 10
+      profiling_data: 9
+      algorithms: 8
+
+# Context Management
+context:
+  summarization_threshold: 80000   # Tokens before triggering summarization
+  max_file_size: 50000             # Maximum file size to load (characters)
+  priority_decay: 0.9              # How quickly context priority decays
+  
+  # Context type priorities (0-10)
+  default_priorities:
+    project_structure: 8
+    recent_changes: 9
+    error_messages: 10
+    documentation: 6
+    test_files: 7
+
+# Cost Tracking
+cost_tracking:
+  enabled: true                    # Track API costs
+  warning_threshold: 1.00          # Warn if cost exceeds this (USD)
+  export_format: json              # Format for metrics export (json/csv)
+  track_by_mode: true             # Track costs per mode
+
+# Interactive Mode Settings
+interactive:
+  prompt_style: "[{mode}]> "      # Prompt format
+  history_size: 100                # Number of history entries to keep
+  auto_save_session: true          # Auto-save session on exit
+  session_directory: ./sessions    # Where to save sessions
+
+# Project-Specific Settings
+project:
+  type: auto                       # auto-detect, python, javascript, etc.
+  test_command: auto               # Command to run tests
+  lint_command: auto               # Command to run linter
+  format_command: auto             # Command to format code
+  
+  # File patterns to ignore
+  ignore_patterns:
+    - "*.pyc"
+    - "__pycache__"
+    - "node_modules"
+    - ".git"
+    - "*.log"
+    - "dist"
+    - "build"
+
+# Integration Settings
+integrations:
+  github:
+    enabled: false
+    token: ${GITHUB_TOKEN}
+  
+  gitlab:
+    enabled: false
+    token: ${GITLAB_TOKEN}
+  
+  mcp:  # Model Context Protocol
+    enabled: false
+    servers: []
+
+# Advanced Settings
+advanced:
+  parallel_tool_execution: true    # Execute independent tools in parallel
+  cache_responses: true            # Cache LLM responses for similar queries
+  cache_ttl: 3600                 # Cache time-to-live (seconds)
+  retry_on_error: true            # Retry failed operations
+  max_retries: 3                  # Maximum retry attempts
+  
+  # Experimental features
+  experimental:
+    semantic_search: false        # Use embeddings for code search
+    ast_analysis: false          # Use AST for code understanding
+    auto_test_generation: false  # Generate tests automatically
