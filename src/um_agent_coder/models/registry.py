@@ -56,15 +56,51 @@ class ModelRegistry:
         ))
         
         self.register(ModelInfo(
+            name="gpt-5",
+            provider="openai",
+            category=ModelCategory.HIGH_PERFORMANCE,
+            context_window=1000000,  # 1M token context window
+            cost_per_1k_input=0.00125,  # $1.25 per 1M tokens
+            cost_per_1k_output=0.01,     # $10.00 per 1M tokens
+            capabilities=["coding", "reasoning", "multimodal", "tool_use", "advanced_reasoning", "agentic"],
+            performance_score=98,
+            description="GPT-5 - Best model for coding and agentic tasks across industries"
+        ))
+        
+        self.register(ModelInfo(
+            name="gpt-5-mini",
+            provider="openai",
+            category=ModelCategory.HIGH_PERFORMANCE,
+            context_window=1000000,
+            cost_per_1k_input=0.00025,  # $0.25 per 1M tokens
+            cost_per_1k_output=0.002,    # $2.00 per 1M tokens
+            capabilities=["coding", "reasoning", "tool_use", "fast_response"],
+            performance_score=93,
+            description="GPT-5 Mini - Faster, cheaper version for well-defined tasks"
+        ))
+        
+        self.register(ModelInfo(
+            name="gpt-5-nano",
+            provider="openai",
+            category=ModelCategory.EFFICIENT,
+            context_window=1000000,
+            cost_per_1k_input=0.00005,  # $0.05 per 1M tokens
+            cost_per_1k_output=0.0004,   # $0.40 per 1M tokens
+            capabilities=["summarization", "classification", "fast_response"],
+            performance_score=85,
+            description="GPT-5 Nano - Fastest, cheapest for summarization and classification"
+        ))
+        
+        self.register(ModelInfo(
             name="gpt-4o",
             provider="openai",
             category=ModelCategory.HIGH_PERFORMANCE,
             context_window=128000,
-            cost_per_1k_input=0.005,
-            cost_per_1k_output=0.015,
+            cost_per_1k_input=0.0025,  # Updated: $2.50 per 1M tokens
+            cost_per_1k_output=0.01,    # Updated: $10.00 per 1M tokens
             capabilities=["coding", "reasoning", "multimodal", "tool_use"],
             performance_score=88,
-            description="GPT-4o - Fast multimodal model with good coding abilities"
+            description="GPT-4o - Fast multimodal model, 75% cheaper than GPT-4 Turbo"
         ))
         
         self.register(ModelInfo(
@@ -109,24 +145,25 @@ class ModelRegistry:
             provider="openai",
             category=ModelCategory.EFFICIENT,
             context_window=128000,
-            cost_per_1k_input=0.00015,
-            cost_per_1k_output=0.0006,
+            cost_per_1k_input=0.00015,  # Confirmed: $0.15 per 1M tokens
+            cost_per_1k_output=0.0006,   # Confirmed: $0.60 per 1M tokens
             capabilities=["coding", "reasoning", "fast_response"],
             performance_score=75,
-            description="GPT-4o Mini - Affordable with decent performance"
+            description="GPT-4o Mini - 60% cheaper than GPT-3.5 Turbo"
         ))
         
         self.register(ModelInfo(
-            name="gemini-1.5-flash",
-            provider="google",
+            name="gpt-3.5-turbo",
+            provider="openai",
             category=ModelCategory.EFFICIENT,
-            context_window=1000000,
-            cost_per_1k_input=0.0000375,
-            cost_per_1k_output=0.00015,
-            capabilities=["coding", "reasoning", "multimodal", "large_context"],
-            performance_score=80,
-            description="Gemini 1.5 Flash - Cheapest option at $0.0375 per 1M input tokens"
+            context_window=16385,
+            cost_per_1k_input=0.0005,   # $0.50 per 1M tokens
+            cost_per_1k_output=0.0015,   # $1.50 per 1M tokens
+            capabilities=["coding", "reasoning", "fast_response"],
+            performance_score=70,
+            description="GPT-3.5 Turbo - Legacy efficient model"
         ))
+        
         
         # Open Source Models
         self.register(ModelInfo(
@@ -243,6 +280,30 @@ class ModelRegistry:
         
         # Sort by performance score
         return max(suitable_models, key=lambda m: m.performance_score)
+    
+    def get_best_for_data_task(self, task_type: str) -> Optional[ModelInfo]:
+        """Get the best model for specific data tasks."""
+        # Recommendations for data-specific tasks
+        data_task_recommendations = {
+            "sql_generation": ["claude-3.5-sonnet-20241022", "gpt-4o", "deepseek-v3"],
+            "data_modeling": ["claude-3.5-sonnet-20241022", "gpt-4-turbo"],
+            "etl_pipeline": ["claude-3.5-sonnet-20241022", "deepseek-v3", "gemini-2.0-flash"],
+            "statistical_analysis": ["gpt-4o", "claude-3.5-sonnet-20241022"],
+            "ml_modeling": ["claude-3.5-sonnet-20241022", "gpt-4o", "deepseek-v3"],
+            "data_visualization": ["gpt-4o", "claude-3.5-sonnet-20241022"],
+            "big_data": ["gemini-2.0-flash", "claude-3.5-sonnet-20241022"],  # Large context
+            "real_time_streaming": ["gemini-2.0-flash", "gpt-4o-mini"],  # Fast response
+        }
+        
+        recommended_models = data_task_recommendations.get(task_type, [])
+        
+        for model_name in recommended_models:
+            model = self.get(model_name)
+            if model:
+                return model
+        
+        # Fallback to best coding model
+        return self.get_best_for_task("coding")
     
     def calculate_cost(self, model_name: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate cost for a specific model usage."""
