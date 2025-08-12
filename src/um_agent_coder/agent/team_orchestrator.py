@@ -9,18 +9,25 @@ import asyncio
 import json
 from datetime import datetime
 import logging
+from .specialized_agents import (
+    SpecializedRole, 
+    SpecializedAgentFactory,
+    DomainExpertise
+)
 
 logger = logging.getLogger(__name__)
 
 
 class AgentRole(Enum):
-    """Define specialized agent roles"""
+    """Define general agent roles"""
     PLANNER = "planner"  # Task decomposition and planning
     RESEARCHER = "researcher"  # Information gathering and analysis
     CODER = "coder"  # Code implementation
     REVIEWER = "reviewer"  # Code review and quality assurance
     OPTIMIZER = "optimizer"  # Performance and cost optimization
     INTEGRATOR = "integrator"  # Integration and deployment
+    
+    # Specialized roles are handled via SpecializedRole enum
 
 
 class ModelTier(Enum):
@@ -274,14 +281,23 @@ class TeamOrchestrator:
         self.optimizer = CostOptimizer()
         self.active_tasks = {}
         self.completed_tasks = {}
+        self.specialized_agents = {}  # Cache for specialized agents
         
     async def execute_team_task(
         self,
         objective: str,
         budget: float = 10.0,
-        constraints: Optional[Dict[str, Any]] = None
+        constraints: Optional[Dict[str, Any]] = None,
+        use_specialized_agents: bool = True
     ) -> Dict[str, Any]:
-        """Execute a complex task using agent team"""
+        """Execute a complex task using agent team
+        
+        Args:
+            objective: Task objective
+            budget: Maximum budget for execution
+            constraints: Additional constraints
+            use_specialized_agents: Whether to use domain-specific specialized agents
+        """
         
         # Initialize team context
         context = TeamContext(
@@ -289,6 +305,12 @@ class TeamOrchestrator:
             total_budget=budget,
             constraints=constraints or {}
         )
+        
+        # Detect if specialized agents are needed
+        if use_specialized_agents:
+            specialized_agent = SpecializedAgentFactory.recommend_agent(objective, constraints or {})
+            if specialized_agent:
+                return await self._execute_specialized_task(specialized_agent, objective, context)
         
         # Phase 1: Planning
         plan = await self._planning_phase(context)
@@ -307,7 +329,8 @@ class TeamOrchestrator:
             'total_cost': context.spent_budget,
             'budget_remaining': context.total_budget - context.spent_budget,
             'tasks_completed': len(self.completed_tasks),
-            'performance_metrics': self._get_performance_metrics()
+            'performance_metrics': self._get_performance_metrics(),
+            'agents_used': self._get_agents_summary()
         }
     
     async def _planning_phase(self, context: TeamContext) -> Dict[str, Any]:
@@ -539,6 +562,77 @@ class TeamOrchestrator:
         task_str = f"{task.role.value}:{task.description}:{task.dependencies}"
         return hashlib.md5(task_str.encode()).hexdigest()
     
+    async def _execute_specialized_task(
+        self, 
+        agent, 
+        objective: str, 
+        context: TeamContext
+    ) -> Dict[str, Any]:
+        """Execute task using specialized agent"""
+        
+        # Cache the agent
+        self.specialized_agents[agent.role.value] = agent
+        
+        # Prepare specialized prompt
+        prompt = agent.prepare_prompt(objective, context.constraints)
+        
+        # Create task for tracking
+        task = AgentTask(
+            id=f"specialized_{agent.role.value}",
+            role=AgentRole.CODER,  # Map to general role
+            description=objective,
+            priority=8,
+            estimated_tokens=1000
+        )
+        
+        # Select optimal model from agent's preferences
+        if agent.capabilities.preferred_models:
+            model = agent.capabilities.preferred_models[0]
+        else:
+            model = self.optimizer.select_optimal_model(
+                task,
+                context.total_budget - context.spent_budget,
+                context
+            )
+        
+        task.assigned_model = model
+        
+        # Execute task
+        result = await self._execute_single_task(task, context)
+        
+        # Validate output
+        is_valid, error_msg = agent.validate_output(str(result))
+        
+        return {
+            'result': result,
+            'total_cost': context.spent_budget,
+            'budget_remaining': context.total_budget - context.spent_budget,
+            'specialized_agent': agent.role.value,
+            'agent_domain': agent.capabilities.domain.value,
+            'validation': {'is_valid': is_valid, 'error': error_msg},
+            'performance_metrics': self._get_performance_metrics(),
+            'agents_used': self._get_agents_summary()
+        }
+    
+    def _get_agents_summary(self) -> Dict[str, Any]:
+        """Get summary of agents used"""
+        
+        summary = {
+            'general_agents': [],
+            'specialized_agents': []
+        }
+        
+        # Add general agents from completed tasks
+        for task in self.completed_tasks.values():
+            if task.role in AgentRole:
+                summary['general_agents'].append(task.role.value)
+        
+        # Add specialized agents
+        for agent_name in self.specialized_agents.keys():
+            summary['specialized_agents'].append(agent_name)
+        
+        return summary
+    
     def _get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics for the team execution"""
         
@@ -561,7 +655,8 @@ class TeamOrchestrator:
             'avg_cost_per_task': avg_cost_per_task,
             'model_usage': model_usage,
             'cache_hits': len([t for t in self.completed_tasks.values() if t.actual_cost == 0]),
-            'model_performance': self.optimizer.model_performance
+            'model_performance': self.optimizer.model_performance,
+            'specialized_agents_used': len(self.specialized_agents)
         }
 
 
