@@ -1,75 +1,232 @@
 # um-agent-coder
 
-`um-agent-coder` is a simple AI coding agent that can be extended to support different LLM providers.
+A multi-model AI coding agent with parallel execution, task decomposition, and orchestration for **long-running tasks**.
+
+## Features
+
+- **Multi-Model Orchestration**: Route tasks to Gemini (research), Codex (code), and Claude (synthesis)
+- **Parallel Execution**: Execute independent subtasks concurrently with dependency tracking
+- **Task Decomposition**: Break complex tasks into structured subtasks with model assignments
+- **Subagent Spawning**: Spawn isolated subagent processes for true parallelization
+- **Checkpointing**: Durable task state for pause/resume capabilities
+- **Data Fetchers**: Built-in integrations for SEC EDGAR, Yahoo Finance, ClinicalTrials.gov, News APIs
+- **MCP Integration**: Direct MCP tool invocation matching Claude Code patterns (no API keys needed)
+
+## Quick Start
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/UMwai/um-agent-coder.git
+cd um-agent-coder
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Basic Usage
+
+```bash
+# Simple task execution
+PYTHONPATH=src python -m um_agent_coder "your task here"
+
+# Multi-model orchestration with parallel execution
+PYTHONPATH=src python -m um_agent_coder --orchestrate --parallel "analyze biotech M&A opportunities"
+
+# Subagent process-based execution (true isolation)
+PYTHONPATH=src python -m um_agent_coder --orchestrate --parallel --exec-mode subagent "complex task"
+
+# With human approval checkpoints
+PYTHONPATH=src python -m um_agent_coder --orchestrate --parallel --human-approval "task requiring review"
+```
+
+## Using from Another Repository
+
+If you're in a different repo and want to use um-agent-coder for long-running tasks:
+
+### Option 1: Install as Package
+
+```bash
+# From your project directory
+pip install git+https://github.com/UMwai/um-agent-coder.git
+
+# Then use in Python
+from um_agent_coder.orchestrator import (
+    MultiModelOrchestrator,
+    TaskDecomposer,
+    ParallelExecutor,
+    ClaudeCodeSubagentSpawner
+)
+```
+
+### Option 2: Add as Git Submodule
+
+```bash
+# In your project repo
+git submodule add https://github.com/UMwai/um-agent-coder.git vendor/um-agent-coder
+pip install -r vendor/um-agent-coder/requirements.txt
+
+# Add to PYTHONPATH in your scripts
+export PYTHONPATH="${PYTHONPATH}:vendor/um-agent-coder/src"
+```
+
+### Option 3: Clone Alongside Your Project
+
+```bash
+# Clone next to your project
+cd /path/to/your/projects
+git clone https://github.com/UMwai/um-agent-coder.git
+
+# In your Python code, add to path
+import sys
+sys.path.insert(0, '/path/to/your/projects/um-agent-coder/src')
+```
+
+## Running Long-Running Tasks
+
+### Example: Complex Research Task
+
+```python
+import sys
+sys.path.insert(0, '/path/to/um-agent-coder/src')
+
+from um_agent_coder.orchestrator import (
+    MultiModelOrchestrator,
+    ParallelExecutor,
+    ExecutionMode
+)
+from um_agent_coder.llm.providers.mcp_local import MCPLocalLLM
+
+# Create model instances (uses local MCP tools - NO API keys needed)
+gemini = MCPLocalLLM(backend="gemini", model="gemini-3-pro-preview")
+codex = MCPLocalLLM(backend="codex", model="o4-mini")
+claude = MCPLocalLLM(backend="claude", model="claude-sonnet")
+
+# Create orchestrator
+orchestrator = MultiModelOrchestrator(
+    gemini=gemini,
+    codex=codex,
+    claude=claude,
+    checkpoint_dir=".my_task_checkpoints",  # For pause/resume
+    verbose=True
+)
+
+# Run a complex, long-running task
+result = orchestrator.run(
+    "Analyze biotech companies for M&A opportunities, including pipeline analysis and financial screening"
+)
+
+print(result["output"])
+```
+
+### Example: Parallel Subagent Execution
+
+```python
+from um_agent_coder.orchestrator import (
+    ParallelExecutor,
+    TaskDecomposer,
+    ExecutionMode
+)
+from um_agent_coder.llm.providers.mcp_local import MCPLocalLLM
+
+# Setup models
+gemini = MCPLocalLLM(backend="gemini")
+codex = MCPLocalLLM(backend="codex")
+claude = MCPLocalLLM(backend="claude")
+
+# Decompose a complex task
+decomposer = TaskDecomposer(claude)
+decomposed = decomposer.decompose(
+    "Build a full-stack feature with API, database, and frontend",
+    use_llm=True
+)
+
+# Execute in parallel with subagent processes
+executor = ParallelExecutor(
+    gemini_llm=gemini,
+    codex_llm=codex,
+    claude_llm=claude,
+    execution_mode=ExecutionMode.SUBAGENT_SPAWN,  # Isolated processes
+    max_workers=4,
+    verbose=True
+)
+
+result = executor.execute(decomposed)
+```
+
+### Example: Resumable Long-Running Task
+
+```python
+from um_agent_coder.agent.enhanced_agent import EnhancedAgent
+from um_agent_coder.llm.providers.mcp_local import MCPLocalLLM
+
+# Create agent with checkpointing
+agent = EnhancedAgent(
+    llm=MCPLocalLLM(backend="claude"),
+    checkpoint_dir=".agent_checkpoints"
+)
+
+# Start a long task
+task_id = agent.execute("Refactor the entire codebase for better modularity")
+
+# Later, if interrupted, resume:
+agent.resume(task_id)
+
+# List all tracked tasks
+tasks = agent.list_tasks()
+for task in tasks:
+    print(f"{task['task_id']}: {task['status']}")
+```
+
+## CLI Options
+
+| Flag | Description |
+|------|-------------|
+| `--orchestrate` | Enable multi-model task decomposition |
+| `--parallel` | Enable parallel execution of subtasks |
+| `--exec-mode` | `sequential`, `threads`, `async`, `subagent` |
+| `--human-approval` | Require human approval at checkpoints |
+| `--verbose` | Print detailed progress |
+| `--decompose-only` | Show task decomposition without executing |
+
+## How It Works
+
+1. **Task Decomposition**: Complex tasks are broken into subtasks with model assignments
+   - Gemini: Research, large context analysis, exploration
+   - Codex: Code generation, implementation, planning
+   - Claude: Synthesis, judgment, final review
+
+2. **Dependency Graph**: Subtasks are organized into parallel execution groups
+
+3. **Parallel Execution**: Independent tasks run concurrently (threads, async, or subagent processes)
+
+4. **Checkpointing**: State is saved after each step for pause/resume
+
+5. **Result Aggregation**: Outputs flow between dependent tasks
 
 ## Project Structure
 
 ```
-.
-├── config
-│   └── config.yaml.example
-├── requirements.txt
-├── src
-│   └── um_agent_coder
-│       ├── __init__.py
-│       ├── __main__.py
-│       ├── agent
-│       │   ├── __init__.py
-│       │   └── agent.py
-│       ├── config.py
-│       ├── llm
-│       │   ├── __init__.py
-│       │   ├── base.py
-│       │   └── providers
-│       │       ├── __init__.py
-│       │       └── openai.py
-│       └── main.py
-└── tests
-```
+src/um_agent_coder/
+├── orchestrator/               # Multi-model orchestration
+│   ├── task_decomposer.py      # Breaks tasks into subtasks
+│   ├── parallel_executor.py    # Parallel execution engine
+│   ├── claude_subagent.py      # Subagent process spawning
+│   ├── multi_model.py          # Pipeline orchestration
+│   └── data_fetchers.py        # SEC, Yahoo Finance, etc.
+├── persistence/                # Checkpointing for durability
+├── llm/providers/mcp_local.py  # MCP-based LLM provider
+└── agent/                      # Core agent with planning
 
-## Installation
+docs/
+├── mcp_tool_usage.md           # MCP integration guide
+├── claude_subagent_spawning.md # Subagent guide
+└── claude_subagent_quick_reference.md
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/UM-GPT/um-agent-coder.git
-    cd um-agent-coder
-    ```
-
-2.  Install the dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-## Configuration
-
-1.  Copy the sample configuration file:
-    ```bash
-    cp config/config.yaml.example config/config.yaml
-    ```
-
-2.  Open `config/config.yaml` and add your OpenAI API key:
-    ```yaml
-    llm:
-      provider: openai
-      openai:
-        api_key: "YOUR_OPENAI_API_KEY"
-        model: "gpt-3.5-turbo"
-    ```
-
-    Alternatively, you can set the `OPENAI_API_KEY` environment variable.
-
-## Usage
-
-To run the agent, use the following command:
-
-```bash
-python -m src.um_agent_coder "YOUR_PROMPT"
-```
-
-For example:
-
-```bash
-python -m src.um_agent_coder "Write a python function that calculates the factorial of a number."
+examples/
+├── mcp_orchestration_example.py
+└── claude_subagent_example.py
 ```
 
 ## LLM Provider Pricing
