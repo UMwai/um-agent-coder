@@ -188,3 +188,50 @@ class ContextManager:
     def _recalculate_tokens(self):
         """Recalculate total token count."""
         self.current_tokens = sum(item.tokens for item in self.items)
+
+    def export_state(self) -> List[Dict[str, Any]]:
+        """
+        Export context state for checkpointing.
+
+        Returns:
+            List of serializable context item dictionaries
+        """
+        items = []
+        for item in self.items:
+            items.append({
+                "content": item.content,
+                "type": item.type.value,
+                "source": item.source,
+                "tokens": item.tokens,
+                "timestamp": item.timestamp,
+                "priority": item.priority,
+                "metadata": item.metadata
+            })
+        return items
+
+    def import_state(self, items: List[Dict[str, Any]]):
+        """
+        Import context state from checkpoint.
+
+        Args:
+            items: List of context item dictionaries from export_state()
+        """
+        self.clear()
+
+        for item_data in items:
+            # Convert type string back to enum
+            context_type = ContextType(item_data["type"])
+
+            item = ContextItem(
+                content=item_data["content"],
+                type=context_type,
+                source=item_data["source"],
+                tokens=item_data["tokens"],
+                timestamp=item_data["timestamp"],
+                priority=item_data["priority"],
+                metadata=item_data.get("metadata", {})
+            )
+
+            self.items.append(item)
+
+        self._recalculate_tokens()

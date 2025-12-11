@@ -172,17 +172,107 @@ class CostTracker:
                 "estimated_tasks": 0,
                 "estimated_tokens": 0
             }
-        
+
         avg_cost_per_task = self.total_cost / len(self.tasks)
         avg_tokens_per_task = self.total_tokens / len(self.tasks)
-        
+
         remaining = budget - self.total_cost
         estimated_tasks = int(remaining / avg_cost_per_task) if avg_cost_per_task > 0 else 0
         estimated_tokens = int(remaining / self.total_cost * self.total_tokens) if self.total_cost > 0 else 0
-        
+
         return {
             "remaining_budget": round(remaining, 4),
             "estimated_tasks": estimated_tasks,
             "estimated_tokens": estimated_tokens,
             "current_burn_rate": round(avg_cost_per_task, 4)
         }
+
+    def export_state(self) -> Dict[str, Any]:
+        """
+        Export cost tracker state for checkpointing.
+
+        Returns:
+            Serializable dictionary of tracker state
+        """
+        current_task_data = None
+        if self.current_task:
+            current_task_data = {
+                "task_id": self.current_task.task_id,
+                "prompt": self.current_task.prompt,
+                "start_time": self.current_task.start_time,
+                "end_time": self.current_task.end_time,
+                "tokens_used": self.current_task.tokens_used,
+                "cost": self.current_task.cost,
+                "success": self.current_task.success,
+                "error": self.current_task.error,
+                "steps_completed": self.current_task.steps_completed,
+                "total_steps": self.current_task.total_steps
+            }
+
+        tasks_data = []
+        for task in self.tasks:
+            tasks_data.append({
+                "task_id": task.task_id,
+                "prompt": task.prompt,
+                "start_time": task.start_time,
+                "end_time": task.end_time,
+                "tokens_used": task.tokens_used,
+                "cost": task.cost,
+                "success": task.success,
+                "error": task.error,
+                "steps_completed": task.steps_completed,
+                "total_steps": task.total_steps
+            })
+
+        return {
+            "total_tokens": self.total_tokens,
+            "total_cost": self.total_cost,
+            "session_start": self.session_start,
+            "current_task": current_task_data,
+            "tasks": tasks_data
+        }
+
+    def import_state(self, state: Dict[str, Any]):
+        """
+        Import cost tracker state from checkpoint.
+
+        Args:
+            state: State dictionary from export_state()
+        """
+        self.total_tokens = state.get("total_tokens", 0)
+        self.total_cost = state.get("total_cost", 0.0)
+        self.session_start = state.get("session_start", time.time())
+
+        # Restore current task if any
+        if state.get("current_task"):
+            ct = state["current_task"]
+            self.current_task = TaskMetric(
+                task_id=ct["task_id"],
+                prompt=ct["prompt"],
+                start_time=ct["start_time"],
+                end_time=ct["end_time"],
+                tokens_used=ct["tokens_used"],
+                cost=ct["cost"],
+                success=ct["success"],
+                error=ct["error"],
+                steps_completed=ct["steps_completed"],
+                total_steps=ct["total_steps"]
+            )
+        else:
+            self.current_task = None
+
+        # Restore completed tasks
+        self.tasks = []
+        for task_data in state.get("tasks", []):
+            self.tasks.append(TaskMetric(
+                task_id=task_data["task_id"],
+                prompt=task_data["prompt"],
+                start_time=task_data["start_time"],
+                end_time=task_data["end_time"],
+                tokens_used=task_data["tokens_used"],
+                cost=task_data["cost"],
+                success=task_data["success"],
+                error=task_data["error"],
+                steps_completed=task_data["steps_completed"],
+                total_steps=task_data["total_steps"]
+            ))
