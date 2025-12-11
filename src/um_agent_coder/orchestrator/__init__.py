@@ -1,6 +1,7 @@
 from .multi_model import MultiModelOrchestrator, TaskPipeline, PipelineStep
 from .task_decomposer import TaskDecomposer, SubTask, DecomposedTask, ModelRole
 from .parallel_executor import ParallelExecutor, ExecutionMode, ExecutionGraph
+from .claude_subagent import ClaudeCodeSubagentSpawner, SubagentType, SubagentConfig
 from .data_fetchers import (
     DataFetcherRegistry,
     SECEdgarFetcher,
@@ -24,6 +25,10 @@ __all__ = [
     "ParallelExecutor",
     "ExecutionMode",
     "ExecutionGraph",
+    # Claude Code subagent spawning
+    "ClaudeCodeSubagentSpawner",
+    "SubagentType",
+    "SubagentConfig",
     # Data fetchers
     "DataFetcherRegistry",
     "SECEdgarFetcher",
