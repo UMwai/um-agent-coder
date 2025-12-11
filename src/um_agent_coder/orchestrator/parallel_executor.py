@@ -24,6 +24,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from queue import Queue, Empty
 
 from .task_decomposer import SubTask, ModelRole, DecomposedTask
+from .claude_subagent import ClaudeCodeSubagentSpawner, SubagentType
 
 
 class ExecutionMode(Enum):
@@ -31,7 +32,8 @@ class ExecutionMode(Enum):
     SEQUENTIAL = "sequential"      # One at a time
     PARALLEL_THREADS = "threads"   # ThreadPoolExecutor
     PARALLEL_ASYNC = "async"       # asyncio
-    SUBAGENT_SPAWN = "subagent"    # Spawn separate processes
+    SUBAGENT_SPAWN = "subagent"    # Spawn separate processes (legacy)
+    CLAUDE_CODE_SPAWN = "claude_code"  # Spawn using ClaudeCodeSubagentSpawner
 
 
 @dataclass
@@ -139,7 +141,9 @@ class ParallelExecutor:
         execution_mode: ExecutionMode = ExecutionMode.PARALLEL_THREADS,
         checkpoint_dir: str = ".parallel_checkpoints",
         human_approval_callback: Optional[Callable] = None,
-        verbose: bool = True
+        verbose: bool = True,
+        use_claude_code_spawner: bool = True,
+        claude_spawner_fallback: bool = True
     ):
         self.models = {
             ModelRole.GEMINI: gemini_llm,
@@ -154,6 +158,15 @@ class ParallelExecutor:
 
         self.human_approval_callback = human_approval_callback
         self.verbose = verbose
+
+        # Claude Code subagent spawner
+        self.use_claude_code_spawner = use_claude_code_spawner
+        self.claude_spawner = ClaudeCodeSubagentSpawner(
+            use_task_tool=True,
+            fallback_to_subprocess=claude_spawner_fallback,
+            verbose=verbose,
+            checkpoint_dir=str(self.checkpoint_dir / "claude_subagents")
+        ) if use_claude_code_spawner else None
 
         # Execution state
         self.results: Dict[str, SubagentResult] = {}
@@ -282,6 +295,9 @@ class ParallelExecutor:
                 self._execute_async(group, subtasks, prior_results)
             )
 
+        elif self.execution_mode == ExecutionMode.CLAUDE_CODE_SPAWN:
+            return self._execute_claude_code_subagents(group, subtasks, prior_results, task_id)
+
         elif self.execution_mode == ExecutionMode.SUBAGENT_SPAWN:
             return self._execute_subagents(group, subtasks, prior_results, task_id)
 
@@ -365,6 +381,107 @@ class ParallelExecutor:
 
         return results
 
+    def _execute_claude_code_subagents(
+        self,
+        group: List[str],
+        subtasks: Dict[str, SubTask],
+        prior_results: Dict[str, SubagentResult],
+        parent_task_id: str
+    ) -> Dict[str, SubagentResult]:
+        """
+        Spawn subagents using ClaudeCodeSubagentSpawner.
+
+        This method uses the enhanced Claude Code spawner which:
+        1. Tries to use Claude Code's Task tool when available
+        2. Falls back to subprocess execution
+        3. Provides better prompt formatting for different agent types
+        """
+        if not self.claude_spawner:
+            # Fallback to legacy subprocess method
+            return self._execute_subagents(group, subtasks, prior_results, parent_task_id)
+
+        results = {}
+
+        # Map ModelRole to SubagentType
+        model_to_subagent_type = {
+            ModelRole.GEMINI: SubagentType.EXPLORE,
+            ModelRole.CODEX: SubagentType.GENERIC,
+            ModelRole.CLAUDE: SubagentType.ARCHITECT,
+        }
+
+        # Spawn all subagents in parallel using threads
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_task = {}
+
+            for task_id in group:
+                subtask = subtasks[task_id]
+
+                # Prepare input data
+                input_data = self._gather_inputs(subtask, prior_results)
+
+                # Determine subagent type
+                subagent_type = model_to_subagent_type.get(
+                    subtask.model,
+                    SubagentType.GENERIC
+                )
+
+                # Build context
+                context = {
+                    "subtask_id": task_id,
+                    "description": subtask.description,
+                    "task_type": subtask.type.value,
+                    "inputs": input_data,
+                }
+
+                if self.verbose:
+                    print(f"    Spawning {subagent_type.value} agent for {task_id}...")
+
+                # Submit task to thread pool
+                future = executor.submit(
+                    self.claude_spawner.spawn_task,
+                    prompt=subtask.prompt,
+                    subagent_type=subagent_type,
+                    context=context,
+                    timeout=600,
+                )
+                future_to_task[future] = task_id
+
+            # Collect results
+            for future in concurrent.futures.as_completed(future_to_task):
+                task_id = future_to_task[future]
+                try:
+                    claude_result = future.result()
+
+                    # Convert ClaudeCodeSubagentSpawner result to ParallelExecutor result
+                    results[task_id] = SubagentResult(
+                        subtask_id=task_id,
+                        success=claude_result.success,
+                        output=claude_result.output,
+                        error=claude_result.error,
+                        started_at=claude_result.started_at,
+                        completed_at=claude_result.completed_at,
+                        model_used=subtasks[task_id].model.value,
+                    )
+
+                    if self.verbose:
+                        status = "✓" if claude_result.success else "✗"
+                        print(f"    {status} {task_id} completed in {claude_result.duration_seconds:.2f}s")
+
+                except Exception as e:
+                    results[task_id] = SubagentResult(
+                        subtask_id=task_id,
+                        success=False,
+                        output=None,
+                        error=str(e),
+                        started_at=datetime.now().isoformat(),
+                        completed_at=datetime.now().isoformat(),
+                    )
+
+                    if self.verbose:
+                        print(f"    ✗ {task_id} failed: {e}")
+
+        return results
+
     def _execute_subagents(
         self,
         group: List[str],
@@ -373,7 +490,7 @@ class ParallelExecutor:
         parent_task_id: str
     ) -> Dict[str, SubagentResult]:
         """
-        Spawn separate subagent processes for each task.
+        Spawn separate subagent processes for each task (legacy method).
 
         This is the most isolated approach - each model runs in its own process.
         """
