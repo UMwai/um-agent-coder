@@ -12,75 +12,117 @@ A multi-model AI coding agent with parallel execution, task decomposition, and o
 - **Data Fetchers**: Built-in integrations for SEC EDGAR, Yahoo Finance, ClinicalTrials.gov, News APIs
 - **MCP Integration**: Direct MCP tool invocation matching Claude Code patterns (no API keys needed)
 
-## Quick Start
+## Installation
 
-### Installation
+### Via pip (recommended)
+
+```bash
+# Install from GitHub
+pip install git+https://github.com/UMwai/um-agent-coder.git
+
+# Or with optional dependencies for specific LLM providers
+pip install "um-agent-coder[openai] @ git+https://github.com/UMwai/um-agent-coder.git"
+pip install "um-agent-coder[anthropic] @ git+https://github.com/UMwai/um-agent-coder.git"
+pip install "um-agent-coder[all] @ git+https://github.com/UMwai/um-agent-coder.git"
+```
+
+### From source (development)
 
 ```bash
 # Clone the repository
 git clone https://github.com/UMwai/um-agent-coder.git
 cd um-agent-coder
 
-# Install dependencies
-pip install -r requirements.txt
+# Install in editable mode
+pip install -e .
+
+# Or with dev dependencies
+pip install -e ".[dev]"
 ```
 
-### Basic Usage
+## Quick Start
+
+### CLI Usage
+
+After installation, you can use the `um-agent` command:
 
 ```bash
 # Simple task execution
-PYTHONPATH=src python -m um_agent_coder "your task here"
+um-agent "your task here"
 
 # Multi-model orchestration with parallel execution
-PYTHONPATH=src python -m um_agent_coder --orchestrate --parallel "analyze biotech M&A opportunities"
+um-agent --orchestrate --parallel "analyze biotech M&A opportunities"
 
 # Subagent process-based execution (true isolation)
-PYTHONPATH=src python -m um_agent_coder --orchestrate --parallel --exec-mode subagent "complex task"
+um-agent --orchestrate --parallel --exec-mode subagent "complex task"
 
 # With human approval checkpoints
-PYTHONPATH=src python -m um_agent_coder --orchestrate --parallel --human-approval "task requiring review"
+um-agent --orchestrate --parallel --human-approval "task requiring review"
+
+# Show all options
+um-agent --help
+```
+
+### Python API
+
+```python
+from um_agent_coder import (
+    MultiModelOrchestrator,
+    ParallelExecutor,
+    TaskDecomposer,
+    MCPLocalLLM,
+    ExecutionMode
+)
+
+# Create models (uses local MCP tools - no API keys needed)
+gemini = MCPLocalLLM(backend="gemini")
+codex = MCPLocalLLM(backend="codex")
+claude = MCPLocalLLM(backend="claude")
+
+# Create orchestrator
+orchestrator = MultiModelOrchestrator(
+    gemini=gemini, codex=codex, claude=claude
+)
+
+# Run a complex task
+result = orchestrator.run("your complex task here")
+print(result["output"])
 ```
 
 ## Using from Another Repository
 
 If you're in a different repo and want to use um-agent-coder for long-running tasks:
 
-### Option 1: Install as Package
+### Option 1: Install as Package (Recommended)
 
 ```bash
 # From your project directory
 pip install git+https://github.com/UMwai/um-agent-coder.git
 
 # Then use in Python
-from um_agent_coder.orchestrator import (
+from um_agent_coder import (
     MultiModelOrchestrator,
     TaskDecomposer,
     ParallelExecutor,
-    ClaudeCodeSubagentSpawner
+    ClaudeCodeSubagentSpawner,
+    MCPLocalLLM,
+    ExecutionMode
 )
 ```
 
-### Option 2: Add as Git Submodule
+### Option 2: Add to requirements.txt
+
+```txt
+# In your requirements.txt
+um-agent-coder @ git+https://github.com/UMwai/um-agent-coder.git
+```
+
+### Option 3: Add as Git Submodule
 
 ```bash
 # In your project repo
 git submodule add https://github.com/UMwai/um-agent-coder.git vendor/um-agent-coder
-pip install -r vendor/um-agent-coder/requirements.txt
-
-# Add to PYTHONPATH in your scripts
-export PYTHONPATH="${PYTHONPATH}:vendor/um-agent-coder/src"
-```
-
-### Option 3: Clone Alongside Your Project
-
-```bash
-# Clone next to your project
-cd /path/to/your/projects
-git clone https://github.com/UMwai/um-agent-coder.git
-
-# In your Python code, add to path
-import sys
-sys.path.insert(0, '/path/to/your/projects/um-agent-coder/src')
+pip install -e vendor/um-agent-coder
 ```
 
 ## Running Long-Running Tasks
