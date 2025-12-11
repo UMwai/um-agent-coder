@@ -11,7 +11,7 @@ if '--data' in sys.argv or '-D' in sys.argv:
         sys.argv.remove('-D')
     from um_agent_coder.main_data import main
 else:
-    from um_agent_coder.main import main
+    from um_agent_coder.main_enhanced import main
 
 if __name__ == "__main__":
     main()

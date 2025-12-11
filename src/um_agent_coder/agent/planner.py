@@ -272,14 +272,50 @@ class TaskPlanner:
             TaskType.TESTING: "CommandExecutor",
             TaskType.GENERAL: "FileReader"
         }
-        
+
+        action = action_map.get(analysis.task_type, "FileReader")
+
+        # Build appropriate parameters for each tool type
+        parameters = self._build_tool_parameters(action, analysis, prompt)
+
         return TaskStep(
             description=f"Execute {analysis.task_type.value}",
-            action=action_map.get(analysis.task_type, "FileReader"),
-            parameters={"prompt": prompt},
+            action=action,
+            parameters=parameters,
             estimated_tokens=analysis.estimated_tokens,
             priority=10
         )
+
+    def _build_tool_parameters(
+        self, action: str, analysis: TaskAnalysis, prompt: str
+    ) -> Dict[str, Any]:
+        """Build appropriate parameters for each tool type."""
+        if action == "ProjectAnalyzer":
+            return {"directory": "."}
+
+        elif action == "CodeSearcher":
+            pattern = self._extract_search_pattern(prompt)
+            return {"pattern": pattern, "directory": "."}
+
+        elif action == "FileReader":
+            # Use first file from analysis, or a default
+            file_path = analysis.files_to_analyze[0] if analysis.files_to_analyze else "README.md"
+            return {"file_path": file_path}
+
+        elif action == "FileWriter":
+            # For code generation, we need content - this is a placeholder
+            # In real usage, the LLM would generate the content
+            file_path = analysis.files_to_analyze[0] if analysis.files_to_analyze else "output.py"
+            return {"file_path": file_path, "content": f"# Generated for: {prompt[:100]}"}
+
+        elif action == "FileSearcher":
+            return {"pattern": "*.py", "directory": "."}
+
+        elif action == "CommandExecutor":
+            return {"command": "echo 'Task placeholder'"}
+
+        else:
+            return {}
     
     def _estimate_cost(self, tokens: int) -> float:
         """Estimate cost based on tokens."""
