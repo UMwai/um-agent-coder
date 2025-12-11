@@ -285,6 +285,138 @@ def run_parallel_orchestration(
     return result
 
 
+def run_with_spec(
+    spec_path: str,
+    repo_override: Optional[str] = None,
+    branch_override: Optional[str] = None,
+    webhook_override: Optional[str] = None,
+    slack_webhook: Optional[str] = None,
+    n8n_webhook: Optional[str] = None,
+    gemini_model: str = "gemini-3-pro-preview",
+    codex_model: str = "o4-mini",
+    claude_model: str = "claude-sonnet",
+    execution_mode: str = "threads",
+    max_workers: int = 4,
+    verbose: bool = True
+):
+    """
+    Run a task using a TaskSpec file.
+
+    The TaskSpec file (YAML or JSON) defines:
+    - Task objectives and requirements
+    - Target repository
+    - Deliverables and acceptance criteria
+    - Webhook notifications
+    """
+    from um_agent_coder.orchestrator import TaskSpec, RepoTarget, UpdateType
+
+    # Load the spec
+    if spec_path.endswith('.yaml') or spec_path.endswith('.yml'):
+        spec = TaskSpec.from_yaml(spec_path)
+    else:
+        spec = TaskSpec.from_json(spec_path)
+
+    # Apply overrides
+    if repo_override:
+        spec.repo = RepoTarget(path=repo_override, branch=branch_override)
+    elif branch_override and spec.repo:
+        spec.repo.branch = branch_override
+
+    if webhook_override:
+        spec.webhook_url = webhook_override
+    if slack_webhook:
+        spec.slack_webhook = slack_webhook
+    if n8n_webhook:
+        spec.n8n_webhook = n8n_webhook
+
+    # Reinitialize notifier with overrides
+    if any([spec.webhook_url, spec.slack_webhook, spec.n8n_webhook]):
+        from um_agent_coder.orchestrator import WebhookNotifier
+        spec.notifier = WebhookNotifier(
+            webhook_url=spec.webhook_url,
+            slack_webhook=spec.slack_webhook,
+            n8n_webhook=spec.n8n_webhook,
+        )
+
+    print("\n" + "="*70)
+    print("TASK SPECIFICATION EXECUTION")
+    print("="*70)
+    print(f"Name: {spec.name}")
+    print(f"Objectives: {len(spec.objectives)}")
+    print(f"Deliverables: {len(spec.deliverables)}")
+
+    # Setup repository if specified
+    original_cwd = os.getcwd()
+    if spec.repo:
+        try:
+            repo_path = spec.setup_repo()
+            print(f"Repository: {repo_path}")
+            os.chdir(repo_path)
+
+            repo_info = spec.repo.get_repo_info()
+            if repo_info.get('branch'):
+                print(f"Branch: {repo_info['branch']}")
+            if repo_info.get('commit'):
+                print(f"Commit: {repo_info['commit'][:8]}")
+        except Exception as e:
+            print(f"Error setting up repository: {e}")
+            return {"success": False, "error": str(e)}
+
+    print("="*70)
+
+    # Notify start
+    spec.notify(UpdateType.STARTED, f"Starting task: {spec.name}")
+
+    try:
+        # Convert spec to prompt
+        prompt = spec.to_prompt()
+
+        if verbose:
+            print("\n[Generated Prompt]")
+            print("-" * 40)
+            print(prompt[:500] + "..." if len(prompt) > 500 else prompt)
+            print("-" * 40)
+
+        # Run the orchestration
+        result = run_parallel_orchestration(
+            prompt=prompt,
+            gemini_model=gemini_model,
+            codex_model=codex_model,
+            claude_model=claude_model,
+            execution_mode=execution_mode,
+            max_workers=max_workers,
+            require_approval=spec.require_approval,
+            approval_steps=spec.approval_steps or None,
+            verbose=verbose
+        )
+
+        # Notify completion
+        if result and result.get("success"):
+            spec.notify(
+                UpdateType.COMPLETED,
+                f"Task completed successfully: {spec.name}",
+                data={"task_id": result.get("task_id")}
+            )
+        else:
+            spec.notify(
+                UpdateType.ERROR,
+                f"Task failed: {result.get('error', 'Unknown error')}",
+                data=result
+            )
+
+        return result
+
+    except Exception as e:
+        spec.notify(UpdateType.ERROR, f"Task exception: {str(e)}")
+        raise
+
+    finally:
+        # Restore working directory and cleanup
+        os.chdir(original_cwd)
+        if spec.repo:
+            spec.cleanup_repo()
+
+
 def fetch_data_sources(sources: List[str], params: Dict[str, Any], verbose: bool = True):
     """Fetch data from specified sources."""
     registry = DataFetcherRegistry()
@@ -441,6 +573,37 @@ def main():
         nargs="+",
         help="Specific subtask IDs requiring approval (e.g., --approve-at score_targets generate_report)"
     )
+    # Repository and spec arguments
+    parser.add_argument(
+        "--repo",
+        help="Target repository path or git URL (e.g., /path/to/repo or https://github.com/user/repo)"
+    )
+    parser.add_argument(
+        "--branch",
+        help="Git branch to use in target repository"
+    )
+    parser.add_argument(
+        "--spec",
+        help="Path to task specification file (YAML or JSON)"
+    )
+    parser.add_argument(
+        "--create-spec",
+        metavar="PATH",
+        help="Create a template task specification file and exit"
+    )
+    # Webhook/notification arguments
+    parser.add_argument(
+        "--webhook",
+        help="Webhook URL for task updates (generic HTTP POST)"
+    )
+    parser.add_argument(
+        "--slack-webhook",
+        help="Slack webhook URL for notifications"
+    )
+    parser.add_argument(
+        "--n8n-webhook",
+        help="n8n workflow webhook URL for notifications"
+    )
     args = parser.parse_args()
     
     # Handle list models
@@ -453,9 +616,33 @@ def main():
         list_tasks(args.checkpoint_dir, args.task_status)
         return
 
+    # Handle create-spec
+    if args.create_spec:
+        from um_agent_coder.orchestrator import create_spec_template
+        create_spec_template(args.create_spec)
+        return
+
+    # Handle spec file - load TaskSpec and run with it
+    if args.spec:
+        run_with_spec(
+            spec_path=args.spec,
+            repo_override=args.repo,
+            branch_override=args.branch,
+            webhook_override=args.webhook,
+            slack_webhook=args.slack_webhook,
+            n8n_webhook=args.n8n_webhook,
+            gemini_model=args.gemini_model,
+            codex_model=args.codex_model,
+            claude_model=args.claude_model,
+            execution_mode=args.exec_mode,
+            max_workers=args.workers,
+            verbose=args.verbose
+        )
+        return
+
     # Require prompt if not listing models/tasks and not resuming
-    if not args.prompt and not args.resume:
-        parser.error("prompt is required unless using --list-models, --list-tasks, or --resume")
+    if not args.prompt and not args.resume and not args.spec:
+        parser.error("prompt is required unless using --list-models, --list-tasks, --spec, or --resume")
 
     # Handle decompose-only mode (no LLM config needed beyond decomposer)
     if args.decompose:
