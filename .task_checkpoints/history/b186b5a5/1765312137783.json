@@ -1,0 +1,1177 @@
+{
+  "task_id": "b186b5a5",
+  "prompt": "Analyze the project structure and identify key components",
+  "status": "running",
+  "current_step": 0,
+  "steps": [
+    {
+      "step_index": 0,
+      "description": "Execute analysis",
+      "action": "ProjectAnalyzer",
+      "parameters": {
+        "directory": "."
+      },
+      "status": "completed",
+      "result": {
+        "success": true,
+        "error": null,
+        "data": {
+          "structure": {
+            "dirs": 113,
+            "files": 198,
+            "py_files": 32
+          },
+          "python_files": [
+            "./src/um_agent_coder/runner.py",
+            "./src/um_agent_coder/main_enhanced.py",
+            "./src/um_agent_coder/main.py",
+            "./src/um_agent_coder/__init__.py",
+            "./src/um_agent_coder/__main__.py",
+            "./src/um_agent_coder/config.py",
+            "./src/um_agent_coder/llm/factory.py",
+            "./src/um_agent_coder/llm/__init__.py",
+            "./src/um_agent_coder/llm/base.py",
+            "./src/um_agent_coder/llm/providers/google.py",
+            "./src/um_agent_coder/llm/providers/anthropic.py",
+            "./src/um_agent_coder/llm/providers/mcp_local.py",
+            "./src/um_agent_coder/llm/providers/__init__.py",
+            "./src/um_agent_coder/llm/providers/openai.py",
+            "./src/um_agent_coder/persistence/__init__.py",
+            "./src/um_agent_coder/persistence/checkpointer.py",
+            "./src/um_agent_coder/context/manager.py",
+            "./src/um_agent_coder/context/__init__.py",
+            "./src/um_agent_coder/tools/system_tools.py",
+            "./src/um_agent_coder/tools/__init__.py",
+            "./src/um_agent_coder/tools/code_tools.py",
+            "./src/um_agent_coder/tools/file_tools.py",
+            "./src/um_agent_coder/tools/base.py",
+            "./src/um_agent_coder/agent/async_runner.py",
+            "./src/um_agent_coder/agent/enhanced_agent.py",
+            "./src/um_agent_coder/agent/agent.py",
+            "./src/um_agent_coder/agent/__init__.py",
+            "./src/um_agent_coder/agent/persistence.py",
+            "./src/um_agent_coder/agent/cost_tracker.py",
+            "./src/um_agent_coder/agent/planner.py",
+            "./src/um_agent_coder/models/__init__.py",
+            "./src/um_agent_coder/models/registry.py"
+          ],
+          "imports": [
+            "abc",
+            "agent",
+            "anthropic",
+            "argparse",
+            "ast",
+            "base",
+            "checkpointer",
+            "code_tools",
+            "cost_tracker",
+            "dataclasses",
+            "datetime",
+            "enhanced_agent",
+            "enum",
+            "factory",
+            "file_tools",
+            "fnmatch",
+            "glob",
+            "google",
+            "json",
+            "manager",
+            "mcp_local",
+            "openai",
+            "os",
+            "pathlib",
+            "persistence",
+            "planner",
+            "providers.anthropic",
+            "providers.google",
+            "providers.mcp_local",
+            "providers.openai",
+            "re",
+            "registry",
+            "requests",
+            "shlex",
+            "subprocess",
+            "sys",
+            "system_tools",
+            "time",
+            "traceback",
+            "typing",
+            "um_agent_coder.agent.agent",
+            "um_agent_coder.agent.async_runner",
+            "um_agent_coder.agent.enhanced_agent",
+            "um_agent_coder.agent.persistence",
+            "um_agent_coder.config",
+            "um_agent_coder.context",
+            "um_agent_coder.llm.base",
+            "um_agent_coder.llm.factory",
+            "um_agent_coder.llm.providers.openai",
+            "um_agent_coder.main_enhanced",
+            "um_agent_coder.models",
+            "um_agent_coder.persistence",
+            "um_agent_coder.persistence.checkpointer",
+            "um_agent_coder.tools",
+            "uuid",
+            "yaml"
+          ],
+          "classes": [
+            {
+              "name": "Config",
+              "file": "./src/um_agent_coder/config.py",
+              "line": 4
+            },
+            {
+              "name": "LLMFactory",
+              "file": "./src/um_agent_coder/llm/factory.py",
+              "line": 9
+            },
+            {
+              "name": "LLM",
+              "file": "./src/um_agent_coder/llm/base.py",
+              "line": 4
+            },
+            {
+              "name": "GoogleLLM",
+              "file": "./src/um_agent_coder/llm/providers/google.py",
+              "line": 10
+            },
+            {
+              "name": "AnthropicLLM",
+              "file": "./src/um_agent_coder/llm/providers/anthropic.py",
+              "line": 10
+            },
+            {
+              "name": "MCPLocalLLM",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 20
+            },
+            {
+              "name": "MCPOrchestrator",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 254
+            },
+            {
+              "name": "OpenAILLM",
+              "file": "./src/um_agent_coder/llm/providers/openai.py",
+              "line": 11
+            },
+            {
+              "name": "TaskStatus",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 19
+            },
+            {
+              "name": "StepState",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 29
+            },
+            {
+              "name": "TaskState",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 43
+            },
+            {
+              "name": "TaskCheckpointer",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 103
+            },
+            {
+              "name": "ContextType",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 7
+            },
+            {
+              "name": "ContextItem",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 16
+            },
+            {
+              "name": "ContextManager",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 30
+            },
+            {
+              "name": "CommandExecutor",
+              "file": "./src/um_agent_coder/tools/system_tools.py",
+              "line": 10
+            },
+            {
+              "name": "CodeSearcher",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 10
+            },
+            {
+              "name": "ProjectAnalyzer",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 63
+            },
+            {
+              "name": "FileReader",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 9
+            },
+            {
+              "name": "FileWriter",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 40
+            },
+            {
+              "name": "FileSearcher",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 63
+            },
+            {
+              "name": "ToolResult",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 7
+            },
+            {
+              "name": "Tool",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 15
+            },
+            {
+              "name": "ToolRegistry",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 33
+            },
+            {
+              "name": "AsyncRunner",
+              "file": "./src/um_agent_coder/agent/async_runner.py",
+              "line": 13
+            },
+            {
+              "name": "EnhancedAgent",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 16
+            },
+            {
+              "name": "Agent",
+              "file": "./src/um_agent_coder/agent/agent.py",
+              "line": 4
+            },
+            {
+              "name": "JobStatus",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 11
+            },
+            {
+              "name": "JobState",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 19
+            },
+            {
+              "name": "JobStore",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 36
+            },
+            {
+              "name": "TaskMetric",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 8
+            },
+            {
+              "name": "CostTracker",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 21
+            },
+            {
+              "name": "TaskType",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 6
+            },
+            {
+              "name": "TaskStep",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 18
+            },
+            {
+              "name": "TaskAnalysis",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 27
+            },
+            {
+              "name": "ExecutionPlan",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 37
+            },
+            {
+              "name": "TaskPlanner",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 44
+            },
+            {
+              "name": "ModelCategory",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 6
+            },
+            {
+              "name": "ModelInfo",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 13
+            },
+            {
+              "name": "ModelRegistry",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 25
+            }
+          ],
+          "functions": [
+            {
+              "name": "main",
+              "file": "./src/um_agent_coder/runner.py",
+              "line": 9
+            },
+            {
+              "name": "list_available_models",
+              "file": "./src/um_agent_coder/main_enhanced.py",
+              "line": 14
+            },
+            {
+              "name": "list_tasks",
+              "file": "./src/um_agent_coder/main_enhanced.py",
+              "line": 35
+            },
+            {
+              "name": "main",
+              "file": "./src/um_agent_coder/main_enhanced.py",
+              "line": 106
+            },
+            {
+              "name": "main",
+              "file": "./src/um_agent_coder/main.py",
+              "line": 7
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/config.py",
+              "line": 9
+            },
+            {
+              "name": "load_config",
+              "file": "./src/um_agent_coder/config.py",
+              "line": 13
+            },
+            {
+              "name": "get",
+              "file": "./src/um_agent_coder/config.py",
+              "line": 23
+            },
+            {
+              "name": "create",
+              "file": "./src/um_agent_coder/llm/factory.py",
+              "line": 24
+            },
+            {
+              "name": "get_available_providers",
+              "file": "./src/um_agent_coder/llm/factory.py",
+              "line": 42
+            },
+            {
+              "name": "chat",
+              "file": "./src/um_agent_coder/llm/base.py",
+              "line": 10
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/llm/providers/google.py",
+              "line": 15
+            },
+            {
+              "name": "chat",
+              "file": "./src/um_agent_coder/llm/providers/google.py",
+              "line": 28
+            },
+            {
+              "name": "stream_chat",
+              "file": "./src/um_agent_coder/llm/providers/google.py",
+              "line": 84
+            },
+            {
+              "name": "count_tokens",
+              "file": "./src/um_agent_coder/llm/providers/google.py",
+              "line": 94
+            },
+            {
+              "name": "get_model_info",
+              "file": "./src/um_agent_coder/llm/providers/google.py",
+              "line": 102
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/llm/providers/anthropic.py",
+              "line": 17
+            },
+            {
+              "name": "chat",
+              "file": "./src/um_agent_coder/llm/providers/anthropic.py",
+              "line": 28
+            },
+            {
+              "name": "stream_chat",
+              "file": "./src/um_agent_coder/llm/providers/anthropic.py",
+              "line": 78
+            },
+            {
+              "name": "count_tokens",
+              "file": "./src/um_agent_coder/llm/providers/anthropic.py",
+              "line": 126
+            },
+            {
+              "name": "get_model_info",
+              "file": "./src/um_agent_coder/llm/providers/anthropic.py",
+              "line": 134
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 55
+            },
+            {
+              "name": "chat",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 81
+            },
+            {
+              "name": "_chat_codex",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 100
+            },
+            {
+              "name": "_chat_gemini",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 123
+            },
+            {
+              "name": "_chat_claude",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 134
+            },
+            {
+              "name": "_execute_mcp_codex",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 154
+            },
+            {
+              "name": "_execute_mcp_gemini",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 204
+            },
+            {
+              "name": "get_model_info",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 238
+            },
+            {
+              "name": "set_conversation_id",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 249
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 277
+            },
+            {
+              "name": "gather_context",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 283
+            },
+            {
+              "name": "plan",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 290
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 297
+            },
+            {
+              "name": "route",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 304
+            },
+            {
+              "name": "_classify_task",
+              "file": "./src/um_agent_coder/llm/providers/mcp_local.py",
+              "line": 322
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/llm/providers/openai.py",
+              "line": 18
+            },
+            {
+              "name": "chat",
+              "file": "./src/um_agent_coder/llm/providers/openai.py",
+              "line": 29
+            },
+            {
+              "name": "stream_chat",
+              "file": "./src/um_agent_coder/llm/providers/openai.py",
+              "line": 70
+            },
+            {
+              "name": "count_tokens",
+              "file": "./src/um_agent_coder/llm/providers/openai.py",
+              "line": 112
+            },
+            {
+              "name": "get_model_info",
+              "file": "./src/um_agent_coder/llm/providers/openai.py",
+              "line": 120
+            },
+            {
+              "name": "to_dict",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 81
+            },
+            {
+              "name": "from_dict",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 88
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 130
+            },
+            {
+              "name": "_get_task_path",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 140
+            },
+            {
+              "name": "_get_history_path",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 144
+            },
+            {
+              "name": "save",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 148
+            },
+            {
+              "name": "load",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 182
+            },
+            {
+              "name": "load_version",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 205
+            },
+            {
+              "name": "list_versions",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 229
+            },
+            {
+              "name": "delete",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 252
+            },
+            {
+              "name": "list_tasks",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 280
+            },
+            {
+              "name": "get_resumable_tasks",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 327
+            },
+            {
+              "name": "cleanup_old_versions",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 340
+            },
+            {
+              "name": "cleanup_completed",
+              "file": "./src/um_agent_coder/persistence/checkpointer.py",
+              "line": 369
+            },
+            {
+              "name": "__post_init__",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 25
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 33
+            },
+            {
+              "name": "add",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 40
+            },
+            {
+              "name": "get_context",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 73
+            },
+            {
+              "name": "_optimize_context",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 93
+            },
+            {
+              "name": "_estimate_tokens",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 105
+            },
+            {
+              "name": "summarize_if_needed",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 110
+            },
+            {
+              "name": "get_usage",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 161
+            },
+            {
+              "name": "clear",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 178
+            },
+            {
+              "name": "remove_by_source",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 183
+            },
+            {
+              "name": "_recalculate_tokens",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 188
+            },
+            {
+              "name": "export_state",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 192
+            },
+            {
+              "name": "import_state",
+              "file": "./src/um_agent_coder/context/manager.py",
+              "line": 212
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/tools/system_tools.py",
+              "line": 13
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/tools/system_tools.py",
+              "line": 24
+            },
+            {
+              "name": "_is_dangerous_command",
+              "file": "./src/um_agent_coder/tools/system_tools.py",
+              "line": 102
+            },
+            {
+              "name": "get_parameters",
+              "file": "./src/um_agent_coder/tools/system_tools.py",
+              "line": 126
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 13
+            },
+            {
+              "name": "_matches_pattern",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 35
+            },
+            {
+              "name": "_search_file",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 39
+            },
+            {
+              "name": "get_parameters",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 54
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 66
+            },
+            {
+              "name": "_analyze_structure",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 80
+            },
+            {
+              "name": "_find_python_files",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 90
+            },
+            {
+              "name": "_analyze_imports",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 98
+            },
+            {
+              "name": "_find_classes",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 115
+            },
+            {
+              "name": "_find_functions",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 132
+            },
+            {
+              "name": "get_parameters",
+              "file": "./src/um_agent_coder/tools/code_tools.py",
+              "line": 149
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 12
+            },
+            {
+              "name": "get_parameters",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 32
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 43
+            },
+            {
+              "name": "get_parameters",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 55
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 66
+            },
+            {
+              "name": "get_parameters",
+              "file": "./src/um_agent_coder/tools/file_tools.py",
+              "line": 79
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 18
+            },
+            {
+              "name": "execute",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 23
+            },
+            {
+              "name": "get_parameters",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 28
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 36
+            },
+            {
+              "name": "register",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 39
+            },
+            {
+              "name": "get",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 43
+            },
+            {
+              "name": "get_all",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 47
+            },
+            {
+              "name": "get_tools_for_task",
+              "file": "./src/um_agent_coder/tools/base.py",
+              "line": 51
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/agent/async_runner.py",
+              "line": 17
+            },
+            {
+              "name": "create_job",
+              "file": "./src/um_agent_coder/agent/async_runner.py",
+              "line": 25
+            },
+            {
+              "name": "resume_job",
+              "file": "./src/um_agent_coder/agent/async_runner.py",
+              "line": 84
+            },
+            {
+              "name": "_save_context_to_store",
+              "file": "./src/um_agent_coder/agent/async_runner.py",
+              "line": 172
+            },
+            {
+              "name": "_restore_context",
+              "file": "./src/um_agent_coder/agent/async_runner.py",
+              "line": 188
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 21
+            },
+            {
+              "name": "run",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 47
+            },
+            {
+              "name": "resume",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 204
+            },
+            {
+              "name": "pause",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 334
+            },
+            {
+              "name": "list_tasks",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 353
+            },
+            {
+              "name": "get_task_state",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 365
+            },
+            {
+              "name": "_create_task_state",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 377
+            },
+            {
+              "name": "_register_tools",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 411
+            },
+            {
+              "name": "_load_initial_context",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 430
+            },
+            {
+              "name": "_execute_step",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 458
+            },
+            {
+              "name": "_generate_response",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 489
+            },
+            {
+              "name": "_calculate_step_cost",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 526
+            },
+            {
+              "name": "_get_approval",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 536
+            },
+            {
+              "name": "get_metrics",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 559
+            },
+            {
+              "name": "export_metrics",
+              "file": "./src/um_agent_coder/agent/enhanced_agent.py",
+              "line": 563
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/agent/agent.py",
+              "line": 9
+            },
+            {
+              "name": "run",
+              "file": "./src/um_agent_coder/agent/agent.py",
+              "line": 12
+            },
+            {
+              "name": "__post_init__",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 32
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 37
+            },
+            {
+              "name": "_get_job_path",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 41
+            },
+            {
+              "name": "_get_context_path",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 44
+            },
+            {
+              "name": "create_job",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 47
+            },
+            {
+              "name": "save_job",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 60
+            },
+            {
+              "name": "load_job",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 65
+            },
+            {
+              "name": "list_jobs",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 74
+            },
+            {
+              "name": "save_context",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 86
+            },
+            {
+              "name": "load_context",
+              "file": "./src/um_agent_coder/agent/persistence.py",
+              "line": 90
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 24
+            },
+            {
+              "name": "start_task",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 31
+            },
+            {
+              "name": "track_step",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 46
+            },
+            {
+              "name": "complete_task",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 56
+            },
+            {
+              "name": "calculate_effectiveness",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 65
+            },
+            {
+              "name": "get_statistics",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 99
+            },
+            {
+              "name": "get_task_history",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 136
+            },
+            {
+              "name": "export_metrics",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 154
+            },
+            {
+              "name": "estimate_remaining_budget",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 167
+            },
+            {
+              "name": "export_state",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 190
+            },
+            {
+              "name": "import_state",
+              "file": "./src/um_agent_coder/agent/cost_tracker.py",
+              "line": 235
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 47
+            },
+            {
+              "name": "analyze_task",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 61
+            },
+            {
+              "name": "create_execution_plan",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 92
+            },
+            {
+              "name": "_determine_task_type",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 154
+            },
+            {
+              "name": "_estimate_complexity",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 164
+            },
+            {
+              "name": "_identify_required_tools",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 190
+            },
+            {
+              "name": "_extract_file_references",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 212
+            },
+            {
+              "name": "_identify_risks",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 231
+            },
+            {
+              "name": "_extract_search_pattern",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 246
+            },
+            {
+              "name": "_create_main_task_step",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 263
+            },
+            {
+              "name": "_build_tool_parameters",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 289
+            },
+            {
+              "name": "_estimate_cost",
+              "file": "./src/um_agent_coder/agent/planner.py",
+              "line": 320
+            },
+            {
+              "name": "__init__",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 28
+            },
+            {
+              "name": "_register_default_models",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 32
+            },
+            {
+              "name": "register",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 216
+            },
+            {
+              "name": "get",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 220
+            },
+            {
+              "name": "get_by_category",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 224
+            },
+            {
+              "name": "get_best_for_task",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 228
+            },
+            {
+              "name": "calculate_cost",
+              "file": "./src/um_agent_coder/models/registry.py",
+              "line": 247
+            }
+          ]
+        },
+        "tool": "ProjectAnalyzer",
+        "description": "Execute analysis"
+      },
+      "error": null,
+      "started_at": "2025-12-09T15:28:57.720546",
+      "completed_at": "2025-12-09T15:28:57.782341"
+    }
+  ],
+  "context_items": [
+    {
+      "content": "Task: Analyze the project structure and identify key components\nType: analysis\nComplexity: 4/10",
+      "type": "project_info",
+      "source": "task_analysis",
+      "tokens": 23,
+      "timestamp": 1765312137.7205355,
+      "priority": 9,
+      "metadata": {}
+    },
+    {
+      "content": "{'structure': {'dirs': 113, 'files': 198, 'py_files': 32}, 'python_files': ['./src/um_agent_coder/runner.py', './src/um_agent_coder/main_enhanced.py', './src/um_agent_coder/main.py', './src/um_agent_coder/__init__.py', './src/um_agent_coder/__main__.py', './src/um_agent_coder/config.py', './src/um_agent_coder/llm/factory.py', './src/um_agent_coder/llm/__init__.py', './src/um_agent_coder/llm/base.py', './src/um_agent_coder/llm/providers/google.py', './src/um_agent_coder/llm/providers/anthropic.py', './src/um_agent_coder/llm/providers/mcp_local.py', './src/um_agent_coder/llm/providers/__init__.py', './src/um_agent_coder/llm/providers/openai.py', './src/um_agent_coder/persistence/__init__.py', './src/um_agent_coder/persistence/checkpointer.py', './src/um_agent_coder/context/manager.py', './src/um_agent_coder/context/__init__.py', './src/um_agent_coder/tools/system_tools.py', './src/um_agent_coder/tools/__init__.py', './src/um_agent_coder/tools/code_tools.py', './src/um_agent_coder/tools/file_tools.py', './src/um_agent_coder/tools/base.py', './src/um_agent_coder/agent/async_runner.py', './src/um_agent_coder/agent/enhanced_agent.py', './src/um_agent_coder/agent/agent.py', './src/um_agent_coder/agent/__init__.py', './src/um_agent_coder/agent/persistence.py', './src/um_agent_coder/agent/cost_tracker.py', './src/um_agent_coder/agent/planner.py', './src/um_agent_coder/models/__init__.py', './src/um_agent_coder/models/registry.py'], 'imports': ['abc', 'agent', 'anthropic', 'argparse', 'ast', 'base', 'checkpointer', 'code_tools', 'cost_tracker', 'dataclasses', 'datetime', 'enhanced_agent', 'enum', 'factory', 'file_tools', 'fnmatch', 'glob', 'google', 'json', 'manager', 'mcp_local', 'openai', 'os', 'pathlib', 'persistence', 'planner', 'providers.anthropic', 'providers.google', 'providers.mcp_local', 'providers.openai', 're', 'registry', 'requests', 'shlex', 'subprocess', 'sys', 'system_tools', 'time', 'traceback', 'typing', 'um_agent_coder.agent.agent', 'um_agent_coder.agent.as",
+      "type": "tool_result",
+      "source": "ProjectAnalyzer_result",
+      "tokens": 500,
+      "timestamp": 1765312137.7823231,
+      "priority": 10,
+      "metadata": {}
+    }
+  ],
+  "cost_state": {
+    "total_tokens": 0,
+    "total_cost": 0.0,
+    "session_start": 1765312137.719588,
+    "current_task": {
+      "task_id": "b186b5a5",
+      "prompt": "Analyze the project structure and identify key components",
+      "start_time": 1765312137.7198956,
+      "end_time": null,
+      "tokens_used": 0,
+      "cost": 0.0,
+      "success": false,
+      "error": null,
+      "steps_completed": 0,
+      "total_steps": 1
+    },
+    "tasks": []
+  },
+  "task_analysis": {
+    "type": "analysis",
+    "complexity": 4,
+    "estimated_tokens": 4000,
+    "required_tools": [
+      "CodeSearcher",
+      "ProjectAnalyzer"
+    ],
+    "files_to_analyze": [],
+    "potential_risks": []
+  },
+  "created_at": "2025-12-09T15:28:57.719906",
+  "updated_at": "2025-12-09T15:28:57.782381",
+  "completed_at": null,
+  "metadata": {}
+}

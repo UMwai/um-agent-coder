@@ -1,0 +1,38 @@
+{
+  "task_id": "b186b5a5",
+  "prompt": "Analyze the project structure and identify key components",
+  "status": "running",
+  "current_step": 0,
+  "steps": [
+    {
+      "step_index": 0,
+      "description": "Execute analysis",
+      "action": "ProjectAnalyzer",
+      "parameters": {
+        "directory": "."
+      },
+      "status": "running",
+      "result": null,
+      "error": null,
+      "started_at": "2025-12-09T15:28:57.720546",
+      "completed_at": null
+    }
+  ],
+  "context_items": [],
+  "cost_state": {},
+  "task_analysis": {
+    "type": "analysis",
+    "complexity": 4,
+    "estimated_tokens": 4000,
+    "required_tools": [
+      "CodeSearcher",
+      "ProjectAnalyzer"
+    ],
+    "files_to_analyze": [],
+    "potential_risks": []
+  },
+  "created_at": "2025-12-09T15:28:57.719906",
+  "updated_at": "2025-12-09T15:28:57.720553",
+  "completed_at": null,
+  "metadata": {}
+}

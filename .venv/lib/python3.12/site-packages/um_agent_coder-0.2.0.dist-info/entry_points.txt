@@ -1,0 +1,3 @@
+[console_scripts]
+um-agent = um_agent_coder.cli:main
+um-agent-coder = um_agent_coder.cli:main

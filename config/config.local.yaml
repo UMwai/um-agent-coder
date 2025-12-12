@@ -1,0 +1,54 @@
+# Local MCP Configuration
+# Use this config when running with local Codex/Gemini/Claude tools
+# No API keys required - uses MCP infrastructure
+
+llm:
+  # Choose your default provider:
+  # - mcp: Generic MCP provider (specify backend in config below)
+  # - codex: Direct to Codex (GPT-5/O3/O4-mini)
+  # - gemini-local: Direct to Gemini CLI (gemini-2.5-pro/flash)
+  # - claude-local: Direct to Claude CLI
+  provider: mcp
+
+  # MCP provider configuration
+  mcp:
+    # Backend: codex, gemini, or claude
+    backend: gemini
+
+    # Model selection (optional, uses backend default if not specified)
+    # Codex models: o3, o4-mini, gpt-4o
+    # Gemini models: gemini-3-pro-preview, gemini-2.5-pro, gemini-2.5-flash
+    # Claude models: claude-sonnet, claude-opus, claude-haiku
+    model: gemini-3-pro-preview
+
+    # Sandbox mode for Codex (ignored for other backends)
+    # Options: read-only, workspace-write, danger-full-access
+    sandbox: workspace-write
+
+  # Direct provider configs (used with provider: codex, gemini-local, claude-local)
+  codex:
+    model: o4-mini
+    sandbox: workspace-write
+
+  gemini-local:
+    model: gemini-2.5-pro
+
+  claude-local:
+    model: claude-sonnet
+
+agent:
+  # Context window management
+  max_context_tokens: 100000
+
+  # Auto-summarize when context gets full
+  auto_summarize: true
+
+  # Require user approval before executing plans
+  require_approval: false
+
+  # Checkpointing for long-running tasks
+  checkpoint_dir: ".task_checkpoints"
+  enable_checkpointing: true
+
+  # Verbose output
+  verbose: true
