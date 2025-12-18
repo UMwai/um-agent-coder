@@ -5,28 +5,21 @@ An advanced AI coding agent with planning, context management, and cost tracking
 ## Features
 
 ### 🚀 Core Capabilities
-- **Multi-Provider Support**: OpenAI (GPT-4o), Anthropic (Claude 4), Google (Gemini 2.5)
+- **Multi-Provider Support**: OpenAI (GPT-5.2), Anthropic (Claude Opus 4.5), Google (Gemini 3)
 - **Intelligent Planning**: Analyzes tasks before execution with complexity estimation
+- **Architecture & Planning**: Converts abstract requirements into detailed technical specifications
 - **Context Management**: Smart context window optimization with auto-summarization
 - **Cost Tracking**: Real-time cost monitoring and effectiveness metrics
 - **Tool System**: Extensible tools for file operations, code search, and more
 
-### 🎯 Model Categories
+### 🎯 Recommended Models
 
-#### High Performance Models
-- **Claude 3.5 Sonnet**: Best for complex coding (94/100 performance)
-- **GPT-4o**: Fast multimodal support (88/100 performance)
-- **Gemini 2.5 Pro**: Massive 1M token context (91/100 performance)
-
-#### Efficient Models
-- **Claude 3 Haiku**: Ultra-fast responses
-- **GPT-4o Mini**: Affordable with decent performance
-- **Gemini 1.5 Flash**: Extremely cost-effective
-
-#### Open Source Models
-- **DeepSeek-V3**: Best open-source, rivals GPT-4o
-- **Qwen 3 235B**: Top for coding benchmarks
-- **Llama 3.3 70B**: Solid general-purpose
+| Provider | Model | Use Case |
+|----------|-------|----------|
+| OpenAI | **gpt-5.2** | Best reasoning, complex coding |
+| Anthropic | **claude-opus-4.5** | Deep analysis, synthesis |
+| Google | **gemini-3-pro** | Large context (1M+), research |
+| Google | **gemini-3-flash** | Fast, cost-effective |
 
 ## Installation
 
@@ -53,7 +46,7 @@ export GOOGLE_API_KEY="your-key"
 python -m src.um_agent_coder "implement a fibonacci function"
 
 # Use specific model
-python -m src.um_agent_coder "fix the bug in auth.py" --model claude-3.5-sonnet-20241022
+python -m src.um_agent_coder "fix the bug in auth.py" --model claude-opus-4.5
 
 # Use specific provider
 python -m src.um_agent_coder "refactor database.py" --provider anthropic
@@ -87,13 +80,13 @@ llm:
   provider: openai  # or anthropic, google
   openai:
     api_key: "YOUR_API_KEY"  # or use env var
-    model: "gpt-4o"
+    model: "gpt-5.2"
   anthropic:
     api_key: "YOUR_API_KEY"
-    model: "claude-sonnet-4"
+    model: "claude-opus-4.5"
   google:
     api_key: "YOUR_API_KEY"
-    model: "gemini-1.5-flash"
+    model: "gemini-3-flash"
 
 agent:
   max_context_tokens: 100000
@@ -145,6 +138,7 @@ Effectiveness = (Success Rate × Completion Rate) / (Avg Cost × Avg Time)
 4. **CodeSearcher**: Search code with regex
 5. **ProjectAnalyzer**: Analyze project structure
 6. **CommandExecutor**: Run shell commands safely
+7. **ArchitectTool**: Generate technical specs from abstract prompts
 
 ## Performance Metrics
 
@@ -193,9 +187,9 @@ class CustomTool(Tool):
 ## Best Practices
 
 1. **Model Selection**
-   - Use Claude 4 for complex coding tasks
-   - Use Gemini Flash for cost-sensitive operations
-   - Use GPT-4o for multimodal tasks
+   - Use `gpt-5.2` or `claude-opus-4.5` for complex coding tasks
+   - Use `gemini-3-flash` for cost-sensitive operations
+   - Use `gemini-3-pro` for large context analysis
 
 2. **Context Management**
    - Let auto-summarization handle long conversations

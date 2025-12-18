@@ -141,9 +141,9 @@ from um_agent_coder.orchestrator import (
 from um_agent_coder.llm.providers.mcp_local import MCPLocalLLM
 
 # Create model instances (uses local MCP tools - NO API keys needed)
-gemini = MCPLocalLLM(backend="gemini", model="gemini-3-pro-preview")
-codex = MCPLocalLLM(backend="codex", model="o4-mini")
-claude = MCPLocalLLM(backend="claude", model="claude-sonnet")
+gemini = MCPLocalLLM(backend="gemini", model="gemini-3-pro")
+codex = MCPLocalLLM(backend="codex", model="gpt-5.2")
+claude = MCPLocalLLM(backend="claude", model="claude-opus-4.5")
 
 # Create orchestrator
 orchestrator = MultiModelOrchestrator(
@@ -271,85 +271,13 @@ examples/
 └── claude_subagent_example.py
 ```
 
-## LLM Provider Pricing
+## Recommended Models
 
-This section provides a summary of the pricing for the different LLM providers. Please note that this information may not be up-to-date. Always check the official pricing pages for the latest information.
+| Provider | Model | Use Case |
+|----------|-------|----------|
+| OpenAI | **gpt-5.2** | Best reasoning, complex coding tasks |
+| Anthropic | **claude-opus-4.5** | Deep analysis, synthesis, review |
+| Google | **gemini-3-pro** | Large context (1M+), research |
+| Google | **gemini-3-flash** | Fast, cost-effective tasks |
 
-### OpenAI
-
-*   **GPT-4o (2024-08-06):** $2.50 per 1M input tokens, $1.25 for cached input, and $10.00 per 1M output tokens.
-*   **GPT-4o Mini:** $0.15 per 1M input tokens, $0.075 for cached input, and $0.60 per 1M output tokens.
-*   **GPT-4.5 Preview:** $75.00 per 1M input tokens and $150.00 per 1M output tokens.
-*   **GPT-3.5 Turbo:** $0.50 per 1M input tokens and $1.50 per 1M output tokens.
-
-### Anthropic
-
-**Latest Models**
-
-*   **Claude Opus 4.1:**
-    *   Input: $15 / MTok
-    *   Output: $75 / MTok
-*   **Claude Sonnet 4:**
-    *   Input: $3 / MTok
-    *   Output: $15 / MTok
-*   **Claude Haiku 3.5:**
-    *   Input: $0.80 / MTok
-    *   Output: $4 / MTok
-
-**Legacy Models**
-
-*   **Claude Opus 4:**
-    *   Input: $15 / MTok
-    *   Output: $75 / MTok
-*   **Claude Opus 3:**
-    *   Input: $15 / MTok
-    *   Output: $75 / MTok
-*   **Claude Sonnet 3.7:**
-    *   Input: $3 / MTok
-    *   Output: $15 / MTok
-*   **Claude Haiku 3:**
-    *   Input: $0.25 / MTok
-    *   Output: $1.25 / MTok
-
-### Google
-
-**Gemini 2.5 Pro**
-
-*   **Input:**
-    *   $1.25 per 1M tokens (prompts <= 200k tokens)
-    *   $2.50 per 1M tokens (prompts > 200k tokens)
-*   **Output:**
-    *   $10.00 per 1M tokens (prompts <= 200k tokens)
-    *   $15.00 per 1M tokens (prompts > 200k)
-
-**Gemini 2.5 Flash**
-
-*   **Input:**
-    *   $0.30 per 1M tokens (text / image / video)
-    *   $1.00 per 1M tokens (audio)
-*   **Output:** $2.50 per 1M tokens
-
-**Gemini 2.5 Flash-Lite**
-
-*   **Input:**
-    *   $0.10 per 1M tokens (text / image / video)
-    *   $0.30 per 1M tokens (audio)
-*   **Output:** $0.40 per 1M tokens
-
-**Gemini 1.5 Pro**
-
-*   **Input:**
-    *   $1.25 per 1M tokens (prompts <= 128k tokens)
-    *   $2.50 per 1M tokens (prompts > 128k tokens)
-*   **Output:**
-    *   $5.00 per 1M tokens (prompts <= 128k tokens)
-    *   $10.00 per 1M tokens (prompts > 128k tokens)
-
-**Gemini 1.5 Flash**
-
-*   **Input:**
-    *   $0.075 per 1M tokens (prompts <= 128k tokens)
-    *   $0.15 per 1M tokens (prompts > 128k tokens)
-*   **Output:**
-    *   $0.30 per 1M tokens (prompts <= 128k tokens)
-    *   $0.60 per 1M tokens (prompts > 128k tokens)
+For ChatGPT Pro subscribers, use Codex CLI with `gpt-5.2` for unlimited usage.

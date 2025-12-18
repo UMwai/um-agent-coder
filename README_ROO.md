@@ -51,9 +51,9 @@ modes:
 ### 🔌 Multi-Provider Support
 Seamlessly switch between different LLM providers:
 
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic (Claude 3)
-- Google (Gemini Pro)
+- OpenAI (GPT-5.2)
+- Anthropic (Claude Opus 4.5)
+- Google (Gemini 3 Pro/Flash)
 
 ## 🚀 Quick Start
 
@@ -111,7 +111,7 @@ llm:
   provider: openai
   openai:
     api_key: ${OPENAI_API_KEY}
-    model: gpt-4
+    model: gpt-5.2
 
 agent:
   verbose: true
@@ -322,9 +322,10 @@ A: Yes! The enhanced agent is backward compatible. You can gradually adopt new f
 
 **Q: Which LLM provider should I use?**
 A: Each has strengths:
-- OpenAI GPT-4: Best overall performance
-- Anthropic Claude: Excellent for complex reasoning
-- Google Gemini: Good balance of speed and capability
+- OpenAI GPT-5.2: Best reasoning, complex coding tasks
+- Anthropic Claude Opus 4.5: Deep analysis, synthesis, review
+- Google Gemini 3 Pro: Large context (1M+), research
+- Google Gemini 3 Flash: Fast, cost-effective tasks
 
 **Q: How do I create custom modes?**
 A: Define them in your config file or programmatically using the ModeManager class.
