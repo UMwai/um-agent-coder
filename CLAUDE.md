@@ -9,9 +9,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python -m src.um_agent_coder "YOUR_PROMPT"
 ```
 
-### Running the 24/7 Codex Harness
+### Running the 24/7 CLI Harness
 ```bash
-# Dry run - preview execution without running Codex
+# Default: Run with Codex CLI (gpt-5.2)
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md
+
+# Use Gemini CLI instead
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli gemini
+
+# Use Claude CLI instead
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli claude
+
+# Override model (default per CLI is auto-selected)
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli gemini --model gemini-3-flash
+
+# Dry run - preview execution without running
 python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --dry-run
 
 # Run 24/7 daemon mode
@@ -51,8 +63,9 @@ This is an AI coding agent built with a modular architecture:
    - Supports: OpenAI, Anthropic, Google, Claude CLI, Google ADC
    - New providers should inherit from the `LLM` base class
 
-4. **24/7 Codex Harness** (`harness/`):
-   - Autonomous task execution via Codex CLI
+4. **24/7 CLI Harness** (`harness/`):
+   - Autonomous task execution via Codex, Gemini, or Claude CLI
+   - Supports per-task CLI and model selection
    - Roadmap-driven planning from `specs/roadmap.md`
    - SQLite state persistence for resume capability
    - Growth mode for continuous improvement after completion
@@ -61,27 +74,32 @@ This is an AI coding agent built with a modular architecture:
    - Add new LLM providers by creating a new class in `llm/providers/` that inherits from `LLM`
    - The provider selection is controlled by the `llm.provider` config value
 
-## 24/7 Codex Harness
+## 24/7 CLI Harness
 
-The harness enables autonomous 24/7 task execution using the Codex CLI (ChatGPT Pro subscription).
+The harness enables autonomous 24/7 task execution using multiple CLI backends:
+- **Codex CLI** (OpenAI/ChatGPT Pro) - gpt-5.2
+- **Gemini CLI** (Google) - gemini-3-pro, gemini-3-flash
+- **Claude CLI** (Anthropic) - claude-opus-4.5
 
 ### Architecture Diagram
 
 ```mermaid
 flowchart TB
     subgraph Input["📄 Input"]
-        RM[specs/roadmap.md<br/>Objectives, Tasks, Dependencies]
+        RM[specs/roadmap.md<br/>Objectives, Tasks, Dependencies<br/>Per-task CLI/model selection]
     end
 
     subgraph Harness["🔄 Harness Loop (main.py)"]
         direction TB
         PARSE[RoadmapParser<br/>Parse markdown into tasks]
         NEXT[Get Next Task<br/>Check dependencies]
-        EXEC[CodexExecutor<br/>gpt-5.2 + reasoning=high]
+        SELECT[Select Executor<br/>Per-task CLI override]
+        EXEC[Execute Task<br/>Via selected CLI]
         VERIFY[Verify Success<br/>Check criteria]
 
         PARSE --> NEXT
-        NEXT --> EXEC
+        NEXT --> SELECT
+        SELECT --> EXEC
         EXEC --> VERIFY
     end
 
@@ -90,10 +108,10 @@ flowchart TB
         LOG[harness.log]
     end
 
-    subgraph Codex["🤖 Codex CLI"]
-        CLI[codex CLI<br/>OAuth authenticated]
-        GPT[gpt-5.2<br/>reasoning: high<br/>sandbox: full]
-        CLI --> GPT
+    subgraph CLIs["🤖 CLI Backends"]
+        CODEX[Codex CLI<br/>gpt-5.2 • reasoning: high]
+        GEMINI[Gemini CLI<br/>gemini-3-pro/flash]
+        CLAUDE[Claude CLI<br/>claude-opus-4.5]
     end
 
     subgraph Growth["🌱 Growth Mode"]
@@ -106,7 +124,9 @@ flowchart TB
     end
 
     RM --> PARSE
-    EXEC --> CLI
+    SELECT -->|codex| CODEX
+    SELECT -->|gemini| GEMINI
+    SELECT -->|claude| CLAUDE
     VERIFY -->|Success| DB
     VERIFY -->|Failed & Retries Left| NEXT
     VERIFY -->|All Complete| ANALYZE
@@ -117,7 +137,7 @@ flowchart TB
     style Input fill:#e1f5fe
     style Harness fill:#fff3e0
     style State fill:#f3e5f5
-    style Codex fill:#e8f5e9
+    style CLIs fill:#e8f5e9
     style Growth fill:#fce4ec
 ```
 
@@ -176,12 +196,21 @@ sequenceDiagram
 
 ### How It Works
 
-1. **Parse** `specs/roadmap.md` for objectives, tasks, and dependencies
-2. **Execute** tasks in order via Codex CLI (gpt-5.2, reasoning=high)
-3. **Track** state in SQLite (`.harness/state.db`)
-4. **Update** roadmap checkboxes as tasks complete
-5. **Enter Growth Mode** when all tasks done - generates improvement tasks
-6. **Loop 24/7** until stopped with Ctrl+C
+1. **Parse** `specs/roadmap.md` for objectives, tasks, dependencies, and CLI preferences
+2. **Select** executor per-task (codex/gemini/claude) or use default
+3. **Execute** tasks in dependency order via selected CLI
+4. **Track** state in SQLite (`.harness/state.db`)
+5. **Update** roadmap checkboxes as tasks complete
+6. **Enter Growth Mode** when all tasks done - generates improvement tasks
+7. **Loop 24/7** until stopped with Ctrl+C
+
+### Supported CLIs
+
+| CLI | Default Model | Best For |
+|-----|---------------|----------|
+| codex | gpt-5.2 | Implementation, file changes, builds |
+| gemini | gemini-3-pro | Analysis, large codebase, research |
+| claude | claude-opus-4.5 | Complex reasoning, architecture |
 
 ### Roadmap Format
 
@@ -208,16 +237,28 @@ High-level goal description
   - timeout: 15min
   - depends: none
   - success: How to verify completion
+  - cli: codex          # Optional: codex, gemini, or claude
+  - model: gpt-5.2      # Optional: override default model
 
 ### Phase 2: Build
-- [ ] **task-002**: Another task
+- [ ] **task-002**: Implementation task
   - timeout: 30min
   - depends: task-001
   - success: Verification method
+  - cli: codex          # Codex for implementation
+
+- [ ] **task-003**: Architecture analysis
+  - timeout: 20min
+  - depends: task-002
+  - success: Analysis report generated
+  - cli: gemini         # Gemini for analysis (1M context)
+  - model: gemini-3-pro
 
 ## Growth Mode
 Instructions for continuous improvement after completion
 ```
+
+Tasks inherit the default CLI from `--cli` argument. Per-task `cli:` and `model:` override the default.
 
 ### Harness Files
 
@@ -226,7 +267,7 @@ src/um_agent_coder/harness/
 ├── main.py              # Main daemon loop
 ├── models.py            # Data classes
 ├── roadmap_parser.py    # Parse specs/roadmap.md
-├── codex_executor.py    # Codex CLI wrapper
+├── executors.py         # Multi-CLI executors (Codex, Gemini, Claude)
 ├── state.py             # SQLite persistence
 └── growth.py            # Improvement loop
 ```
@@ -234,6 +275,7 @@ src/um_agent_coder/harness/
 ## Key Implementation Notes
 
 - Configuration uses dot notation for nested values (e.g., `llm.openai.api_key`)
-- The harness requires Codex CLI authenticated via OAuth (ChatGPT Pro)
+- The harness supports Codex, Gemini, and Claude CLIs
+- Each CLI requires separate authentication (OAuth for ChatGPT Pro, Google auth, Anthropic auth)
 - State persists in `.harness/` directory
 - Logs written to `.harness/harness.log`

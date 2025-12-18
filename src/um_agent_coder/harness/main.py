@@ -1,9 +1,15 @@
 """
-Main harness loop for 24/7 Codex execution.
+Main harness loop for 24/7 CLI execution.
+
+Supports multiple CLI backends:
+- codex: OpenAI Codex CLI (ChatGPT Pro) - gpt-5.2
+- gemini: Google Gemini CLI - gemini-3-pro, gemini-3-flash
+- claude: Anthropic Claude CLI - claude-opus-4.5
 
 Usage:
     python -m src.um_agent_coder.harness --roadmap specs/roadmap.md
-    python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --daemon
+    python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli gemini
+    python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli claude --daemon
 """
 
 import argparse
@@ -17,7 +23,14 @@ from typing import Optional
 
 from .models import Task, TaskStatus, Roadmap, HarnessState
 from .roadmap_parser import RoadmapParser
-from .codex_executor import CodexExecutor
+from .executors import (
+    BaseCLIExecutor,
+    CLIBackend,
+    CodexExecutor,
+    GeminiExecutor,
+    ClaudeExecutor,
+    create_executor,
+)
 from .state import StateManager
 from .growth import GrowthLoop
 
@@ -37,12 +50,20 @@ logger = logging.getLogger(__name__)
 
 
 class Harness:
-    """Main 24/7 Codex execution harness."""
+    """Main 24/7 CLI execution harness."""
+
+    # Default models per CLI
+    DEFAULT_MODELS = {
+        "codex": "gpt-5.2",
+        "gemini": "gemini-3-pro",
+        "claude": "claude-opus-4.5",
+    }
 
     def __init__(
         self,
         roadmap_path: str,
-        model: str = "gpt-5.2",
+        cli: str = "codex",
+        model: Optional[str] = None,
         reasoning_effort: str = "high",
         cooldown_seconds: int = 10,
         dry_run: bool = False,
@@ -50,15 +71,27 @@ class Harness:
         self.roadmap_path = roadmap_path
         self.dry_run = dry_run
         self.cooldown_seconds = cooldown_seconds
+        self.default_cli = cli.lower()
+        self.default_model = model or self.DEFAULT_MODELS.get(self.default_cli, "")
 
         # Initialize components
         self.parser = RoadmapParser(roadmap_path)
-        self.executor = CodexExecutor(
-            model=model,
+
+        # Create default executor
+        self.default_executor = self._create_executor(
+            cli=self.default_cli,
+            model=self.default_model,
             reasoning_effort=reasoning_effort,
         )
+
+        # Cache for task-specific executors
+        self._executors: dict[str, BaseCLIExecutor] = {
+            self.default_cli: self.default_executor
+        }
+
         self.state = StateManager()
-        self.growth = GrowthLoop(self.executor)
+        self.growth = GrowthLoop(self.default_executor)
+        self.reasoning_effort = reasoning_effort
 
         # Runtime state
         self.roadmap: Optional[Roadmap] = None
@@ -75,9 +108,56 @@ class Harness:
         logger.info(f"Received signal {signum}, initiating graceful shutdown...")
         self._shutdown_requested = True
 
+    def _create_executor(
+        self,
+        cli: str,
+        model: Optional[str] = None,
+        reasoning_effort: str = "high",
+    ) -> BaseCLIExecutor:
+        """Create an executor for the specified CLI."""
+        cli = cli.lower()
+
+        if cli == "codex":
+            return CodexExecutor(
+                model=model or "gpt-5.2",
+                reasoning_effort=reasoning_effort,
+            )
+        elif cli == "gemini":
+            return GeminiExecutor(
+                model=model or "gemini-3-pro",
+            )
+        elif cli == "claude":
+            return ClaudeExecutor(
+                model=model or "claude-opus-4.5",
+            )
+        else:
+            raise ValueError(f"Unknown CLI backend: {cli}")
+
+    def _get_executor_for_task(self, task: Task) -> BaseCLIExecutor:
+        """Get the appropriate executor for a task (with per-task CLI support)."""
+        # Use task's CLI if specified, otherwise use default
+        cli = task.cli or self.default_cli
+        model = task.model or None
+
+        # Check cache first
+        cache_key = f"{cli}:{model or 'default'}"
+        if cache_key in self._executors:
+            return self._executors[cache_key]
+
+        # Create new executor
+        executor = self._create_executor(
+            cli=cli,
+            model=model,
+            reasoning_effort=self.reasoning_effort,
+        )
+        self._executors[cache_key] = executor
+
+        return executor
+
     def run(self) -> None:
         """Main execution loop."""
         logger.info(f"Starting harness with roadmap: {self.roadmap_path}")
+        logger.info(f"Default CLI: {self.default_cli} (model: {self.default_model})")
 
         # Initialize
         self._initialize()
@@ -210,13 +290,19 @@ class Harness:
         task.started_at = datetime.utcnow()
         self.state.save_task(task)
 
-        logger.info(f"Starting execution (attempt {task.attempts}/{task.max_retries})")
+        # Get executor for this task (supports per-task CLI override)
+        executor = self._get_executor_for_task(task)
+        cli_info = f"{task.cli or self.default_cli}"
+        if task.model:
+            cli_info += f" ({task.model})"
+
+        logger.info(f"Starting execution (attempt {task.attempts}/{task.max_retries}) via {cli_info}")
 
         # Build context from dependencies
         context = self._build_task_context(task)
 
-        # Execute via Codex
-        result = self.executor.execute(task, context)
+        # Execute via selected CLI
+        result = executor.execute(task, context)
 
         # Log execution
         self.state.log_execution(task.id, task.attempts, result)
@@ -228,7 +314,7 @@ class Harness:
 
         if result.success:
             # Verify success criteria if defined
-            if task.success_criteria and not self.executor.verify_success(task, result):
+            if task.success_criteria and not executor.verify_success(task, result):
                 logger.warning(f"Task output did not meet success criteria")
                 result.success = False
 
@@ -299,7 +385,7 @@ class Harness:
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="24/7 Codex Harness - Autonomous task execution"
+        description="24/7 CLI Harness - Autonomous task execution via Codex, Gemini, or Claude"
     )
     parser.add_argument(
         "--roadmap", "-r",
@@ -307,15 +393,21 @@ def main():
         help="Path to roadmap.md file"
     )
     parser.add_argument(
+        "--cli", "-c",
+        default="codex",
+        choices=["codex", "gemini", "claude"],
+        help="CLI backend to use (default: codex)"
+    )
+    parser.add_argument(
         "--model", "-m",
-        default="gpt-5.2",
-        help="Codex model to use (default: gpt-5.2)"
+        default=None,
+        help="Model override (default: auto-selected based on CLI)"
     )
     parser.add_argument(
         "--reasoning",
         default="high",
         choices=["low", "medium", "high"],
-        help="Reasoning effort level (default: high)"
+        help="Reasoning effort level for Codex (default: high)"
     )
     parser.add_argument(
         "--cooldown",
@@ -372,6 +464,7 @@ def main():
 
     harness = Harness(
         roadmap_path=args.roadmap,
+        cli=args.cli,
         model=args.model,
         reasoning_effort=args.reasoning,
         cooldown_seconds=args.cooldown,

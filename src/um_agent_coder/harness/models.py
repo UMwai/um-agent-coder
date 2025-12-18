@@ -28,12 +28,14 @@ class Task:
     timeout_minutes: int = 30
     success_criteria: str = ""
     cwd: str = "./"
+    cli: str = ""  # CLI backend override (codex, gemini, claude) - empty uses default
+    model: str = ""  # Model override - empty uses CLI default
     status: TaskStatus = TaskStatus.PENDING
     attempts: int = 0
     max_retries: int = 3
     output: str = ""
     error: str = ""
-    conversation_id: Optional[str] = None  # For Codex conversation continuity
+    conversation_id: Optional[str] = None  # For conversation continuity
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 

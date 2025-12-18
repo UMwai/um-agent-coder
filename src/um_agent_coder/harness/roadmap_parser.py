@@ -172,6 +172,8 @@ class RoadmapParser:
                 timeout_minutes=props.get('timeout', 30),
                 success_criteria=props.get('success', ''),
                 cwd=props.get('cwd', './'),
+                cli=props.get('cli', ''),
+                model=props.get('model', ''),
                 status=TaskStatus.COMPLETED if is_complete else TaskStatus.PENDING,
             )
             tasks.append(task)
@@ -185,6 +187,8 @@ class RoadmapParser:
             'timeout': 30,
             'success': '',
             'cwd': './',
+            'cli': '',
+            'model': '',
         }
 
         for line in content.split('\n'):
@@ -206,6 +210,10 @@ class RoadmapParser:
                 props['success'] = line.split(':', 1)[1].strip()
             elif line.startswith('cwd:'):
                 props['cwd'] = line.split(':', 1)[1].strip()
+            elif line.startswith('cli:'):
+                props['cli'] = line.split(':', 1)[1].strip().lower()
+            elif line.startswith('model:'):
+                props['model'] = line.split(':', 1)[1].strip()
 
         return props
 

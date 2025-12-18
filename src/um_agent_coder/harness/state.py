@@ -49,6 +49,8 @@ class StateManager:
                     timeout_minutes INTEGER DEFAULT 30,
                     success_criteria TEXT DEFAULT '',
                     cwd TEXT DEFAULT './',
+                    cli TEXT DEFAULT '',
+                    model TEXT DEFAULT '',
                     status TEXT DEFAULT 'pending',
                     attempts INTEGER DEFAULT 0,
                     max_retries INTEGER DEFAULT 3,
@@ -187,9 +189,9 @@ class StateManager:
             conn.execute("""
                 INSERT OR REPLACE INTO tasks (
                     id, description, phase, depends, timeout_minutes,
-                    success_criteria, cwd, status, attempts, max_retries,
+                    success_criteria, cwd, cli, model, status, attempts, max_retries,
                     output, error, conversation_id, started_at, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task.id,
                 task.description,
@@ -198,6 +200,8 @@ class StateManager:
                 task.timeout_minutes,
                 task.success_criteria,
                 task.cwd,
+                task.cli,
+                task.model,
                 task.status.value,
                 task.attempts,
                 task.max_retries,
@@ -252,6 +256,8 @@ class StateManager:
             timeout_minutes=row["timeout_minutes"],
             success_criteria=row["success_criteria"],
             cwd=row["cwd"],
+            cli=row["cli"] or "",
+            model=row["model"] or "",
             status=TaskStatus(row["status"]),
             attempts=row["attempts"],
             max_retries=row["max_retries"],
