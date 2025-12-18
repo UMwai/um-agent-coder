@@ -65,6 +65,115 @@ This is an AI coding agent built with a modular architecture:
 
 The harness enables autonomous 24/7 task execution using the Codex CLI (ChatGPT Pro subscription).
 
+### Architecture Diagram
+
+```mermaid
+flowchart TB
+    subgraph Input["📄 Input"]
+        RM[specs/roadmap.md<br/>Objectives, Tasks, Dependencies]
+    end
+
+    subgraph Harness["🔄 Harness Loop (main.py)"]
+        direction TB
+        PARSE[RoadmapParser<br/>Parse markdown into tasks]
+        NEXT[Get Next Task<br/>Check dependencies]
+        EXEC[CodexExecutor<br/>gpt-5.2 + reasoning=high]
+        VERIFY[Verify Success<br/>Check criteria]
+
+        PARSE --> NEXT
+        NEXT --> EXEC
+        EXEC --> VERIFY
+    end
+
+    subgraph State["💾 Persistence"]
+        DB[(SQLite<br/>.harness/state.db)]
+        LOG[harness.log]
+    end
+
+    subgraph Codex["🤖 Codex CLI"]
+        CLI[codex CLI<br/>OAuth authenticated]
+        GPT[gpt-5.2<br/>reasoning: high<br/>sandbox: full]
+        CLI --> GPT
+    end
+
+    subgraph Growth["🌱 Growth Mode"]
+        ANALYZE[Analyze Completed Work]
+        GEN[Generate Improvement Task]
+        APPEND[Append to Roadmap]
+
+        ANALYZE --> GEN
+        GEN --> APPEND
+    end
+
+    RM --> PARSE
+    EXEC --> CLI
+    VERIFY -->|Success| DB
+    VERIFY -->|Failed & Retries Left| NEXT
+    VERIFY -->|All Complete| ANALYZE
+    APPEND --> NEXT
+    DB --> NEXT
+    EXEC --> LOG
+
+    style Input fill:#e1f5fe
+    style Harness fill:#fff3e0
+    style State fill:#f3e5f5
+    style Codex fill:#e8f5e9
+    style Growth fill:#fce4ec
+```
+
+### Task State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: Task created
+    PENDING --> IN_PROGRESS: Dependencies met
+    IN_PROGRESS --> COMPLETED: Success
+    IN_PROGRESS --> FAILED: Error
+    FAILED --> IN_PROGRESS: Retry (< max)
+    FAILED --> BLOCKED: Max retries exceeded
+    COMPLETED --> GROWTH: All tasks done
+    GROWTH --> PENDING: New task generated
+    BLOCKED --> [*]: Manual intervention needed
+```
+
+### Data Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant H as Harness
+    participant P as Parser
+    participant S as StateManager
+    participant C as CodexExecutor
+    participant G as GrowthLoop
+
+    U->>H: Start with roadmap.md
+    H->>P: Parse roadmap
+    P-->>H: Roadmap object
+    H->>S: Init/Resume state
+
+    loop Until shutdown
+        H->>S: Get next task
+        S-->>H: Task (or none)
+
+        alt Task available
+            H->>C: Execute task
+            C->>C: Call Codex CLI
+            C-->>H: Result
+            H->>S: Update state
+            H->>P: Update checkbox
+        else All complete
+            H->>G: Enter growth mode
+            G->>C: Generate improvement
+            C-->>G: New task
+            G->>P: Append to roadmap
+            G-->>H: Continue loop
+        end
+    end
+
+    H-->>U: Summary on shutdown
+```
+
 ### How It Works
 
 1. **Parse** `specs/roadmap.md` for objectives, tasks, and dependencies
