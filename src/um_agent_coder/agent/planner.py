@@ -11,6 +11,7 @@ class TaskType(Enum):
     DOCUMENTATION = "documentation"
     ANALYSIS = "analysis"
     TESTING = "testing"
+    ARCHITECTURE_DESIGN = "architecture_design"
     GENERAL = "general"
 
 
@@ -55,7 +56,13 @@ class TaskPlanner:
             "optimize": TaskType.REFACTORING,
             "document": TaskType.DOCUMENTATION,
             "analyze": TaskType.ANALYSIS,
-            "test": TaskType.TESTING
+            "test": TaskType.TESTING,
+            "design": TaskType.ARCHITECTURE_DESIGN,
+            "architect": TaskType.ARCHITECTURE_DESIGN,
+            "plan": TaskType.ARCHITECTURE_DESIGN,
+            "spec": TaskType.ARCHITECTURE_DESIGN,
+            "blueprint": TaskType.ARCHITECTURE_DESIGN,
+            "scaffold": TaskType.ARCHITECTURE_DESIGN
         }
     
     def analyze_task(self, prompt: str) -> TaskAnalysis:
@@ -96,7 +103,7 @@ class TaskPlanner:
         steps = []
         
         # Step 1: Analyze project structure if needed
-        if analysis.complexity > 5:
+        if analysis.complexity > 5 and analysis.task_type != TaskType.ARCHITECTURE_DESIGN:
             steps.append(TaskStep(
                 description="Analyze project structure",
                 action="ProjectAnalyzer",
@@ -129,12 +136,23 @@ class TaskPlanner:
         main_step = self._create_main_task_step(analysis, prompt)
         steps.append(main_step)
         
-        # Step 5: Validation
+        # Step 5: Post-processing (Validation or Saving)
         if analysis.task_type in [TaskType.CODE_GENERATION, TaskType.CODE_MODIFICATION]:
             steps.append(TaskStep(
                 description="Validate changes",
                 action="CommandExecutor",
                 parameters={"command": "python -m py_compile"},
+                estimated_tokens=100,
+                priority=6
+            ))
+        elif analysis.task_type == TaskType.ARCHITECTURE_DESIGN:
+            steps.append(TaskStep(
+                description="Save Specification",
+                action="FileWriter",
+                parameters={
+                    "file_path": "SPEC.md",
+                    "content": "{{ArchitectTool_result.spec_content}}"
+                },
                 estimated_tokens=100,
                 priority=6
             ))
@@ -155,6 +173,13 @@ class TaskPlanner:
         """Determine task type from prompt."""
         prompt_lower = prompt.lower()
         
+        # Check for specific phrases for Architecture first (as they can be abstract)
+        if "build a" in prompt_lower or "create a new" in prompt_lower:
+            # Heuristic: if it's a big thing like "build a website", it's architecture
+            # If it's "build a function", it's code generation
+            if any(w in prompt_lower for w in ["app", "site", "system", "platform", "clone", "service"]):
+                return TaskType.ARCHITECTURE_DESIGN
+        
         for keyword, task_type in self.task_patterns.items():
             if keyword in prompt_lower:
                 return task_type
@@ -172,6 +197,7 @@ class TaskPlanner:
             TaskType.DOCUMENTATION: 3,
             TaskType.ANALYSIS: 4,
             TaskType.TESTING: 5,
+            TaskType.ARCHITECTURE_DESIGN: 9,
             TaskType.GENERAL: 4
         }
         
@@ -200,6 +226,8 @@ class TaskPlanner:
             tools.extend(["FileReader", "CodeSearcher", "CommandExecutor"])
         elif task_type == TaskType.ANALYSIS:
             tools.extend(["ProjectAnalyzer", "CodeSearcher"])
+        elif task_type == TaskType.ARCHITECTURE_DESIGN:
+            tools.extend(["ArchitectTool", "FileWriter"])
         
         # Add tools based on prompt content
         if "test" in prompt.lower():
@@ -240,6 +268,9 @@ class TaskPlanner:
             risks.append("Affects production code")
         if task_type == TaskType.DEBUGGING and "critical" in prompt.lower():
             risks.append("Critical bug - needs immediate attention")
+        if task_type == TaskType.ARCHITECTURE_DESIGN:
+            risks.append("High complexity - requires careful review")
+            risks.append("Scope creep potential")
         
         return risks
     
@@ -270,6 +301,7 @@ class TaskPlanner:
             TaskType.DOCUMENTATION: "FileWriter",
             TaskType.ANALYSIS: "ProjectAnalyzer",
             TaskType.TESTING: "CommandExecutor",
+            TaskType.ARCHITECTURE_DESIGN: "ArchitectTool",
             TaskType.GENERAL: "FileReader"
         }
 

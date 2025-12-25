@@ -4,21 +4,19 @@ from .base import LLM
 from .providers.openai import OpenAILLM
 from .providers.anthropic import AnthropicLLM
 from .providers.google import GoogleLLM
-from .providers.mcp_local import MCPLocalLLM
+from .providers.claude_cli import ClaudeCLIProvider
+from .providers.google_adc import GoogleADCProvider
 
 
 class LLMFactory:
     """Factory for creating LLM providers."""
-
+    
     PROVIDERS = {
         "openai": OpenAILLM,
         "anthropic": AnthropicLLM,
         "google": GoogleLLM,
-        "mcp": MCPLocalLLM,
-        "local": MCPLocalLLM,  # Alias
-        "codex": lambda **cfg: MCPLocalLLM(backend="codex", **cfg),
-        "gemini-local": lambda **cfg: MCPLocalLLM(backend="gemini", **cfg),
-        "claude-local": lambda **cfg: MCPLocalLLM(backend="claude", **cfg),
+        "claude_cli": ClaudeCLIProvider,
+        "google_adc": GoogleADCProvider,
     }
     
     @classmethod

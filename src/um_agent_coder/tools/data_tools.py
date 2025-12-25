@@ -51,11 +51,20 @@ class DataProfile:
 class SQLExecutor(Tool):
     """Execute SQL queries and DDL statements."""
     
+    TASK_TYPES = ["data", "sql", "analysis"]
+
     def __init__(self):
-        super().__init__(
-            name="SQLExecutor",
-            description="Execute SQL queries with support for multiple databases"
-        )
+        super().__init__()
+        self.name = "SQLExecutor"
+        self.description = "Execute SQL queries with support for multiple databases"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "query": {"type": "string", "required": True},
+            "connection_string": {"type": "string", "required": False},
+            "database_type": {"type": "string", "required": False, "default": "sqlite", "enum": ["sqlite", "postgresql", "mysql"]},
+            "return_df": {"type": "boolean", "required": False, "default": True}
+        }
     
     def execute(
         self,
@@ -116,11 +125,19 @@ class SQLExecutor(Tool):
 class SchemaAnalyzer(Tool):
     """Analyze database schemas and relationships."""
     
+    TASK_TYPES = ["data", "sql", "analysis"]
+
     def __init__(self):
-        super().__init__(
-            name="SchemaAnalyzer",
-            description="Analyze database schemas, relationships, and constraints"
-        )
+        super().__init__()
+        self.name = "SchemaAnalyzer"
+        self.description = "Analyze database schemas, relationships, and constraints"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "connection_string": {"type": "string", "required": False},
+            "database_type": {"type": "string", "required": False, "default": "sqlite", "enum": ["sqlite", "postgresql", "mysql"]},
+            "schema_name": {"type": "string", "required": False}
+        }
     
     def execute(
         self,
@@ -234,11 +251,19 @@ class SchemaAnalyzer(Tool):
 class DataProfiler(Tool):
     """Profile data to understand distributions and quality."""
     
+    TASK_TYPES = ["data", "analysis", "science"]
+
     def __init__(self):
-        super().__init__(
-            name="DataProfiler",
-            description="Generate statistical profiles and quality reports for datasets"
-        )
+        super().__init__()
+        self.name = "DataProfiler"
+        self.description = "Generate statistical profiles and quality reports for datasets"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "data_source": {"type": "string", "required": True},
+            "sample_size": {"type": "integer", "required": False},
+            "profile_all": {"type": "boolean", "required": False, "default": True}
+        }
     
     def execute(
         self,
@@ -376,11 +401,20 @@ class DataProfiler(Tool):
 class PipelineBuilder(Tool):
     """Build data pipeline configurations for various orchestrators."""
     
+    TASK_TYPES = ["data", "engineering", "devops"]
+
     def __init__(self):
-        super().__init__(
-            name="PipelineBuilder",
-            description="Generate data pipeline configurations for Airflow, dbt, etc."
-        )
+        super().__init__()
+        self.name = "PipelineBuilder"
+        self.description = "Generate data pipeline configurations for Airflow, dbt, etc."
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "pipeline_type": {"type": "string", "required": True, "enum": ["airflow", "dbt", "prefect"]},
+            "pipeline_name": {"type": "string", "required": True},
+            "tasks": {"type": "array", "items": {"type": "object"}, "required": True},
+            "schedule": {"type": "string", "required": False}
+        }
     
     def execute(
         self,
@@ -618,11 +652,18 @@ if __name__ == "__main__":
 class DataValidator(Tool):
     """Validate data quality and business rules."""
     
+    TASK_TYPES = ["data", "quality", "analysis"]
+
     def __init__(self):
-        super().__init__(
-            name="DataValidator",
-            description="Validate data against quality rules and constraints"
-        )
+        super().__init__()
+        self.name = "DataValidator"
+        self.description = "Validate data against quality rules and constraints"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "data_source": {"type": "string", "required": True},
+            "rules": {"type": "array", "items": {"type": "object"}, "required": True}
+        }
     
     def execute(
         self,
@@ -732,11 +773,21 @@ class DataValidator(Tool):
 class DimensionalModeler(Tool):
     """Design dimensional models (star/snowflake schemas)."""
     
+    TASK_TYPES = ["data", "modeling", "design"]
+
     def __init__(self):
-        super().__init__(
-            name="DimensionalModeler",
-            description="Design dimensional models for data warehouses"
-        )
+        super().__init__()
+        self.name = "DimensionalModeler"
+        self.description = "Design dimensional models for data warehouses"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "business_process": {"type": "string", "required": True},
+            "grain": {"type": "string", "required": True},
+            "dimensions": {"type": "array", "items": {"type": "object"}, "required": True},
+            "facts": {"type": "array", "items": {"type": "object"}, "required": True},
+            "model_type": {"type": "string", "required": False, "default": "star"}
+        }
     
     def execute(
         self,

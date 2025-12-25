@@ -10,6 +10,8 @@ from .base import Tool, ToolResult
 class CommandExecutor(Tool):
     """Execute shell commands safely."""
     
+    TASK_TYPES = ["system", "general", "code"]
+
     def __init__(self, timeout: int = 30, safe_mode: bool = True):
         super().__init__()
         self.timeout = timeout

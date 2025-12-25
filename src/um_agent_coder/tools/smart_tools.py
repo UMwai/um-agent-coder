@@ -27,12 +27,18 @@ class CodeContext:
 class SmartFileReader(Tool):
     """Enhanced file reader with intelligent content parsing."""
     
+    TASK_TYPES = ["code", "development", "smart"]
+
     def __init__(self):
-        super().__init__(
-            name="SmartFileReader",
-            description="Read files with intelligent parsing and context extraction"
-        )
+        super().__init__()
+        self.name = "SmartFileReader"
+        self.description = "Read files with intelligent parsing and context extraction"
     
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "file_path": {"type": "string", "required": True}
+        }
+
     def execute(self, file_path: str, **kwargs) -> ToolResult:
         """Read file with enhanced parsing."""
         try:
@@ -133,11 +139,21 @@ class SmartFileReader(Tool):
 class SmartFileWriter(Tool):
     """Enhanced file writer with validation and backup."""
     
+    TASK_TYPES = ["code", "development", "smart"]
+
     def __init__(self):
-        super().__init__(
-            name="SmartFileWriter",
-            description="Write files with validation, formatting, and backup"
-        )
+        super().__init__()
+        self.name = "SmartFileWriter"
+        self.description = "Write files with validation, formatting, and backup"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "file_path": {"type": "string", "required": True},
+            "content": {"type": "string", "required": True},
+            "validate": {"type": "boolean", "required": False, "default": True},
+            "backup": {"type": "boolean", "required": False, "default": True},
+            "format_code": {"type": "boolean", "required": False, "default": True}
+        }
     
     def execute(
         self, 
@@ -244,11 +260,21 @@ class SmartFileWriter(Tool):
 class SmartCodeSearcher(Tool):
     """Enhanced code searcher with semantic understanding."""
     
+    TASK_TYPES = ["code", "development", "smart", "research"]
+
     def __init__(self):
-        super().__init__(
-            name="SmartCodeSearcher",
-            description="Search code with semantic understanding and context"
-        )
+        super().__init__()
+        self.name = "SmartCodeSearcher"
+        self.description = "Search code with semantic understanding and context"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "pattern": {"type": "string", "required": True},
+            "search_type": {"type": "string", "required": False, "default": "regex", "enum": ["regex", "semantic", "ast"]},
+            "file_types": {"type": "array", "items": {"type": "string"}, "required": False},
+            "directory": {"type": "string", "required": False, "default": "."},
+            "context_lines": {"type": "integer", "required": False, "default": 3}
+        }
     
     def execute(
         self, 
@@ -425,17 +451,27 @@ class SmartCodeSearcher(Tool):
 class SmartCommandExecutor(Tool):
     """Enhanced command executor with safety and environment management."""
     
+    TASK_TYPES = ["system", "general", "smart"]
+
     def __init__(self):
-        super().__init__(
-            name="SmartCommandExecutor",
-            description="Execute commands with safety checks and environment management"
-        )
+        super().__init__()
+        self.name = "SmartCommandExecutor"
+        self.description = "Execute commands with safety checks and environment management"
         self.safe_commands = [
             "ls", "pwd", "echo", "cat", "grep", "find",
             "python", "node", "npm", "pip", "git status",
             "git diff", "git log", "pytest", "jest"
         ]
     
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "command": {"type": "string", "required": True},
+            "cwd": {"type": "string", "required": False},
+            "env": {"type": "object", "required": False},
+            "timeout": {"type": "integer", "required": False, "default": 30},
+            "safe_mode": {"type": "boolean", "required": False, "default": True}
+        }
+
     def execute(
         self,
         command: str,
@@ -512,11 +548,17 @@ class SmartCommandExecutor(Tool):
 class SmartProjectAnalyzer(Tool):
     """Enhanced project analyzer with deep insights."""
     
+    TASK_TYPES = ["code", "development", "smart", "research"]
+
     def __init__(self):
-        super().__init__(
-            name="SmartProjectAnalyzer",
-            description="Analyze project structure with deep insights"
-        )
+        super().__init__()
+        self.name = "SmartProjectAnalyzer"
+        self.description = "Analyze project structure with deep insights"
+
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "directory": {"type": "string", "required": False, "default": "."}
+        }
     
     def execute(self, directory: str = ".", **kwargs) -> ToolResult:
         """Analyze project with enhanced capabilities."""

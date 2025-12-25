@@ -412,7 +412,7 @@ class EnhancedAgent:
         """Register available tools."""
         from um_agent_coder.tools import (
             FileReader, FileWriter, FileSearcher,
-            CodeSearcher, ProjectAnalyzer, CommandExecutor
+            CodeSearcher, ProjectAnalyzer, CommandExecutor, ArchitectTool
         )
         
         tools = [
@@ -421,7 +421,8 @@ class EnhancedAgent:
             FileSearcher(),
             CodeSearcher(),
             ProjectAnalyzer(),
-            CommandExecutor()
+            CommandExecutor(),
+            ArchitectTool(self.llm)
         ]
         
         for tool in tools:

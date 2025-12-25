@@ -9,6 +9,8 @@ from .base import Tool, ToolResult
 class FileReader(Tool):
     """Read contents of a file."""
     
+    TASK_TYPES = ["file", "io", "code", "research"]
+
     def execute(self, file_path: str, start_line: Optional[int] = None, 
                 end_line: Optional[int] = None) -> ToolResult:
         try:
@@ -40,6 +42,8 @@ class FileReader(Tool):
 class FileWriter(Tool):
     """Write or create a file."""
     
+    TASK_TYPES = ["file", "io", "code"]
+
     def execute(self, file_path: str, content: str, mode: str = 'w') -> ToolResult:
         try:
             path = Path(file_path)
@@ -63,6 +67,8 @@ class FileWriter(Tool):
 class FileSearcher(Tool):
     """Search for files matching a pattern."""
     
+    TASK_TYPES = ["file", "io", "code", "research"]
+
     def execute(self, pattern: str, directory: str = ".") -> ToolResult:
         try:
             matches = []

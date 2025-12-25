@@ -10,6 +10,8 @@ from .base import Tool, ToolResult
 class CodeSearcher(Tool):
     """Search for code patterns in files."""
     
+    TASK_TYPES = ["code", "development", "research"]
+
     def execute(self, pattern: str, file_pattern: str = "*.py", 
                 directory: str = ".", case_sensitive: bool = True) -> ToolResult:
         try:
@@ -63,6 +65,8 @@ class CodeSearcher(Tool):
 class ProjectAnalyzer(Tool):
     """Analyze project structure and dependencies."""
     
+    TASK_TYPES = ["code", "development", "research"]
+
     def execute(self, directory: str = ".") -> ToolResult:
         try:
             analysis = {

@@ -1,5 +1,21 @@
 llm:
   provider: openai
+  require_approval: false
   openai:
     api_key: "YOUR_OPENAI_API_KEY"
     model: "gpt-3.5-turbo"
+
+multi_agent_router:
+  roles:
+    orchestrator:
+      provider: "claude_cli"
+      model: "claude-3-opus-20240229"
+    planner:
+      provider: "google_adc"
+      model: "gemini-1.5-pro-latest"
+    executor:
+      provider: "openai"
+      model: "gpt-4-turbo"
+    auditor:
+      provider: "claude_cli"
+      model: "claude-3-opus-20240229"
