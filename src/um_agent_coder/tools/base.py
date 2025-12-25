@@ -15,6 +15,8 @@ class ToolResult:
 class Tool(ABC):
     """Base class for all tools."""
     
+    TASK_TYPES: List[str] = []
+
     def __init__(self):
         self.name = self.__class__.__name__
         self.description = self.__doc__ or "No description"
@@ -50,5 +52,7 @@ class ToolRegistry:
     
     def get_tools_for_task(self, task_type: str) -> List[Tool]:
         """Get relevant tools for a specific task type."""
-        # TODO: Implement task-based tool selection
-        return self.get_all()
+        return [
+            tool for tool in self.tools.values()
+            if task_type in tool.TASK_TYPES or "general" in tool.TASK_TYPES
+        ]
