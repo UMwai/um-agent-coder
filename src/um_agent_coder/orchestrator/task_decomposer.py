@@ -43,6 +43,27 @@ class DataSource:
     requires_auth: bool = False
     priority: int = 5  # 1-10, higher = more important
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "type": self.type,
+            "description": self.description,
+            "url": self.url,
+            "requires_auth": self.requires_auth,
+            "priority": self.priority
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DataSource':
+        return cls(
+            name=data["name"],
+            type=data["type"],
+            description=data.get("description", ""),
+            url=data.get("url"),
+            requires_auth=data.get("requires_auth", False),
+            priority=data.get("priority", 5)
+        )
+
 
 @dataclass
 class SubTask:
@@ -77,14 +98,32 @@ class SubTask:
             "model": self.model.value,
             "prompt": self.prompt,
             "depends_on": self.depends_on,
-            "data_sources": [
-                {"name": ds.name, "type": ds.type, "description": ds.description}
-                for ds in self.data_sources
-            ],
+            "data_sources": [ds.to_dict() for ds in self.data_sources],
             "input_from": self.input_from,
             "status": self.status,
+            "result": self.result,
+            "error": self.error,
+            "estimated_tokens": self.estimated_tokens,
             "priority": self.priority
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SubTask':
+        return cls(
+            id=data["id"],
+            description=data["description"],
+            type=SubTaskType(data["type"]),
+            model=ModelRole(data["model"]),
+            prompt=data["prompt"],
+            depends_on=data.get("depends_on", []),
+            data_sources=[DataSource.from_dict(ds) for ds in data.get("data_sources", [])],
+            input_from=data.get("input_from", []),
+            status=data.get("status", "pending"),
+            result=data.get("result"),
+            error=data.get("error"),
+            estimated_tokens=data.get("estimated_tokens", 1000),
+            priority=data.get("priority", 5)
+        )
 
 
 @dataclass
@@ -104,13 +143,22 @@ class DecomposedTask:
             "clarified_goal": self.clarified_goal,
             "subtasks": [st.to_dict() for st in self.subtasks],
             "execution_order": self.execution_order,
-            "data_sources": [
-                {"name": ds.name, "type": ds.type, "url": ds.url}
-                for ds in self.data_sources
-            ],
+            "data_sources": [ds.to_dict() for ds in self.data_sources],
             "estimated_total_tokens": self.estimated_total_tokens,
             "created_at": self.created_at
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DecomposedTask':
+        return cls(
+            original_prompt=data["original_prompt"],
+            clarified_goal=data["clarified_goal"],
+            subtasks=[SubTask.from_dict(st) for st in data["subtasks"]],
+            execution_order=data["execution_order"],
+            data_sources=[DataSource.from_dict(ds) for ds in data.get("data_sources", [])],
+            estimated_total_tokens=data.get("estimated_total_tokens", 0),
+            created_at=data.get("created_at", datetime.now().isoformat())
+        )
 
 
 class TaskDecomposer:

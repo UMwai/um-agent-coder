@@ -43,6 +43,29 @@ class PipelineStep:
     error: Optional[str] = None
     retries: int = 0
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "subtask": self.subtask.to_dict(),
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "input_data": self.input_data,
+            "output_data": self.output_data,
+            "error": self.error,
+            "retries": self.retries
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PipelineStep':
+        return cls(
+            subtask=SubTask.from_dict(data["subtask"]),
+            started_at=data.get("started_at"),
+            completed_at=data.get("completed_at"),
+            input_data=data.get("input_data", {}),
+            output_data=data.get("output_data"),
+            error=data.get("error"),
+            retries=data.get("retries", 0)
+        )
+
 
 @dataclass
 class TaskPipeline:
@@ -63,19 +86,24 @@ class TaskPipeline:
             "current_step_index": self.current_step_index,
             "total_steps": len(self.steps),
             "decomposed_task": self.decomposed_task.to_dict(),
-            "steps": [
-                {
-                    "subtask_id": s.subtask.id,
-                    "status": s.subtask.status,
-                    "started_at": s.started_at,
-                    "completed_at": s.completed_at,
-                    "error": s.error
-                }
-                for s in self.steps
-            ],
+            "steps": [step.to_dict() for step in self.steps],
             "created_at": self.created_at,
-            "updated_at": self.updated_at
+            "updated_at": self.updated_at,
+            "final_output": self.final_output
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TaskPipeline':
+        return cls(
+            task_id=data["task_id"],
+            status=PipelineStatus(data["status"]),
+            decomposed_task=DecomposedTask.from_dict(data["decomposed_task"]),
+            steps=[PipelineStep.from_dict(step) for step in data["steps"]],
+            current_step_index=data.get("current_step_index", 0),
+            created_at=data.get("created_at", datetime.now().isoformat()),
+            updated_at=data.get("updated_at", datetime.now().isoformat()),
+            final_output=data.get("final_output")
+        )
 
 
 class MultiModelOrchestrator:
@@ -367,9 +395,7 @@ class MultiModelOrchestrator:
             with open(checkpoint_path, 'r') as f:
                 data = json.load(f)
 
-            # Reconstruct pipeline (simplified - would need full reconstruction in production)
-            # For now, return None to indicate checkpoint exists but needs proper reconstruction
-            return None  # TODO: Implement full reconstruction
+            return TaskPipeline.from_dict(data)
 
         except Exception as e:
             print(f"Error loading checkpoint: {e}")

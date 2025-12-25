@@ -1,0 +1,9 @@
+2025-12-17 23:00:19,918 [INFO] src.um_agent_coder.harness.main: Starting harness with roadmap: specs/roadmap.md
+2025-12-17 23:00:19,919 [INFO] src.um_agent_coder.harness.main: Loaded roadmap: Example SaaS Project
+2025-12-17 23:00:19,919 [INFO] src.um_agent_coder.harness.main: Objective: Create a SaaS application generating $500 MRR through a subscription-based service.
+2025-12-17 23:00:19,919 [INFO] src.um_agent_coder.harness.main: Tasks: 10 across 4 phases
+2025-12-17 23:00:19,919 [INFO] src.um_agent_coder.harness.state: Created new harness state
+2025-12-17 23:00:19,925 [INFO] src.um_agent_coder.harness.main: Executing task: task-001 - Initialize Next.js 14 project with TypeScript and Tailwind CSS
+2025-12-17 23:00:19,925 [INFO] src.um_agent_coder.harness.main: [DRY RUN] Would execute task
+2025-12-17 23:00:24,865 [INFO] src.um_agent_coder.harness.main: Received signal 15, initiating graceful shutdown...
+2025-12-17 23:00:29,930 [INFO] src.um_agent_coder.harness.main: Harness shutdown complete
