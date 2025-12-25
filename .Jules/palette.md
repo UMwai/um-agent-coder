@@ -1,0 +1,3 @@
+## 2024-05-23 - [CLI Colorization]
+**Learning:** Adding ANSI colors to CLI output significantly improves readability and user experience, especially for lists of tasks and status updates. However, care must be taken to ensure that color codes are not hardcoded in strings that might be processed by other tools. Using a dedicated `ANSI` helper class makes it easy to manage and potentially disable colors if needed.
+**Action:** When working on CLI tools, always look for opportunities to use colors to distinguish between different types of information (headers, status, data). Use a utility class for color codes to maintain cleanliness.

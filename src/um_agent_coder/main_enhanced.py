@@ -15,27 +15,28 @@ from um_agent_coder.orchestrator import (
     ExecutionMode, DataFetcherRegistry
 )
 from um_agent_coder.llm.providers.mcp_local import MCPLocalLLM
+from um_agent_coder.utils.colors import ANSI
 
 
 def list_available_models():
     """List all available models organized by category."""
     registry = ModelRegistry()
 
-    print("\n" + "="*80)
-    print("AVAILABLE MODELS")
-    print("="*80)
+    print("\n" + ANSI.header("="*80))
+    print(ANSI.header("AVAILABLE MODELS"))
+    print(ANSI.header("="*80))
 
     for category in ModelCategory:
-        print(f"\n{category.value.upper().replace('_', ' ')} MODELS:")
+        print(f"\n{ANSI.info(category.value.upper().replace('_', ' ') + ' MODELS:')}")
         print("-" * 50)
 
         models = registry.get_by_category(category)
         for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
-            print(f"\n{model.name} ({model.provider})")
-            print(f"  Performance: {model.performance_score}/100")
+            print(f"\n{ANSI.BOLD}{model.name}{ANSI.RESET} ({model.provider})")
+            print(f"  Performance: {ANSI.success(str(model.performance_score))}/100")
             print(f"  Context: {model.context_window:,} tokens")
             print(f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)")
-            print(f"  {model.description}")
+            print(f"  {ANSI.DIM}{model.description}{ANSI.RESET}")
 
 
 def list_tasks(checkpoint_dir: str = ".task_checkpoints", status_filter: str = None):
@@ -60,9 +61,9 @@ def list_tasks(checkpoint_dir: str = ".task_checkpoints", status_filter: str = N
             print(f"(filtered by status: {status_filter})")
         return
 
-    print("\n" + "="*80)
-    print("CHECKPOINTED TASKS")
-    print("="*80)
+    print("\n" + ANSI.header("="*80))
+    print(ANSI.header("CHECKPOINTED TASKS"))
+    print(ANSI.header("="*80))
 
     # Group by status
     by_status = {}
@@ -80,6 +81,16 @@ def list_tasks(checkpoint_dir: str = ".task_checkpoints", status_filter: str = N
             continue
 
         status_tasks = by_status[status_val]
+
+        # Colorize status header
+        header_color = {
+            "running": ANSI.CYAN,
+            "paused": ANSI.YELLOW,
+            "failed": ANSI.RED,
+            "pending": ANSI.WHITE,
+            "completed": ANSI.GREEN
+        }.get(status_val, ANSI.WHITE)
+
         status_icon = {
             "running": "[RUNNING]",
             "paused": "[PAUSED]",
@@ -88,15 +99,16 @@ def list_tasks(checkpoint_dir: str = ".task_checkpoints", status_filter: str = N
             "completed": "[DONE]"
         }.get(status_val, "[?]")
 
-        print(f"\n{status_icon} {status_val.upper()} ({len(status_tasks)})")
-        print("-" * 60)
+        formatted_header = f"{status_icon} {status_val.upper()} ({len(status_tasks)})"
+        print(f"\n{ANSI.colorize(formatted_header, ANSI.BOLD + header_color)}")
+        print(ANSI.colorize("-" * 60, header_color))
 
         for task in status_tasks:
             progress = task.get("progress", "0/0")
             progress_pct = task.get("progress_pct", 0)
             updated = task.get("updated_at", "")[:19] if task.get("updated_at") else "N/A"
 
-            print(f"\n  ID: {task['task_id']}")
+            print(f"\n  ID: {ANSI.BOLD}{task['task_id']}{ANSI.RESET}")
             print(f"  Prompt: {task['prompt']}")
             print(f"  Progress: {progress} ({progress_pct:.0f}%)")
             print(f"  Updated: {updated}")
