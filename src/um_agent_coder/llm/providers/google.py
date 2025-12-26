@@ -24,6 +24,9 @@ class GoogleLLM(LLM):
             raise ValueError("Google API key not provided")
         
         self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+
+        # Initialize session for connection pooling
+        self.session = requests.Session()
     
     def chat(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None) -> str:
         """
@@ -70,7 +73,7 @@ class GoogleLLM(LLM):
         }
         
         try:
-            response = requests.post(self.api_url, headers=headers, json=data, params=params)
+            response = self.session.post(self.api_url, headers=headers, json=data, params=params)
             response.raise_for_status()
             
             result = response.json()
