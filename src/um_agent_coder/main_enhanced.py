@@ -10,18 +10,19 @@ from um_agent_coder.llm.factory import LLMFactory
 from um_agent_coder.models import ModelRegistry, ModelCategory
 from um_agent_coder.agent.router import MultiAgentRouter
 from um_agent_coder.agent.yolo.manager import YoloManager
+from um_agent_coder.utils.colors import ANSI
 
 
 def list_available_models():
     """List all available models organized by category."""
     registry = ModelRegistry()
     
-    print("\n" + "="*80)
-    print("AVAILABLE MODELS")
-    print("="*80)
+    print("\n" + ANSI.style("="*80, ANSI.BLUE))
+    print(ANSI.style("AVAILABLE MODELS", ANSI.BOLD))
+    print(ANSI.style("="*80, ANSI.BLUE))
     
     for category in ModelCategory:
-        print(f"\n{category.value.upper().replace('_', ' ')} MODELS:")
+        print(f"\n{ANSI.style(category.value.upper().replace('_', ' '), ANSI.CYAN)} MODELS:")
         print("-" * 50)
         
         models = registry.get_by_category(category)
@@ -164,22 +165,22 @@ def main():
     
     # Handle Router Mode
     if args.router:
-        print("\n" + "="*80)
-        print("MULTI-AGENT ROUTER MODE")
-        print("="*80)
+        print("\n" + ANSI.style("="*80, ANSI.BLUE))
+        print(ANSI.style("MULTI-AGENT ROUTER MODE", ANSI.BOLD))
+        print(ANSI.style("="*80, ANSI.BLUE))
         print("Initializing agents (Orchestrator, Planner, Executor, Auditor)...")
         
         try:
             # Pass the full config so router can extract its section
             router = MultiAgentRouter(config.config_data) 
             response = router.route_request(args.prompt)
-            print("\n" + "="*60)
-            print("FINAL RESPONSE")
-            print("="*60)
+            print("\n" + ANSI.style("="*60, ANSI.GREEN))
+            print(ANSI.style("FINAL RESPONSE", ANSI.BOLD))
+            print(ANSI.style("="*60, ANSI.GREEN))
             print(response)
             return
         except Exception as e:
-            print(f"Error in router mode: {e}")
+            print(ANSI.style(f"Error in router mode: {e}", ANSI.FAIL))
             sys.exit(1)
 
     # Handle Yolo Mode
@@ -187,20 +188,20 @@ def main():
         try:
             manager = YoloManager(config.config_data)
             response = manager.run(args.prompt)
-            print("\n" + "="*60)
-            print("FINAL RESPONE (YOLO MODE)")
-            print("="*60)
+            print("\n" + ANSI.style("="*60, ANSI.GREEN))
+            print(ANSI.style("FINAL RESPONSE (YOLO MODE)", ANSI.BOLD))
+            print(ANSI.style("="*60, ANSI.GREEN))
             print(response)
             return
         except Exception as e:
-            print(f"Error in Yolo Mode: {e}")
+            print(ANSI.style(f"Error in Yolo Mode: {e}", ANSI.FAIL))
             sys.exit(1)
 
     # Create LLM instance
     try:
         llm = LLMFactory.create(provider, provider_config)
     except Exception as e:
-        print(f"Error creating LLM: {e}")
+        print(ANSI.style(f"Error creating LLM: {e}", ANSI.FAIL))
         sys.exit(1)
     
     # Create and run agent
@@ -217,20 +218,20 @@ def main():
         result = agent.run(args.prompt)
         
         # Display results
-        print("\n" + "="*60)
-        print("RESPONSE")
-        print("="*60)
+        print("\n" + ANSI.style("="*60, ANSI.GREEN))
+        print(ANSI.style("RESPONSE", ANSI.BOLD))
+        print(ANSI.style("="*60, ANSI.GREEN))
         print(result["response"])
         
         if args.verbose or result.get("metrics", {}).get("total_cost", 0) > 0:
-            print("\n" + "="*60)
-            print("METRICS")
-            print("="*60)
+            print("\n" + ANSI.style("="*60, ANSI.BLUE))
+            print(ANSI.style("METRICS", ANSI.BOLD))
+            print(ANSI.style("="*60, ANSI.BLUE))
             metrics = result.get("metrics", {})
-            print(f"Success Rate: {metrics.get('success_rate', 0):.1f}%")
-            print(f"Total Cost: ${metrics.get('total_cost', 0):.4f}")
-            print(f"Effectiveness Score: {metrics.get('effectiveness_score', 0):.1f}")
-            print(f"Context Usage: {result.get('context_usage', {}).get('usage_percentage', 0):.1f}%")
+            print(f"Success Rate: {ANSI.style(f'{metrics.get("success_rate", 0):.1f}%', ANSI.CYAN)}")
+            print(f"Total Cost: {ANSI.style(f'${metrics.get("total_cost", 0):.4f}', ANSI.CYAN)}")
+            print(f"Effectiveness Score: {ANSI.style(f'{metrics.get("effectiveness_score", 0):.1f}', ANSI.CYAN)}")
+            print(f"Context Usage: {ANSI.style(f'{result.get("context_usage", {}).get("usage_percentage", 0):.1f}%', ANSI.CYAN)}")
         
         # Export metrics if requested
         if args.export_metrics:
