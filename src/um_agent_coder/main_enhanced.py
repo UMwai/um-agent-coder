@@ -10,27 +10,30 @@ from um_agent_coder.llm.factory import LLMFactory
 from um_agent_coder.models import ModelRegistry, ModelCategory
 from um_agent_coder.agent.router import MultiAgentRouter
 from um_agent_coder.agent.yolo.manager import YoloManager
+from um_agent_coder.utils.colors import Colors
 
 
 def list_available_models():
     """List all available models organized by category."""
     registry = ModelRegistry()
     
-    print("\n" + "="*80)
-    print("AVAILABLE MODELS")
-    print("="*80)
+    print("\n" + Colors.header("="*80))
+    print(Colors.header("AVAILABLE MODELS"))
+    print(Colors.header("="*80))
     
     for category in ModelCategory:
-        print(f"\n{category.value.upper().replace('_', ' ')} MODELS:")
-        print("-" * 50)
+        print(f"\n{Colors.style(category.value.upper().replace('_', ' ') + ' MODELS:', Colors.BLUE, bold=True)}")
+        print(Colors.style("-" * 50, Colors.BLUE))
         
         models = registry.get_by_category(category)
         for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
-            print(f"\n{model.name} ({model.provider})")
-            print(f"  Performance: {model.performance_score}/100")
+            perf_color = Colors.GREEN if model.performance_score >= 90 else Colors.YELLOW if model.performance_score >= 80 else Colors.ENDC
+
+            print(f"\n{Colors.style(model.name, Colors.CYAN, bold=True)} ({model.provider})")
+            print(f"  Performance: {Colors.style(str(model.performance_score) + '/100', perf_color)}")
             print(f"  Context: {model.context_window:,} tokens")
             print(f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)")
-            print(f"  {model.description}")
+            print(f"  {Colors.style(model.description, Colors.ENDC)}")
 
 
 def main():
