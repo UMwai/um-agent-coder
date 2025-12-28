@@ -11,6 +11,7 @@ from um_agent_coder.models import ModelRegistry, ModelCategory
 from um_agent_coder.agent.router import MultiAgentRouter
 from um_agent_coder.agent.yolo.manager import YoloManager
 from um_agent_coder.utils.colors import ANSI
+from um_agent_coder.utils.spinner import Spinner
 
 
 def list_available_models():
@@ -168,12 +169,15 @@ def main():
         print("\n" + ANSI.style("="*80, ANSI.BLUE))
         print(ANSI.style("MULTI-AGENT ROUTER MODE", ANSI.BOLD))
         print(ANSI.style("="*80, ANSI.BLUE))
-        print("Initializing agents (Orchestrator, Planner, Executor, Auditor)...")
         
         try:
-            # Pass the full config so router can extract its section
-            router = MultiAgentRouter(config.config_data) 
-            response = router.route_request(args.prompt)
+            with Spinner("Initializing agents (Orchestrator, Planner, Executor, Auditor)..."):
+                # Pass the full config so router can extract its section
+                router = MultiAgentRouter(config.config_data)
+
+            with Spinner("Processing request..."):
+                response = router.route_request(args.prompt)
+
             print("\n" + ANSI.style("="*60, ANSI.GREEN))
             print(ANSI.style("FINAL RESPONSE", ANSI.BOLD))
             print(ANSI.style("="*60, ANSI.GREEN))
@@ -187,7 +191,8 @@ def main():
     if args.yolo:
         try:
             manager = YoloManager(config.config_data)
-            response = manager.run(args.prompt)
+            with Spinner("Running Yolo Mode..."):
+                response = manager.run(args.prompt)
             print("\n" + ANSI.style("="*60, ANSI.GREEN))
             print(ANSI.style("FINAL RESPONSE (YOLO MODE)", ANSI.BOLD))
             print(ANSI.style("="*60, ANSI.GREEN))
@@ -215,7 +220,8 @@ def main():
         }
         
         agent = EnhancedAgent(llm, agent_config)
-        result = agent.run(args.prompt)
+        with Spinner("Processing request..."):
+            result = agent.run(args.prompt)
         
         # Display results
         print("\n" + ANSI.style("="*60, ANSI.GREEN))
@@ -240,7 +246,8 @@ def main():
     else:
         # Simple agent
         agent = Agent(llm)
-        response = agent.run(args.prompt)
+        with Spinner("Processing request..."):
+            response = agent.run(args.prompt)
         print(response)
 
 
