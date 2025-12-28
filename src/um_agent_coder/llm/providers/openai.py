@@ -25,6 +25,9 @@ class OpenAILLM(LLM):
         
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
+
+        # Use a persistent session for connection pooling
+        self.session = requests.Session()
     
     def chat(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None) -> str:
         """
@@ -56,7 +59,8 @@ class OpenAILLM(LLM):
         }
         
         try:
-            response = requests.post(self.API_URL, headers=headers, json=data)
+            # Use session for connection pooling
+            response = self.session.post(self.API_URL, headers=headers, json=data)
             response.raise_for_status()
             
             result = response.json()
@@ -90,7 +94,8 @@ class OpenAILLM(LLM):
         }
         
         try:
-            response = requests.post(self.API_URL, headers=headers, json=data, stream=True)
+            # Use session for connection pooling
+            response = self.session.post(self.API_URL, headers=headers, json=data, stream=True)
             response.raise_for_status()
             
             for line in response.iter_lines():
