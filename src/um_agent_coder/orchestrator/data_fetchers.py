@@ -43,6 +43,9 @@ class DataFetcher(ABC):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_ttl = timedelta(hours=cache_ttl_hours)
 
+        # Use a persistent session for connection pooling
+        self.session = requests.Session() if requests else None
+
     @abstractmethod
     def fetch(self, **kwargs) -> FetchResult:
         """Fetch data from the source."""
@@ -120,6 +123,8 @@ class SECEdgarFetcher(DataFetcher):
             "User-Agent": user_agent,
             "Accept": "application/json"
         }
+        if self.session:
+            self.session.headers.update(self.headers)
 
     @property
     def source_name(self) -> str:
@@ -142,7 +147,7 @@ class SECEdgarFetcher(DataFetcher):
             filing_type: Type of filing (10-K, 10-Q, 8-K, etc.)
             limit: Max number of filings to return
         """
-        if not requests:
+        if not self.session:
             return FetchResult(
                 success=False,
                 data=None,
@@ -173,7 +178,7 @@ class SECEdgarFetcher(DataFetcher):
 
             # Fetch submissions
             url = f"{self.BASE_URL}/submissions/CIK{cik_padded}.json"
-            response = requests.get(url, headers=self.headers, timeout=30)
+            response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
             data = response.json()
@@ -232,7 +237,7 @@ class SECEdgarFetcher(DataFetcher):
 
     def fetch_company_facts(self, cik: str) -> FetchResult:
         """Fetch company financial facts."""
-        if not requests:
+        if not self.session:
             return FetchResult(
                 success=False, data=None, source=self.source_name,
                 error="requests library not installed"
@@ -242,7 +247,7 @@ class SECEdgarFetcher(DataFetcher):
             cik_padded = str(cik).zfill(10)
             url = f"{self.BASE_URL}/api/xbrl/companyfacts/CIK{cik_padded}.json"
 
-            response = requests.get(url, headers=self.headers, timeout=30)
+            response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
             return FetchResult(
@@ -288,7 +293,7 @@ class YahooFinanceFetcher(DataFetcher):
             include_financials: Include financial statements
             include_profile: Include company profile
         """
-        if not requests:
+        if not self.session:
             return FetchResult(
                 success=False,
                 data=None,
@@ -316,7 +321,7 @@ class YahooFinanceFetcher(DataFetcher):
                 "range": "1mo"
             }
 
-            response = requests.get(url, params=params, timeout=30)
+            response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
 
             chart_data = response.json()
@@ -325,7 +330,7 @@ class YahooFinanceFetcher(DataFetcher):
             quote_url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{ticker}"
             quote_params = {"modules": ",".join(modules)}
 
-            quote_response = requests.get(quote_url, params=quote_params, timeout=30)
+            quote_response = self.session.get(quote_url, params=quote_params, timeout=30)
 
             data = {
                 "ticker": ticker,
@@ -392,7 +397,7 @@ class ClinicalTrialsFetcher(DataFetcher):
             status: Trial status filter
             limit: Max results
         """
-        if not requests:
+        if not self.session:
             return FetchResult(
                 success=False,
                 data=None,
@@ -430,7 +435,7 @@ class ClinicalTrialsFetcher(DataFetcher):
             if status:
                 params["filter.overallStatus"] = status
 
-            response = requests.get(url, params=params, timeout=30)
+            response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
 
             data = response.json()
@@ -507,7 +512,7 @@ class NewsFetcher(DataFetcher):
             days_back: How many days back to search
             limit: Max articles
         """
-        if not requests:
+        if not self.session:
             return FetchResult(
                 success=False,
                 data=None,
@@ -541,7 +546,7 @@ class NewsFetcher(DataFetcher):
                 "apiKey": self.api_key
             }
 
-            response = requests.get(url, params=params, timeout=30)
+            response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
 
             data = response.json()
@@ -582,7 +587,7 @@ class NewsFetcher(DataFetcher):
             encoded_query = urllib.parse.quote(query)
             url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
 
-            response = requests.get(url, timeout=30)
+            response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
             # Parse RSS (basic parsing without external library)
