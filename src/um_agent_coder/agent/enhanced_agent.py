@@ -1,8 +1,10 @@
 import uuid
+import contextlib
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 
+from um_agent_coder.utils.spinner import Spinner
 from um_agent_coder.llm.base import LLM
 from um_agent_coder.tools import ToolRegistry
 from um_agent_coder.context import ContextManager, ContextType
@@ -59,11 +61,10 @@ class EnhancedAgent:
 
         try:
             # 1. Planning Stage
-            if self.verbose:
-                print(f"Analyzing task...")
-
-            task_analysis = self.task_planner.analyze_task(prompt)
-            execution_plan = self.task_planner.create_execution_plan(task_analysis, prompt)
+            cm = Spinner("Analyzing task...") if self.verbose else contextlib.nullcontext()
+            with cm:
+                task_analysis = self.task_planner.analyze_task(prompt)
+                execution_plan = self.task_planner.create_execution_plan(task_analysis, prompt)
 
             # Start tracking
             self.cost_tracker.start_task(task_id, prompt, len(execution_plan.steps))
@@ -97,10 +98,9 @@ class EnhancedAgent:
                     }
 
             # 3. Context Loading Stage
-            if self.verbose:
-                print(f"Loading context...")
-
-            self._load_initial_context(task_analysis)
+            cm = Spinner("Loading context...") if self.verbose else contextlib.nullcontext()
+            with cm:
+                self._load_initial_context(task_analysis)
 
             # 4. Execution Stage
             if self.verbose:
@@ -108,9 +108,6 @@ class EnhancedAgent:
 
             results = []
             for i, step in enumerate(execution_plan.steps):
-                if self.verbose:
-                    print(f"  Step {i+1}/{len(execution_plan.steps)}: {step.description}")
-
                 # Update checkpoint before executing step
                 if self.enable_checkpointing:
                     task_state.current_step = i
@@ -118,7 +115,18 @@ class EnhancedAgent:
                     task_state.steps[i].started_at = datetime.now().isoformat()
                     self.checkpointer.save(task_state)
 
-                result = self._execute_step(step)
+                step_msg = f"Step {i+1}/{len(execution_plan.steps)}: {step.description}"
+                spinner = Spinner(step_msg) if self.verbose else None
+                if spinner:
+                    spinner.start()
+
+                result = {}
+                try:
+                    result = self._execute_step(step)
+                finally:
+                    if spinner:
+                        spinner.stop(success=result.get("success", False))
+
                 results.append(result)
 
                 # Update checkpoint after step completion
@@ -144,10 +152,9 @@ class EnhancedAgent:
                     self.context_manager.summarize_if_needed(self.llm)
 
             # 5. Response Generation
-            if self.verbose:
-                print(f"Generating response...")
-
-            response = self._generate_response(prompt, results)
+            cm = Spinner("Generating response...") if self.verbose else contextlib.nullcontext()
+            with cm:
+                response = self._generate_response(prompt, results)
 
             # Complete tracking
             self.cost_tracker.complete_task(success=True)
@@ -252,43 +259,50 @@ class EnhancedAgent:
         for i in range(start_step, len(task_state.steps)):
             step = task_state.steps[i]
 
-            if self.verbose:
-                print(f"  Step {i+1}/{len(task_state.steps)}: {step.description}")
-
             # Update checkpoint
             task_state.current_step = i
             task_state.steps[i].status = "running"
             task_state.steps[i].started_at = datetime.now().isoformat()
             self.checkpointer.save(task_state)
 
-            # Execute step
-            tool = self.tool_registry.get(step.action)
-            if not tool:
-                result = {
-                    "success": False,
-                    "error": f"Tool {step.action} not found",
-                    "data": None,
-                    "tool": step.action,
-                    "description": step.description
-                }
-            else:
-                tool_result = tool.execute(**step.parameters)
-                result = {
-                    "success": tool_result.success,
-                    "error": tool_result.error,
-                    "data": tool_result.data,
-                    "tool": step.action,
-                    "description": step.description
-                }
+            step_msg = f"Step {i+1}/{len(task_state.steps)}: {step.description}"
+            spinner = Spinner(step_msg) if self.verbose else None
+            if spinner:
+                spinner.start()
 
-                # Add result to context
-                if tool_result.success and tool_result.data:
-                    self.context_manager.add(
-                        content=str(tool_result.data)[:2000],
-                        type=ContextType.TOOL_RESULT,
-                        source=f"{step.action}_result",
-                        priority=5
-                    )
+            # Execute step
+            result = {}
+            try:
+                tool = self.tool_registry.get(step.action)
+                if not tool:
+                    result = {
+                        "success": False,
+                        "error": f"Tool {step.action} not found",
+                        "data": None,
+                        "tool": step.action,
+                        "description": step.description
+                    }
+                else:
+                    tool_result = tool.execute(**step.parameters)
+                    result = {
+                        "success": tool_result.success,
+                        "error": tool_result.error,
+                        "data": tool_result.data,
+                        "tool": step.action,
+                        "description": step.description
+                    }
+
+                    # Add result to context
+                    if tool_result.success and tool_result.data:
+                        self.context_manager.add(
+                            content=str(tool_result.data)[:2000],
+                            type=ContextType.TOOL_RESULT,
+                            source=f"{step.action}_result",
+                            priority=5
+                        )
+            finally:
+                if spinner:
+                    spinner.stop(success=result.get("success", False))
 
             results.append(result)
 
@@ -304,16 +318,15 @@ class EnhancedAgent:
             self.cost_tracker.track_step(tokens=200, cost=0.002)
 
         # Generate response
-        if self.verbose:
-            print(f"Generating response...")
+        cm = Spinner("Generating response...") if self.verbose else contextlib.nullcontext()
+        with cm:
+            # Collect all results (including previously completed)
+            all_results = []
+            for step in task_state.steps:
+                if step.result:
+                    all_results.append(step.result)
 
-        # Collect all results (including previously completed)
-        all_results = []
-        for step in task_state.steps:
-            if step.result:
-                all_results.append(step.result)
-
-        response = self._generate_response(task_state.prompt, all_results)
+            response = self._generate_response(task_state.prompt, all_results)
 
         # Mark complete
         task_state.status = TaskStatus.COMPLETED
