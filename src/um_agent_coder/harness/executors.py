@@ -212,16 +212,17 @@ class CodexExecutor(BaseCLIExecutor):
         cmd = [
             "codex",
             "-m", self.model,
-            "--approval-policy", self.approval_policy,
+            "-a", self.approval_policy,  # Changed from --approval-policy to -a
         ]
 
         if self.sandbox:
-            cmd.extend(["--sandbox", self.sandbox])
+            cmd.extend(["-s", self.sandbox])  # Changed --sandbox to -s
 
+        # Config format: -c key=value (TOML-parsed value)
         cmd.extend(["-c", f"model_reasoning_effort={self.reasoning_effort}"])
 
         if cwd and cwd != "./":
-            cmd.extend(["--cwd", cwd])
+            cmd.extend(["-C", cwd])  # Changed --cwd to -C (--cd)
 
         cmd.append(prompt)
         return cmd
@@ -242,15 +243,18 @@ class GeminiExecutor(BaseCLIExecutor):
 
     def _build_command(self, prompt: str, cwd: str) -> list[str]:
         """Build the Gemini CLI command."""
-        # Gemini CLI uses: gemini [options] prompt "your prompt"
+        # Gemini CLI uses: gemini [options] [query..]
         cmd = ["gemini"]
 
         # Add model if not auto
         if self.model and self.model != "auto":
             cmd.extend(["-m", self.model])
 
-        # Gemini CLI uses 'prompt' subcommand
-        cmd.extend(["prompt", prompt])
+        # Use YOLO mode for non-interactive execution
+        cmd.append("-y")  # Auto-accept all actions
+
+        # Prompt is a positional argument, not a subcommand
+        cmd.append(prompt)
 
         return cmd
 
@@ -274,16 +278,16 @@ class ClaudeExecutor(BaseCLIExecutor):
         """Build the Claude CLI command."""
         cmd = ["claude"]
 
-        # Use --print for non-interactive mode
+        # Use -p for non-interactive mode (short form of --print)
         if self.print_mode:
-            cmd.append("--print")
+            cmd.append("-p")
 
         # Add model
         if self.model:
             cmd.extend(["--model", self.model])
 
-        # Add prompt
-        cmd.extend(["--prompt", prompt])
+        # Prompt is a positional argument
+        cmd.append(prompt)
 
         return cmd
 
