@@ -9,6 +9,7 @@ from um_agent_coder.context import ContextManager, ContextType
 from um_agent_coder.models import ModelRegistry
 from um_agent_coder.persistence import TaskCheckpointer, TaskState, TaskStatus
 from um_agent_coder.persistence.checkpointer import StepState
+from um_agent_coder.utils.spinner import Spinner
 from .planner import TaskPlanner, TaskAnalysis, ExecutionPlan, TaskType
 from .cost_tracker import CostTracker
 
@@ -59,11 +60,9 @@ class EnhancedAgent:
 
         try:
             # 1. Planning Stage
-            if self.verbose:
-                print(f"Analyzing task...")
-
-            task_analysis = self.task_planner.analyze_task(prompt)
-            execution_plan = self.task_planner.create_execution_plan(task_analysis, prompt)
+            with Spinner("Analyzing task...", verbose=self.verbose):
+                task_analysis = self.task_planner.analyze_task(prompt)
+                execution_plan = self.task_planner.create_execution_plan(task_analysis, prompt)
 
             # Start tracking
             self.cost_tracker.start_task(task_id, prompt, len(execution_plan.steps))
@@ -97,10 +96,8 @@ class EnhancedAgent:
                     }
 
             # 3. Context Loading Stage
-            if self.verbose:
-                print(f"Loading context...")
-
-            self._load_initial_context(task_analysis)
+            with Spinner("Loading context...", verbose=self.verbose):
+                self._load_initial_context(task_analysis)
 
             # 4. Execution Stage
             if self.verbose:
@@ -108,8 +105,11 @@ class EnhancedAgent:
 
             results = []
             for i, step in enumerate(execution_plan.steps):
-                if self.verbose:
-                    print(f"  Step {i+1}/{len(execution_plan.steps)}: {step.description}")
+                description = step.description
+                if len(description) > 50:
+                    description = description[:47] + "..."
+
+                step_msg = f"Step {i+1}/{len(execution_plan.steps)}: {description}"
 
                 # Update checkpoint before executing step
                 if self.enable_checkpointing:
@@ -118,7 +118,9 @@ class EnhancedAgent:
                     task_state.steps[i].started_at = datetime.now().isoformat()
                     self.checkpointer.save(task_state)
 
-                result = self._execute_step(step)
+                with Spinner(step_msg, verbose=self.verbose):
+                    result = self._execute_step(step)
+
                 results.append(result)
 
                 # Update checkpoint after step completion
@@ -144,10 +146,8 @@ class EnhancedAgent:
                     self.context_manager.summarize_if_needed(self.llm)
 
             # 5. Response Generation
-            if self.verbose:
-                print(f"Generating response...")
-
-            response = self._generate_response(prompt, results)
+            with Spinner("Generating response...", verbose=self.verbose):
+                response = self._generate_response(prompt, results)
 
             # Complete tracking
             self.cost_tracker.complete_task(success=True)
@@ -304,16 +304,14 @@ class EnhancedAgent:
             self.cost_tracker.track_step(tokens=200, cost=0.002)
 
         # Generate response
-        if self.verbose:
-            print(f"Generating response...")
+        with Spinner("Generating response...", verbose=self.verbose):
+            # Collect all results (including previously completed)
+            all_results = []
+            for step in task_state.steps:
+                if step.result:
+                    all_results.append(step.result)
 
-        # Collect all results (including previously completed)
-        all_results = []
-        for step in task_state.steps:
-            if step.result:
-                all_results.append(step.result)
-
-        response = self._generate_response(task_state.prompt, all_results)
+            response = self._generate_response(task_state.prompt, all_results)
 
         # Mark complete
         task_state.status = TaskStatus.COMPLETED
