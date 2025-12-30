@@ -19,6 +19,8 @@ python -m src.um_agent_coder "YOUR_PROMPT"
 python -m src.um_agent_coder.harness --roadmap specs/roadmap.md           # Default: Codex CLI
 python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli gemini
 python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli claude
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --parallel # Parallel execution
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --parallel --max-parallel 8
 python -m src.um_agent_coder.harness --dry-run                             # Preview only
 python -m src.um_agent_coder.harness --daemon                              # 24/7 mode
 python -m src.um_agent_coder.harness --status                              # Check status

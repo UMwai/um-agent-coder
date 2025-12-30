@@ -447,6 +447,17 @@ def main():
         action="store_true",
         help="Print current status and exit"
     )
+    parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Enable parallel execution of independent tasks"
+    )
+    parser.add_argument(
+        "--max-parallel",
+        type=int,
+        default=4,
+        help="Maximum number of tasks to run in parallel (default: 4)"
+    )
 
     args = parser.parse_args()
 
@@ -476,6 +487,8 @@ def main():
         reasoning_effort=args.reasoning,
         cooldown_seconds=args.cooldown,
         dry_run=args.dry_run,
+        parallel=args.parallel,
+        max_parallel_tasks=args.max_parallel,
     )
 
     harness.run()
