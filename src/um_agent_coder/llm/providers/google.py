@@ -27,33 +27,36 @@ class GoogleLLM(LLM):
         # Use a persistent session for connection pooling
         self.session = requests.Session()
     
-    def chat(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None) -> str:
-        """
-        Send a chat request to Google Gemini API.
-        
-        Args:
-            prompt: The user prompt
-            messages: Optional conversation history
-            
-        Returns:
-            The model's response
-        """
+    def _build_contents(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+        """Helper to build contents array for Gemini API."""
         if messages is None:
             messages = []
-        
-        # Build contents array for Gemini
+
         contents = []
         for msg in messages:
             contents.append({
                 "role": "model" if msg["role"] == "assistant" else "user",
                 "parts": [{"text": msg["content"]}]
             })
-        
-        # Add the new user message
+
         contents.append({
             "role": "user",
             "parts": [{"text": prompt}]
         })
+        return contents
+
+    def chat(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None) -> str:
+        """
+        Send a chat request to Google Gemini API.
+
+        Args:
+            prompt: The user prompt
+            messages: Optional conversation history
+
+        Returns:
+            The model's response
+        """
+        contents = self._build_contents(prompt, messages)
         
         headers = {
             "Content-Type": "application/json"
@@ -87,12 +90,50 @@ class GoogleLLM(LLM):
     def stream_chat(self, prompt: str, messages: Optional[List[Dict[str, str]]] = None):
         """
         Stream a chat response from Google Gemini API.
-        Note: Gemini streaming requires different endpoint
+        Uses SSE (Server-Sent Events) for streaming.
         """
-        # For now, return the full response
-        # TODO: Implement proper streaming when Google provides SSE support
-        response = self.chat(prompt, messages)
-        yield response
+        contents = self._build_contents(prompt, messages)
+
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": self.temperature,
+                "maxOutputTokens": self.max_tokens
+            }
+        }
+
+        # Use streamGenerateContent endpoint
+        stream_url = self.api_url.replace(":generateContent", ":streamGenerateContent")
+
+        params = {
+            "key": self.api_key,
+            "alt": "sse"
+        }
+
+        try:
+            with self.session.post(stream_url, headers=headers, json=data, params=params, stream=True) as response:
+                response.raise_for_status()
+
+                for line in response.iter_lines():
+                    if line:
+                        decoded_line = line.decode("utf-8")
+                        if decoded_line.startswith("data: "):
+                            json_str = decoded_line[6:]
+                            try:
+                                chunk = json.loads(json_str)
+                                if "candidates" in chunk:
+                                    parts = chunk["candidates"][0].get("content", {}).get("parts", [])
+                                    for part in parts:
+                                        if "text" in part:
+                                            yield part["text"]
+                            except json.JSONDecodeError:
+                                continue
+        except requests.exceptions.RequestException as e:
+            yield f"Error calling Google API: {str(e)}"
     
     def count_tokens(self, text: str) -> int:
         """
