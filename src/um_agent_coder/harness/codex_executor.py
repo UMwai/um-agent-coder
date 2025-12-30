@@ -23,7 +23,7 @@ class CodexExecutor:
     DEFAULT_CONFIG = {
         "model": "gpt-5.2",
         "sandbox": "danger-full-access",
-        "approval-policy": "never",
+        "approval_policy": "never",  # Changed from 'approval-policy' to 'approval_policy'
         "model_reasoning_effort": "high",
     }
 
@@ -183,19 +183,19 @@ class CodexExecutor:
         cmd = [
             "codex",
             "-m", self.model,
-            "--approval-policy", self.approval_policy,
+            "-a", self.approval_policy,  # Changed from --approval-policy to -a
         ]
 
         # Add sandbox mode
         if self.sandbox:
-            cmd.extend(["--sandbox", self.sandbox])
+            cmd.extend(["-s", self.sandbox])  # Changed --sandbox to -s
 
         # Add reasoning effort config
         cmd.extend(["-c", f"model_reasoning_effort={self.reasoning_effort}"])
 
         # Add working directory if specified
         if cwd and cwd != "./":
-            cmd.extend(["--cwd", cwd])
+            cmd.extend(["-C", cwd])  # Changed --cwd to -C (--cd)
 
         # Add the prompt
         cmd.append(prompt)
