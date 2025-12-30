@@ -9,6 +9,7 @@ Provides standardized interfaces for:
 - PubMed (research papers)
 """
 
+import hashlib
 import json
 import os
 import time
@@ -42,6 +43,7 @@ class DataFetcher(ABC):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_ttl = timedelta(hours=cache_ttl_hours)
+        self._memory_cache: Dict[str, FetchResult] = {}
 
         # Use a persistent session for connection pooling
         self.session = requests.Session() if requests else None
@@ -61,10 +63,22 @@ class DataFetcher(ABC):
         """Generate cache key from parameters."""
         sorted_items = sorted(kwargs.items())
         key_str = "_".join(f"{k}={v}" for k, v in sorted_items)
-        return f"{self.source_name}_{hash(key_str)}"
+        # Use SHA256 for stable hashing across runs/platforms
+        hash_digest = hashlib.sha256(key_str.encode()).hexdigest()
+        return f"{self.source_name}_{hash_digest}"
 
     def _check_cache(self, cache_key: str) -> Optional[FetchResult]:
         """Check if cached data exists and is fresh."""
+        # Check in-memory cache first (L1)
+        if cache_key in self._memory_cache:
+            result = self._memory_cache[cache_key]
+            fetched_at = datetime.fromisoformat(result.fetched_at)
+            if datetime.now() - fetched_at < self.cache_ttl:
+                return result
+            else:
+                del self._memory_cache[cache_key]
+
+        # Check disk cache (L2)
         cache_path = self.cache_dir / f"{cache_key}.json"
 
         if not cache_path.exists():
@@ -76,13 +90,16 @@ class DataFetcher(ABC):
 
             fetched_at = datetime.fromisoformat(cached["fetched_at"])
             if datetime.now() - fetched_at < self.cache_ttl:
-                return FetchResult(
+                result = FetchResult(
                     success=True,
                     data=cached["data"],
                     source=self.source_name,
                     fetched_at=cached["fetched_at"],
                     cached=True
                 )
+                # Populate memory cache
+                self._memory_cache[cache_key] = result
+                return result
         except Exception:
             pass
 
@@ -93,6 +110,10 @@ class DataFetcher(ABC):
         if not result.success:
             return
 
+        # Update memory cache
+        self._memory_cache[cache_key] = result
+
+        # Update disk cache
         cache_path = self.cache_dir / f"{cache_key}.json"
         try:
             with open(cache_path, 'w') as f:
