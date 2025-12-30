@@ -52,6 +52,7 @@ class ToolRegistry:
     
     def get_tools_for_task(self, task_type: str) -> List[Tool]:
         """Get relevant tools for a specific task type."""
+        # Filter tools based on task type or include if 'general'
         return [
             tool for tool in self.tools.values()
             if task_type in tool.TASK_TYPES or "general" in tool.TASK_TYPES
