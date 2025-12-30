@@ -226,7 +226,14 @@ class Harness:
         logger.info(f"Executing task: {task.id} - {task.description}")
 
         if self.dry_run:
-            logger.info("[DRY RUN] Would execute task")
+            cli_info = f"{task.cli or self.default_cli}"
+            if task.model:
+                cli_info += f" ({task.model})"
+            logger.info(f"[DRY RUN] Would execute via {cli_info}: {task.description}")
+            # Mark as completed to progress through all tasks
+            task.status = TaskStatus.COMPLETED
+            task.completed_at = datetime.utcnow()
+            self.state.save_task(task)
             return
 
         # Execute the task
