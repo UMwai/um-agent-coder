@@ -1,0 +1,106 @@
+name: Release to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v0.2.0, v1.0.0
+
+permissions:
+  contents: write      # Required for creating GitHub releases
+  id-token: write      # Required for trusted publishing to PyPI
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/project/um-agent-coder/
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper versioning
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Check package
+        run: twine check dist/*
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Trusted publishing uses OIDC, no token needed
+          # Configure at: https://pypi.org/manage/account/publishing/
+          print-hash: true
+          verbose: true
+
+      # Fallback: If trusted publishing is not configured, use API token
+      # Uncomment the following step and comment out the above step
+      # - name: Publish to PyPI (API Token)
+      #   env:
+      #     TWINE_USERNAME: __token__
+      #     TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      #   run: twine upload dist/*
+
+      - name: Extract release notes
+        id: extract_notes
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+          # Extract version from tag (remove 'v' prefix)
+          VERSION=${TAG#v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Create release notes
+          cat > release_notes.md << 'EOF'
+          ## What's Changed
+
+          This release includes the following changes:
+
+          - Package version: ${{ env.VERSION }}
+          - Published to PyPI: https://pypi.org/project/um-agent-coder/${{ env.VERSION }}/
+
+          ### Installation
+
+          ```bash
+          pip install um-agent-coder==${{ env.VERSION }}
+          ```
+
+          ### Upgrade
+
+          ```bash
+          pip install --upgrade um-agent-coder
+          ```
+
+          For detailed changes, see the [full changelog](https://github.com/UMwai/um-agent-coder/compare/${{ env.PREVIOUS_TAG }}...${{ env.TAG }}).
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.extract_notes.outputs.tag }}
+          name: Release ${{ steps.extract_notes.outputs.tag }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.tar.gz
+            dist/*.whl
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
