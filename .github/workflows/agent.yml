@@ -1,0 +1,104 @@
+name: AI Agent Task Execution
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Task description for the AI agent'
+        required: true
+        type: string
+      cli:
+        description: 'CLI backend to use (codex, gemini, claude)'
+        required: false
+        default: 'codex'
+        type: choice
+        options:
+          - codex
+          - gemini
+          - claude
+      model:
+        description: 'Model override (optional)'
+        required: false
+        type: string
+
+jobs:
+  execute-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install package
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+
+      - name: Prepare CLI command
+        id: prepare-cmd
+        run: |
+          # Build the base command
+          CMD="um-agent"
+
+          # Add task (required)
+          CMD="$CMD \"${{ inputs.task }}\""
+
+          # Add CLI flag if not default (codex)
+          if [ "${{ inputs.cli }}" != "codex" ]; then
+            CMD="$CMD --cli ${{ inputs.cli }}"
+          fi
+
+          # Add model override if provided
+          if [ -n "${{ inputs.model }}" ]; then
+            CMD="$CMD --model ${{ inputs.model }}"
+          fi
+
+          echo "command=$CMD" >> $GITHUB_OUTPUT
+          echo "Executing: $CMD"
+
+      - name: Run AI agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          echo "Starting AI agent task execution..."
+          echo "CLI Backend: ${{ inputs.cli }}"
+          echo "Task: ${{ inputs.task }}"
+          if [ -n "${{ inputs.model }}" ]; then
+            echo "Model: ${{ inputs.model }}"
+          fi
+          echo "---"
+
+          eval ${{ steps.prepare-cmd.outputs.command }}
+
+      - name: Upload execution logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-execution-logs
+          path: |
+            .harness/*.log
+            .harness/*.db
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Task**: ${{ inputs.task }}" >> $GITHUB_STEP_SUMMARY
+          echo "**CLI Backend**: ${{ inputs.cli }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.model }}" ]; then
+            echo "**Model**: ${{ inputs.model }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
