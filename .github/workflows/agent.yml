@@ -1,5 +1,15 @@
 name: AI Agent Task Execution
 
+# This workflow requires a SELF-HOSTED runner with pre-authenticated CLI tools:
+# - codex CLI (ChatGPT Pro OAuth)
+# - gemini CLI (gcloud auth / ADC)
+# - claude CLI (Anthropic OAuth)
+#
+# These CLIs use local OAuth/ADC authentication, NOT API keys.
+# See: https://github.com/openai/codex
+#      https://github.com/google-gemini/gemini-cli
+#      https://github.com/anthropics/claude-code
+
 on:
   workflow_dispatch:
     inputs:
@@ -23,12 +33,30 @@ on:
 
 jobs:
   execute-agent:
-    runs-on: ubuntu-latest
+    # IMPORTANT: Requires self-hosted runner with CLI tools pre-installed and authenticated
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify CLI availability
+        run: |
+          echo "Checking CLI tools..."
+          CLI="${{ inputs.cli }}"
+
+          if ! command -v "$CLI" &> /dev/null; then
+            echo "::error::$CLI CLI not found. Please install and authenticate on your self-hosted runner."
+            echo ""
+            echo "Installation guides:"
+            echo "  - codex: https://github.com/openai/codex"
+            echo "  - gemini: https://github.com/google-gemini/gemini-cli"
+            echo "  - claude: https://github.com/anthropics/claude-code"
+            exit 1
+          fi
+
+          echo "✓ $CLI CLI found at: $(which $CLI)"
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -64,10 +92,6 @@ jobs:
           echo "Executing: $CMD"
 
       - name: Run AI agent
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           echo "Starting AI agent task execution..."
           echo "CLI Backend: ${{ inputs.cli }}"
