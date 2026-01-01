@@ -13,6 +13,8 @@ import hashlib
 import json
 import os
 import time
+import re
+import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -510,6 +512,12 @@ class NewsFetcher(DataFetcher):
     - Google News RSS (free)
     """
 
+    # Pre-compiled regex patterns for performance
+    ITEM_PATTERN = re.compile(r'<item>(.*?)</item>', re.DOTALL)
+    TITLE_PATTERN = re.compile(r'<title>(.*?)</title>')
+    LINK_PATTERN = re.compile(r'<link>(.*?)</link>')
+    PUB_DATE_PATTERN = re.compile(r'<pubDate>(.*?)</pubDate>')
+
     @property
     def source_name(self) -> str:
         return "news"
@@ -611,16 +619,15 @@ class NewsFetcher(DataFetcher):
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
-            # Parse RSS (basic parsing without external library)
-            import re
-
-            items = re.findall(r'<item>(.*?)</item>', response.text, re.DOTALL)
-
+            # Parse RSS (using pre-compiled regex for performance)
             articles = []
-            for item in items[:limit]:
-                title = re.search(r'<title>(.*?)</title>', item)
-                link = re.search(r'<link>(.*?)</link>', item)
-                pub_date = re.search(r'<pubDate>(.*?)</pubDate>', item)
+
+            # Use finditer with islice to avoid processing the whole document if not needed
+            for match in itertools.islice(self.ITEM_PATTERN.finditer(response.text), limit):
+                item = match.group(1)
+                title = self.TITLE_PATTERN.search(item)
+                link = self.LINK_PATTERN.search(item)
+                pub_date = self.PUB_DATE_PATTERN.search(item)
 
                 articles.append({
                     "title": title.group(1) if title else None,
