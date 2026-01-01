@@ -12,9 +12,11 @@ class Spinner:
         self.spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
         self.running = False; self.thread: Optional[threading.Thread] = None
         self._is_tty = sys.stdout.isatty()
+        self.start_time = None
 
     def start(self):
         if not self.verbose: return
+        self.start_time = time.time()
         if not self._is_tty:
             print(f"{self.text}..." if not self.text.endswith("...") else self.text)
             return
@@ -26,9 +28,18 @@ class Spinner:
         if not self.verbose: return
         self.running = False
         if self.thread: self.thread.join()
+
+        # Calculate elapsed time
+        elapsed_str = ""
+        if self.start_time:
+            elapsed = time.time() - self.start_time
+            if elapsed >= 0.1:  # Only show if it took significant time
+                elapsed_str = f" ({elapsed:.1f}s)"
+
         if self._is_tty:
             symbol = ANSI.style('✓', ANSI.GREEN) if success else ANSI.style('✗', ANSI.FAIL)
-            sys.stdout.write(f"\r{symbol} {self.text}\033[K\n"); sys.stdout.flush()
+            time_display = ANSI.style(elapsed_str, ANSI.BLUE) if elapsed_str else ""
+            sys.stdout.write(f"\r{symbol} {self.text}{time_display}\033[K\n"); sys.stdout.flush()
 
     def update(self, text: str):
         self.text = text
