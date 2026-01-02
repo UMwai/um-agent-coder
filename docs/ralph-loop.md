@@ -350,3 +350,212 @@ python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --parallel
 ```
 
 Non-ralph tasks execute normally with a single attempt. Ralph tasks loop until completion or max iterations.
+
+---
+
+## Autonomous Loop (Advanced)
+
+The Autonomous Loop extends Ralph Loop with advanced features for 24/7 unattended execution:
+
+- **Multi-signal progress detection**: Tracks output changes, file modifications, explicit markers
+- **Stuck recovery**: Automatic recovery when no progress is detected
+- **Context management**: Rolling window + summarization to manage conversation length
+- **Multi-CLI routing**: Intelligent routing between Codex, Gemini, and Claude
+- **Environmental awareness**: File watchers, instruction queue, environment variables
+- **Alert system**: CLI notifications, file logging, runaway detection
+
+### Enabling Autonomous Mode
+
+```bash
+# Full autonomous mode with all features
+python -m src.um_agent_coder.harness \
+  --roadmap specs/roadmap.md \
+  --autonomous
+
+# Or with specific configurations
+python -m src.um_agent_coder.harness \
+  --roadmap specs/roadmap.md \
+  --max-time 8h \
+  --max-iterations 500 \
+  --cli codex,gemini \
+  --progress-threshold 0.15 \
+  --stuck-after 3
+```
+
+### Autonomous Task Definition
+
+```markdown
+- [ ] **task-001**: Implement JWT authentication
+  - ralph: true
+  - max_iterations: 200
+  - max_time: 4h
+  - cli: codex,gemini
+  - stuck_after: 5
+  - completion_promise: AUTH_COMPLETE
+  - success: All auth tests pass, tokens validate correctly
+
+  Goal: Create a complete JWT authentication system including:
+  1. User registration endpoint
+  2. Login endpoint returning JWT
+  3. Middleware for protected routes
+  4. Token refresh mechanism
+
+  Output `<progress>...</progress>` after each component.
+  Output `<promise>AUTH_COMPLETE</promise>` when all tests pass.
+```
+
+### Progress Detection
+
+The autonomous loop uses multi-signal progress detection:
+
+| Signal | Weight | Description |
+|--------|--------|-------------|
+| Output diff | 30% | How different is current output from previous |
+| File changes | 30% | Git diff showing actual code changes |
+| Explicit markers | 25% | `<progress>...</progress>` tags in output |
+| Checklist progress | 15% | Subtasks completed (if defined) |
+
+Progress score = weighted sum of signals (0.0 to 1.0)
+
+### Stuck Recovery
+
+When progress falls below threshold for consecutive iterations:
+
+1. **Prompt Mutation**: Rephrase the task with different emphasis
+2. **Model Escalation**: Try a more capable model (gemini → codex → claude)
+3. **Branch Exploration**: Try alternative approaches in parallel
+
+Configuration:
+```bash
+--stuck-after 3          # Trigger recovery after 3 no-progress iterations
+--recovery-budget 20     # Behind-the-scenes recovery iterations
+```
+
+### CLI Routing
+
+The router selects the optimal CLI based on task analysis:
+
+| CLI | Model | Best For |
+|-----|-------|----------|
+| codex | gpt-5.2 | Implementation, code generation |
+| gemini | gemini-3-pro | Research, large context analysis |
+| claude | claude-opus-4.5 | Complex reasoning, judgment calls |
+
+```bash
+--cli codex,gemini       # Enable specific CLIs
+--cli auto               # Auto-route based on task type
+--opus-limit 50          # Daily Opus iteration limit
+```
+
+### Environmental Awareness
+
+The harness can respond to real-time changes:
+
+**Stop/Pause Files**:
+```bash
+# Create stop file to request graceful stop
+touch .harness/stop
+
+# Create pause file to pause execution
+touch .harness/pause
+```
+
+**Instruction Queue**:
+```bash
+# Drop instructions during execution
+echo "Focus on error handling next" > .harness/inbox/001-instruction.txt
+```
+
+**Environment Variables**:
+```bash
+export HARNESS_PAUSE=true    # Pause execution
+export HARNESS_PRIORITY=fix  # Prioritize fix tasks
+```
+
+### Monitoring
+
+```bash
+# Check status from another terminal
+python -m src.um_agent_coder.harness --status
+
+# Output:
+# Task: task-001 (Implement authentication)
+# Status: RUNNING
+# Iteration: 47/unlimited
+# Progress: 0.35 (last 5 avg)
+# CLI: codex (gpt-5.2)
+# Elapsed: 2h 15m
+```
+
+**Log Files**:
+```
+.harness/
+├── harness.log      # Execution logs
+├── alerts.log       # Alert history
+└── status.json      # Current status (JSON)
+```
+
+### Autonomous Configuration Reference
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_iterations` | 1000 | Maximum total iterations |
+| `max_time` | None | Time limit (e.g., "8h", "30m") |
+| `progress_threshold` | 0.15 | Minimum progress to count as making progress |
+| `stuck_after` | 3 | Iterations without progress before recovery |
+| `recovery_budget` | 20 | Behind-the-scenes recovery iterations |
+| `context_window` | 5 | Raw iterations to keep in context |
+| `summarize_every` | 10 | Re-summarize interval |
+| `alert_every` | 10 | Status alert interval |
+| `pause_on_critical` | false | Pause on critical alerts |
+
+### Python API
+
+```python
+from um_agent_coder.harness.autonomous import (
+    AutonomousExecutor,
+    AutonomousConfig,
+    AutonomousResult,
+    TerminationReason,
+)
+
+# Configure autonomous execution
+config = AutonomousConfig(
+    max_iterations=200,
+    max_time_seconds=4 * 3600,  # 4 hours
+    progress_threshold=0.15,
+    stuck_after=3,
+    cli_spec="codex,gemini",
+    completion_promise="TASK_COMPLETE",
+)
+
+# Create executor with CLI backends
+executor = AutonomousExecutor(
+    executors={"codex": codex_executor, "gemini": gemini_executor},
+    config=config,
+    workspace_path=Path("."),
+)
+
+# Execute task
+result = executor.execute(task)
+
+if result.success:
+    print(f"Completed in {result.iterations} iterations")
+else:
+    print(f"Failed: {result.termination_reason}")
+```
+
+### Key Classes
+
+| Class | Description |
+|-------|-------------|
+| `AutonomousExecutor` | Main executor integrating all autonomous features |
+| `ProgressDetector` | Multi-signal progress detection |
+| `StuckDetector` | Detects when loop is stuck |
+| `RecoveryManager` | Coordinates stuck recovery strategies |
+| `CLIRouter` | Routes tasks to optimal CLI |
+| `ContextManager` | Manages conversation context |
+| `EnvironmentManager` | Monitors environment changes |
+| `AlertManager` | Handles alerts and notifications |
+| `RealTimeLogger` | Streams logs to terminal and file |
+| `StatusReporter` | Generates status summaries |

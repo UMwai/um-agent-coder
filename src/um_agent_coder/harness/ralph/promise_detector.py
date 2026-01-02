@@ -13,6 +13,7 @@ from typing import Optional
 @dataclass
 class DetectionResult:
     """Result of promise detection."""
+
     found: bool
     promise_text: Optional[str] = None
     match_type: Optional[str] = None  # "xml" or "plain"
@@ -34,10 +35,7 @@ class PromiseDetector:
     """
 
     # Regex for XML-style promise tags
-    XML_PATTERN = re.compile(
-        r'<promise>\s*(.+?)\s*</promise>',
-        re.IGNORECASE | re.DOTALL
-    )
+    XML_PATTERN = re.compile(r"<promise>\s*(.+?)\s*</promise>", re.IGNORECASE | re.DOTALL)
 
     def __init__(
         self,
@@ -111,7 +109,7 @@ class PromiseDetector:
         position = search_output.find(search_promise)
         if position != -1:
             # Extract the actual matched text from original output
-            actual_text = output[position:position + len(self.promise)]
+            actual_text = output[position : position + len(self.promise)]
             return DetectionResult(
                 found=True,
                 promise_text=actual_text,

@@ -10,6 +10,7 @@ from typing import Optional
 
 class TaskStatus(Enum):
     """Task lifecycle states."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -26,6 +27,7 @@ class RalphConfig:
     RalphExecutor wrapper which loops until completion promise
     is detected or max_iterations is exceeded.
     """
+
     enabled: bool = True
     max_iterations: int = 30
     completion_promise: str = "COMPLETE"
@@ -54,6 +56,7 @@ class RalphConfig:
 @dataclass
 class Task:
     """A single executable task from the roadmap."""
+
     id: str
     description: str
     phase: str
@@ -91,6 +94,7 @@ class Task:
 @dataclass
 class Phase:
     """A phase containing multiple related tasks."""
+
     name: str
     tasks: list[Task] = field(default_factory=list)
 
@@ -102,6 +106,7 @@ class Phase:
 @dataclass
 class Roadmap:
     """The full roadmap parsed from specs/roadmap.md."""
+
     name: str
     objective: str
     success_criteria: list[str] = field(default_factory=list)
@@ -134,6 +139,7 @@ class Roadmap:
 @dataclass
 class ExecutionResult:
     """Result from a Codex execution."""
+
     success: bool
     output: str
     error: str = ""
@@ -152,6 +158,7 @@ class ExecutionResult:
 @dataclass
 class HarnessState:
     """Overall harness state for persistence."""
+
     roadmap_path: str
     started_at: datetime
     last_activity: datetime

@@ -172,6 +172,69 @@ python -m src.um_agent_coder.harness --ralph-default-promise "TASK_DONE"
 
 See `docs/ralph-loop.md` for detailed documentation.
 
+### Autonomous Loop (24/7 Unattended Execution)
+
+Full autonomous execution with progress detection, stuck recovery, and multi-CLI routing:
+
+```bash
+# Enable autonomous mode
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --autonomous
+
+# With time limit
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --autonomous --max-time 8h
+
+# With specific CLIs and Opus limit
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli codex,gemini --opus-limit 50
+```
+
+#### Autonomous Task Definition
+```markdown
+## Tasks
+- [ ] **auth-001**: Implement JWT authentication
+  - ralph: true
+  - max_iterations: 200
+  - max_time: 4h
+  - cli: codex,gemini
+  - stuck_after: 5
+  - completion_promise: AUTH_COMPLETE
+  - success: All auth tests pass
+```
+
+#### Autonomous CLI Flags
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--autonomous` | - | Enable full autonomous mode |
+| `--max-iterations` | 1000 | Maximum total iterations |
+| `--max-time` | None | Time limit (e.g., "8h", "30m") |
+| `--cli` | "auto" | Enabled CLIs ("codex,gemini" or "auto") |
+| `--opus-limit` | 50 | Daily Opus iteration limit |
+| `--progress-threshold` | 0.15 | Progress score threshold |
+| `--stuck-after` | 3 | No-progress iterations before recovery |
+| `--recovery-budget` | 20 | Behind-the-scenes recovery iterations |
+| `--context-window` | 5 | Raw iterations to keep |
+| `--alert-every` | 10 | Status alert interval |
+| `--pause-on-critical` | false | Pause on critical alerts |
+| `--watch-workspace` | false | Enable file watchers |
+| `--enable-inbox` | false | Enable instruction queue |
+
+#### Environment Control
+```bash
+# Request graceful stop
+touch .harness/stop
+
+# Request pause (resume on file removal)
+touch .harness/pause
+
+# Drop instructions during execution
+echo "Focus on error handling" > .harness/inbox/001-priority.txt
+```
+
+#### Additional State Files
+- `.harness/alerts.log` - Alert history
+- `.harness/status.json` - Current status (JSON)
+
+See `docs/autonomous-loop.md` for comprehensive documentation.
+
 ## Key Patterns
 
 - **Config dot notation**: `config.get("llm.openai.api_key")`

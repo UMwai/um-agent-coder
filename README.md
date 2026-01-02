@@ -318,6 +318,74 @@ python -m src.um_agent_coder.harness --ralph-default-promise "TASK_DONE"
 
 See [docs/ralph-loop.md](docs/ralph-loop.md) for detailed documentation and [examples/ralph-prompts/](examples/ralph-prompts/) for templates.
 
+## Autonomous Loop - 24/7 Unattended Execution
+
+The Autonomous Loop builds on Ralph Loop with production-grade features for fully autonomous 24/7 execution:
+
+- **Multi-signal progress detection**: Output diff (30%) + file changes (30%) + explicit markers (25%) + checklist (15%)
+- **Stuck recovery**: Automatic recovery via prompt mutation → model escalation → branch exploration
+- **Multi-CLI routing**: Intelligent routing between Codex, Gemini, and Claude based on task type
+- **Environmental awareness**: Stop/pause files, instruction queue, environment variables
+- **Real-time monitoring**: Color-coded logs, status reports, runaway detection
+
+### Quick Start
+
+```bash
+# Enable autonomous mode
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --autonomous
+
+# With time limit and specific CLIs
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --autonomous --max-time 8h --cli codex,gemini
+
+# Check status from another terminal
+python -m src.um_agent_coder.harness --status
+```
+
+### Autonomous Task Definition
+
+```markdown
+## Tasks
+- [ ] **auth-001**: Implement JWT authentication for the API
+  - ralph: true
+  - max_iterations: 200
+  - max_time: 4h
+  - cli: codex,gemini
+  - stuck_after: 5
+  - completion_promise: AUTH_COMPLETE
+  - success: All auth tests pass, tokens validate correctly
+
+  Goal: Create a complete JWT authentication system.
+  Output `<progress>...</progress>` after each component.
+  Output `<promise>AUTH_COMPLETE</promise>` when all tests pass.
+```
+
+### Key CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--autonomous` | - | Enable full autonomous mode |
+| `--max-iterations` | 1000 | Maximum total iterations |
+| `--max-time` | None | Time limit (e.g., "8h", "30m") |
+| `--cli` | "auto" | Enabled CLIs ("codex,gemini" or "auto") |
+| `--opus-limit` | 50 | Daily Opus iteration limit |
+| `--stuck-after` | 3 | No-progress iterations before recovery |
+| `--recovery-budget` | 20 | Behind-the-scenes recovery iterations |
+
+### Environment Control
+
+```bash
+# Request graceful stop
+touch .harness/stop
+
+# Request pause (resume on file removal)
+touch .harness/pause
+
+# Drop instructions during execution
+echo "Focus on error handling" > .harness/inbox/001-priority.txt
+```
+
+See [docs/autonomous-loop.md](docs/autonomous-loop.md) for comprehensive documentation.
+
 ## Recommended Models
 
 | Provider | Model | Use Case |

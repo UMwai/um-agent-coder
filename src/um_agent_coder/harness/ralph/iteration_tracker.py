@@ -13,6 +13,7 @@ from typing import Optional
 @dataclass
 class IterationRecord:
     """Record of a single iteration attempt."""
+
     iteration_num: int
     started_at: datetime
     ended_at: Optional[datetime] = None
@@ -65,6 +66,7 @@ class IterationTracker:
             if promise_found:
                 break
     """
+
     task_id: str
     max_iterations: int = 30
     current_iteration: int = 0
@@ -180,19 +182,13 @@ class IterationTracker:
         Returns:
             Dictionary with iteration statistics
         """
-        successful_iterations = sum(
-            1 for r in self.iteration_history if r.promise_found
-        )
-        failed_iterations = sum(
-            1 for r in self.iteration_history if r.error is not None
-        )
+        successful_iterations = sum(1 for r in self.iteration_history if r.promise_found)
+        failed_iterations = sum(1 for r in self.iteration_history if r.error is not None)
 
         avg_duration = None
         if self.iteration_history:
             durations = [
-                r.duration.total_seconds()
-                for r in self.iteration_history
-                if r.duration is not None
+                r.duration.total_seconds() for r in self.iteration_history if r.duration is not None
             ]
             if durations:
                 avg_duration = sum(durations) / len(durations)
@@ -232,8 +228,7 @@ class IterationTracker:
             current_iteration=data["current_iteration"],
             start_time=datetime.fromisoformat(data["start_time"]),
             iteration_history=[
-                IterationRecord.from_dict(r)
-                for r in data.get("iteration_history", [])
+                IterationRecord.from_dict(r) for r in data.get("iteration_history", [])
             ],
         )
         tracker._completed = data.get("completed", False)

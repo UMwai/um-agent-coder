@@ -42,7 +42,7 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler(".harness/harness.log"),
-    ]
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -93,9 +93,7 @@ class Harness:
         )
 
         # Cache for task-specific executors
-        self._executors: dict[str, BaseCLIExecutor] = {
-            self.default_cli: self.default_executor
-        }
+        self._executors: dict[str, BaseCLIExecutor] = {self.default_cli: self.default_executor}
 
         self.state = StateManager()
         self.growth = GrowthLoop(self.default_executor)
@@ -193,7 +191,9 @@ class Harness:
         self.roadmap = self.parser.parse()
         logger.info(f"Loaded roadmap: {self.roadmap.name}")
         logger.info(f"Objective: {self.roadmap.objective}")
-        logger.info(f"Tasks: {len(self.roadmap.all_tasks)} across {len(self.roadmap.phases)} phases")
+        logger.info(
+            f"Tasks: {len(self.roadmap.all_tasks)} across {len(self.roadmap.phases)} phases"
+        )
 
         # Initialize state
         self.harness_state = self.state.init_harness(self.roadmap_path)
@@ -283,9 +283,7 @@ class Harness:
 
         # Update growth counter
         self.harness_state.growth_iterations += 1
-        self.state.update_harness_state(
-            growth_iterations=self.harness_state.growth_iterations
-        )
+        self.state.update_harness_state(growth_iterations=self.harness_state.growth_iterations)
 
     def _get_next_task(self) -> Optional[Task]:
         """Get the next task that is ready to execute."""
@@ -378,9 +376,7 @@ class Harness:
                 )
             else:
                 task.status = TaskStatus.FAILED
-                logger.warning(
-                    f"Task {task.id} failed ralph loop ({result.reason}), will retry"
-                )
+                logger.warning(f"Task {task.id} failed ralph loop ({result.reason}), will retry")
 
         # Save state
         self.state.save_task(task)
@@ -397,7 +393,9 @@ class Harness:
         cli_info: str,
     ) -> None:
         """Execute a regular (non-ralph) task."""
-        logger.info(f"Starting execution (attempt {task.attempts}/{task.max_retries}) via {cli_info}")
+        logger.info(
+            f"Starting execution (attempt {task.attempts}/{task.max_retries}) via {cli_info}"
+        )
 
         # Build context from dependencies
         context = self._build_task_context(task)
@@ -431,7 +429,9 @@ class Harness:
             if task.attempts >= task.max_retries:
                 task.status = TaskStatus.BLOCKED
                 self.harness_state.tasks_failed += 1
-                logger.error(f"Task {task.id} failed after {task.attempts} attempts: {result.error}")
+                logger.error(
+                    f"Task {task.id} failed after {task.attempts} attempts: {result.error}"
+                )
             else:
                 task.status = TaskStatus.FAILED
                 logger.warning(f"Task {task.id} failed, will retry. Error: {result.error}")
@@ -488,81 +488,53 @@ def main():
     parser = argparse.ArgumentParser(
         description="24/7 CLI Harness - Autonomous task execution via Codex, Gemini, or Claude"
     )
+    parser.add_argument("--roadmap", "-r", required=True, help="Path to roadmap.md file")
     parser.add_argument(
-        "--roadmap", "-r",
-        required=True,
-        help="Path to roadmap.md file"
-    )
-    parser.add_argument(
-        "--cli", "-c",
+        "--cli",
+        "-c",
         default="codex",
         choices=["codex", "gemini", "claude"],
-        help="CLI backend to use (default: codex)"
+        help="CLI backend to use (default: codex)",
     )
     parser.add_argument(
-        "--model", "-m",
-        default=None,
-        help="Model override (default: auto-selected based on CLI)"
+        "--model", "-m", default=None, help="Model override (default: auto-selected based on CLI)"
     )
     parser.add_argument(
         "--reasoning",
         default="high",
         choices=["low", "medium", "high"],
-        help="Reasoning effort level for Codex (default: high)"
+        help="Reasoning effort level for Codex (default: high)",
     )
     parser.add_argument(
-        "--cooldown",
-        type=int,
-        default=10,
-        help="Seconds between iterations (default: 10)"
+        "--cooldown", type=int, default=10, help="Seconds between iterations (default: 10)"
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print what would be done without executing"
+        "--dry-run", action="store_true", help="Print what would be done without executing"
     )
+    parser.add_argument("--daemon", action="store_true", help="Run as daemon (implies 24/7 mode)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--reset", action="store_true", help="Reset all state and start fresh")
+    parser.add_argument("--status", action="store_true", help="Print current status and exit")
     parser.add_argument(
-        "--daemon",
-        action="store_true",
-        help="Run as daemon (implies 24/7 mode)"
-    )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
-    )
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Reset all state and start fresh"
-    )
-    parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Print current status and exit"
-    )
-    parser.add_argument(
-        "--parallel",
-        action="store_true",
-        help="Enable parallel execution of independent tasks"
+        "--parallel", action="store_true", help="Enable parallel execution of independent tasks"
     )
     parser.add_argument(
         "--max-parallel",
         type=int,
         default=4,
-        help="Maximum number of tasks to run in parallel (default: 4)"
+        help="Maximum number of tasks to run in parallel (default: 4)",
     )
     parser.add_argument(
         "--ralph-default-iterations",
         type=int,
         default=30,
-        help="Default max iterations for ralph loop tasks (default: 30)"
+        help="Default max iterations for ralph loop tasks (default: 30)",
     )
     parser.add_argument(
         "--ralph-default-promise",
         type=str,
         default="COMPLETE",
-        help="Default completion promise for ralph loop tasks (default: COMPLETE)"
+        help="Default completion promise for ralph loop tasks (default: COMPLETE)",
     )
 
     args = parser.parse_args()
@@ -577,6 +549,7 @@ def main():
         state = StateManager()
         stats = state.get_statistics()
         import json
+
         print(json.dumps(stats, indent=2, default=str))
         return
 

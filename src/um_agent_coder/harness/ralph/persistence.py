@@ -51,7 +51,8 @@ class RalphPersistence:
     def _init_db(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
-            conn.executescript("""
+            conn.executescript(
+                """
                 CREATE TABLE IF NOT EXISTS ralph_trackers (
                     task_id TEXT PRIMARY KEY,
                     max_iterations INTEGER NOT NULL,
@@ -79,7 +80,8 @@ class RalphPersistence:
                     ON ralph_iterations(task_id);
                 CREATE INDEX IF NOT EXISTS idx_trackers_completed
                     ON ralph_trackers(completed);
-            """)
+            """
+            )
 
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -105,7 +107,8 @@ class RalphPersistence:
 
         with self._connection() as conn:
             # Upsert tracker state
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO ralph_trackers (
                     task_id, max_iterations, current_iteration,
                     start_time, completed, completion_reason, updated_at
@@ -116,19 +119,22 @@ class RalphPersistence:
                     completed = excluded.completed,
                     completion_reason = excluded.completion_reason,
                     updated_at = excluded.updated_at
-            """, (
-                tracker.task_id,
-                tracker.max_iterations,
-                tracker.current_iteration,
-                tracker.start_time.isoformat(),
-                int(tracker.is_complete),
-                tracker.completion_reason,
-                now,
-            ))
+            """,
+                (
+                    tracker.task_id,
+                    tracker.max_iterations,
+                    tracker.current_iteration,
+                    tracker.start_time.isoformat(),
+                    int(tracker.is_complete),
+                    tracker.completion_reason,
+                    now,
+                ),
+            )
 
             # Save iteration history (only new records)
             for record in tracker.iteration_history:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO ralph_iterations (
                         task_id, iteration_num, started_at, ended_at,
                         output_snippet, promise_found, error
@@ -138,15 +144,17 @@ class RalphPersistence:
                         output_snippet = excluded.output_snippet,
                         promise_found = excluded.promise_found,
                         error = excluded.error
-                """, (
-                    tracker.task_id,
-                    record.iteration_num,
-                    record.started_at.isoformat(),
-                    record.ended_at.isoformat() if record.ended_at else None,
-                    record.output_snippet,
-                    int(record.promise_found),
-                    record.error,
-                ))
+                """,
+                    (
+                        tracker.task_id,
+                        record.iteration_num,
+                        record.started_at.isoformat(),
+                        record.ended_at.isoformat() if record.ended_at else None,
+                        record.output_snippet,
+                        int(record.promise_found),
+                        record.error,
+                    ),
+                )
 
         logger.debug(
             f"Saved tracker for {tracker.task_id}: "
@@ -164,8 +172,7 @@ class RalphPersistence:
         """
         with self._connection() as conn:
             row = conn.execute(
-                "SELECT * FROM ralph_trackers WHERE task_id = ?",
-                (task_id,)
+                "SELECT * FROM ralph_trackers WHERE task_id = ?", (task_id,)
             ).fetchone()
 
             if not row:
@@ -176,7 +183,7 @@ class RalphPersistence:
                 """SELECT * FROM ralph_iterations
                    WHERE task_id = ?
                    ORDER BY iteration_num""",
-                (task_id,)
+                (task_id,),
             ).fetchall()
 
             history = [
@@ -219,16 +226,10 @@ class RalphPersistence:
         """
         with self._connection() as conn:
             # Delete iteration history first (foreign key)
-            conn.execute(
-                "DELETE FROM ralph_iterations WHERE task_id = ?",
-                (task_id,)
-            )
+            conn.execute("DELETE FROM ralph_iterations WHERE task_id = ?", (task_id,))
 
             # Delete tracker
-            result = conn.execute(
-                "DELETE FROM ralph_trackers WHERE task_id = ?",
-                (task_id,)
-            )
+            result = conn.execute("DELETE FROM ralph_trackers WHERE task_id = ?", (task_id,))
 
             return result.rowcount > 0
 
@@ -239,9 +240,7 @@ class RalphPersistence:
             List of task IDs with active ralph loops
         """
         with self._connection() as conn:
-            rows = conn.execute(
-                "SELECT task_id FROM ralph_trackers WHERE completed = 0"
-            ).fetchall()
+            rows = conn.execute("SELECT task_id FROM ralph_trackers WHERE completed = 0").fetchall()
             return [row["task_id"] for row in rows]
 
     def list_all_trackers(self) -> list[dict]:
@@ -251,7 +250,8 @@ class RalphPersistence:
             List of tracker summaries
         """
         with self._connection() as conn:
-            rows = conn.execute("""
+            rows = conn.execute(
+                """
                 SELECT
                     t.task_id,
                     t.max_iterations,
@@ -265,7 +265,8 @@ class RalphPersistence:
                 LEFT JOIN ralph_iterations i ON t.task_id = i.task_id
                 GROUP BY t.task_id
                 ORDER BY t.updated_at DESC
-            """).fetchall()
+            """
+            ).fetchall()
 
             return [
                 {
@@ -295,7 +296,7 @@ class RalphPersistence:
                 """SELECT * FROM ralph_iterations
                    WHERE task_id = ?
                    ORDER BY iteration_num""",
-                (task_id,)
+                (task_id,),
             ).fetchall()
 
             return [

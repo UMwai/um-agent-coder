@@ -29,7 +29,8 @@ class StateManager:
     def _init_db(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
-            conn.executescript("""
+            conn.executescript(
+                """
                 CREATE TABLE IF NOT EXISTS harness_state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     roadmap_path TEXT NOT NULL,
@@ -78,7 +79,8 @@ class StateManager:
 
                 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
                 CREATE INDEX IF NOT EXISTS idx_execution_log_task ON execution_log(task_id);
-            """)
+            """
+            )
 
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -119,10 +121,13 @@ class StateManager:
                 logger.info(f"Resuming harness state from {state.started_at}")
             else:
                 # Create new state
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO harness_state (id, roadmap_path, started_at, last_activity)
                     VALUES (1, ?, ?, ?)
-                """, (roadmap_path, now, now))
+                """,
+                    (roadmap_path, now, now),
+                )
 
                 state = HarnessState(
                     roadmap_path=roadmap_path,
@@ -194,41 +199,42 @@ class StateManager:
             ralph_config_json = json.dumps(task.ralph_config.to_dict())
 
         with self._connection() as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO tasks (
                     id, description, phase, depends, timeout_minutes,
                     success_criteria, cwd, cli, model, status, attempts, max_retries,
                     output, error, conversation_id, started_at, completed_at,
                     ralph_config, ralph_iterations
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                task.id,
-                task.description,
-                task.phase,
-                json.dumps(task.depends),
-                task.timeout_minutes,
-                task.success_criteria,
-                task.cwd,
-                task.cli,
-                task.model,
-                task.status.value,
-                task.attempts,
-                task.max_retries,
-                task.output,
-                task.error,
-                task.conversation_id,
-                task.started_at.isoformat() if task.started_at else None,
-                task.completed_at.isoformat() if task.completed_at else None,
-                ralph_config_json,
-                task.ralph_iterations,
-            ))
+            """,
+                (
+                    task.id,
+                    task.description,
+                    task.phase,
+                    json.dumps(task.depends),
+                    task.timeout_minutes,
+                    task.success_criteria,
+                    task.cwd,
+                    task.cli,
+                    task.model,
+                    task.status.value,
+                    task.attempts,
+                    task.max_retries,
+                    task.output,
+                    task.error,
+                    task.conversation_id,
+                    task.started_at.isoformat() if task.started_at else None,
+                    task.completed_at.isoformat() if task.completed_at else None,
+                    ralph_config_json,
+                    task.ralph_iterations,
+                ),
+            )
 
     def load_task(self, task_id: str) -> Optional[Task]:
         """Load a task by ID."""
         with self._connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM tasks WHERE id = ?", (task_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
 
             if not row:
                 return None
@@ -252,9 +258,7 @@ class StateManager:
     def get_completed_task_ids(self) -> set[str]:
         """Get IDs of all completed tasks."""
         with self._connection() as conn:
-            rows = conn.execute(
-                "SELECT id FROM tasks WHERE status = 'completed'"
-            ).fetchall()
+            rows = conn.execute("SELECT id FROM tasks WHERE status = 'completed'").fetchall()
             return {row["id"] for row in rows}
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
@@ -284,7 +288,9 @@ class StateManager:
             error=row["error"],
             conversation_id=row["conversation_id"],
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            completed_at=(
+                datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
+            ),
             ralph_config=ralph_config,
             ralph_iterations=ralph_iterations,
         )
@@ -299,27 +305,33 @@ class StateManager:
     ) -> None:
         """Log a task execution attempt."""
         with self._connection() as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO execution_log (
                     task_id, timestamp, attempt, success, output, error, duration_seconds
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                task_id,
-                datetime.utcnow().isoformat(),
-                attempt,
-                int(result.success),
-                result.output[:10000],  # Truncate large outputs
-                result.error,
-                result.duration_seconds,
-            ))
+            """,
+                (
+                    task_id,
+                    datetime.utcnow().isoformat(),
+                    attempt,
+                    int(result.success),
+                    result.output[:10000],  # Truncate large outputs
+                    result.error,
+                    result.duration_seconds,
+                ),
+            )
 
     def get_execution_history(self, task_id: str) -> list[dict]:
         """Get execution history for a task."""
         with self._connection() as conn:
-            rows = conn.execute("""
+            rows = conn.execute(
+                """
                 SELECT * FROM execution_log WHERE task_id = ?
                 ORDER BY timestamp DESC
-            """, (task_id,)).fetchall()
+            """,
+                (task_id,),
+            ).fetchall()
 
             return [dict(row) for row in rows]
 
@@ -329,9 +341,11 @@ class StateManager:
         """Get harness statistics."""
         with self._connection() as conn:
             state = conn.execute("SELECT * FROM harness_state WHERE id = 1").fetchone()
-            task_counts = conn.execute("""
+            task_counts = conn.execute(
+                """
                 SELECT status, COUNT(*) as count FROM tasks GROUP BY status
-            """).fetchall()
+            """
+            ).fetchall()
             total_executions = conn.execute(
                 "SELECT COUNT(*) as count FROM execution_log"
             ).fetchone()

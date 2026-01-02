@@ -89,27 +89,33 @@ class CodexExecutor:
         ]
 
         if task.success_criteria:
-            prompt_parts.extend([
-                "",
-                "## Success Criteria",
-                task.success_criteria,
-            ])
+            prompt_parts.extend(
+                [
+                    "",
+                    "## Success Criteria",
+                    task.success_criteria,
+                ]
+            )
 
         if context:
-            prompt_parts.extend([
-                "",
-                "## Context",
-                context,
-            ])
+            prompt_parts.extend(
+                [
+                    "",
+                    "## Context",
+                    context,
+                ]
+            )
 
-        prompt_parts.extend([
-            "",
-            "## Instructions",
-            "1. Complete this task fully",
-            "2. Verify success criteria are met",
-            "3. Report any issues or blockers",
-            "4. If task cannot be completed, explain why",
-        ])
+        prompt_parts.extend(
+            [
+                "",
+                "## Instructions",
+                "1. Complete this task fully",
+                "2. Verify success criteria are met",
+                "3. Report any issues or blockers",
+                "4. If task cannot be completed, explain why",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
@@ -150,8 +156,10 @@ class CodexExecutor:
         # Use codex with conversation continuation
         cmd = [
             "codex",
-            "-m", self.model,
-            "--conversation", conversation_id,
+            "-m",
+            self.model,
+            "--conversation",
+            conversation_id,
             prompt,
         ]
 
@@ -165,9 +173,7 @@ class CodexExecutor:
             timeout=1800,
         )
 
-        success = result.returncode == 0 and not self._detect_failure(
-            result.stdout, result.stderr
-        )
+        success = result.returncode == 0 and not self._detect_failure(result.stdout, result.stderr)
 
         return ExecutionResult(
             success=success,
@@ -180,8 +186,10 @@ class CodexExecutor:
         """Build the codex CLI command."""
         cmd = [
             "codex",
-            "-m", self.model,
-            "-a", self.approval_policy,  # Changed from --approval-policy to -a
+            "-m",
+            self.model,
+            "-a",
+            self.approval_policy,  # Changed from --approval-policy to -a
         ]
 
         # Add sandbox mode
@@ -208,8 +216,8 @@ class CodexExecutor:
 
         # Look for common patterns
         patterns = [
-            r'conversation[_-]?id[:\s]+([a-zA-Z0-9-]+)',
-            r'session[:\s]+([a-zA-Z0-9-]+)',
+            r"conversation[_-]?id[:\s]+([a-zA-Z0-9-]+)",
+            r"session[:\s]+([a-zA-Z0-9-]+)",
             r'"conversationId":\s*"([^"]+)"',
         ]
 

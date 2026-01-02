@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class CLIBackend(Enum):
     """Available CLI backends."""
+
     CODEX = "codex"
     GEMINI = "gemini"
     CLAUDE = "claude"
@@ -94,27 +95,33 @@ class BaseCLIExecutor(ABC):
         ]
 
         if task.success_criteria:
-            prompt_parts.extend([
-                "",
-                "## Success Criteria",
-                task.success_criteria,
-            ])
+            prompt_parts.extend(
+                [
+                    "",
+                    "## Success Criteria",
+                    task.success_criteria,
+                ]
+            )
 
         if context:
-            prompt_parts.extend([
-                "",
-                "## Context",
-                context,
-            ])
+            prompt_parts.extend(
+                [
+                    "",
+                    "## Context",
+                    context,
+                ]
+            )
 
-        prompt_parts.extend([
-            "",
-            "## Instructions",
-            "1. Complete this task fully",
-            "2. Verify success criteria are met",
-            "3. Report any issues or blockers",
-            "4. If task cannot be completed, explain why",
-        ])
+        prompt_parts.extend(
+            [
+                "",
+                "## Instructions",
+                "1. Complete this task fully",
+                "2. Verify success criteria are met",
+                "3. Report any issues or blockers",
+                "4. If task cannot be completed, explain why",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
@@ -210,8 +217,10 @@ class CodexExecutor(BaseCLIExecutor):
         """Build the Codex CLI command."""
         cmd = [
             "codex",
-            "-m", self.model,
-            "-a", self.approval_policy,  # Changed from --approval-policy to -a
+            "-m",
+            self.model,
+            "-a",
+            self.approval_policy,  # Changed from --approval-policy to -a
         ]
 
         if self.sandbox:
@@ -292,9 +301,7 @@ class ClaudeExecutor(BaseCLIExecutor):
 
 
 def create_executor(
-    backend: Union[str, CLIBackend],
-    model: Optional[str] = None,
-    **kwargs
+    backend: Union[str, CLIBackend], model: Optional[str] = None, **kwargs
 ) -> BaseCLIExecutor:
     """Factory function to create the appropriate executor.
 

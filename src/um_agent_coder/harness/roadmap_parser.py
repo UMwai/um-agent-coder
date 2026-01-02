@@ -28,7 +28,7 @@ class RoadmapParser:
     def _parse_content(self, content: str) -> Roadmap:
         """Parse markdown content into Roadmap."""
         # Extract project name from title
-        name_match = re.search(r'^#\s+Roadmap:\s*(.+)$', content, re.MULTILINE)
+        name_match = re.search(r"^#\s+Roadmap:\s*(.+)$", content, re.MULTILINE)
         name = name_match.group(1).strip() if name_match else "Unnamed Project"
 
         # Extract objective
@@ -63,7 +63,7 @@ class RoadmapParser:
     def _extract_section(self, content: str, section_name: str) -> str:
         """Extract content under a ## heading until the next ## or end."""
         # Find the section header
-        header_pattern = rf'^##\s+{re.escape(section_name)}\s*$'
+        header_pattern = rf"^##\s+{re.escape(section_name)}\s*$"
         header_match = re.search(header_pattern, content, re.MULTILINE)
         if not header_match:
             return ""
@@ -73,9 +73,9 @@ class RoadmapParser:
         rest = content[start:]
 
         # Find next ## section (not ###)
-        next_section = re.search(r'^## ', rest, re.MULTILINE)
+        next_section = re.search(r"^## ", rest, re.MULTILINE)
         if next_section:
-            return rest[:next_section.start()].strip()
+            return rest[: next_section.start()].strip()
         return rest.strip()
 
     def _parse_constraints(self, constraints: str) -> tuple[int, int, str]:
@@ -84,18 +84,18 @@ class RoadmapParser:
         max_retries = 3  # default
         working_dir = "./"  # default
 
-        for line in constraints.split('\n'):
+        for line in constraints.split("\n"):
             line = line.strip().lower()
-            if 'max time' in line or 'timeout' in line:
-                time_match = re.search(r'(\d+)\s*min', line)
+            if "max time" in line or "timeout" in line:
+                time_match = re.search(r"(\d+)\s*min", line)
                 if time_match:
                     max_time = int(time_match.group(1))
-            elif 'retries' in line:
-                retry_match = re.search(r'(\d+)', line)
+            elif "retries" in line:
+                retry_match = re.search(r"(\d+)", line)
                 if retry_match:
                     max_retries = int(retry_match.group(1))
-            elif 'working directory' in line or 'cwd' in line:
-                dir_match = re.search(r':\s*(.+)$', line, re.IGNORECASE)
+            elif "working directory" in line or "cwd" in line:
+                dir_match = re.search(r":\s*(.+)$", line, re.IGNORECASE)
                 if dir_match:
                     working_dir = dir_match.group(1).strip()
 
@@ -104,8 +104,8 @@ class RoadmapParser:
     def _parse_checklist(self, section: str) -> list[str]:
         """Parse markdown checklist items (- [ ] or - [x])."""
         items = []
-        for line in section.split('\n'):
-            match = re.match(r'^-\s*\[[ x]\]\s*(.+)$', line.strip())
+        for line in section.split("\n"):
+            match = re.match(r"^-\s*\[[ x]\]\s*(.+)$", line.strip())
             if match:
                 items.append(match.group(1).strip())
         return items
@@ -113,8 +113,8 @@ class RoadmapParser:
     def _parse_numbered_list(self, section: str) -> list[str]:
         """Parse numbered list items."""
         items = []
-        for line in section.split('\n'):
-            match = re.match(r'^\d+\.\s*(.+)$', line.strip())
+        for line in section.split("\n"):
+            match = re.match(r"^\d+\.\s*(.+)$", line.strip())
             if match:
                 items.append(match.group(1).strip())
         return items
@@ -129,7 +129,7 @@ class RoadmapParser:
             return phases
 
         # Split by ### headers for phases
-        phase_pattern = r'^###\s+(?:Phase\s+\d+[:\s]*)?(.+?)$'
+        phase_pattern = r"^###\s+(?:Phase\s+\d+[:\s]*)?(.+?)$"
         phase_splits = re.split(phase_pattern, tasks_section, flags=re.MULTILINE)
 
         # phase_splits will be: ['', 'Phase Name 1', 'content1', 'Phase Name 2', 'content2', ...]
@@ -147,7 +147,7 @@ class RoadmapParser:
         tasks = []
 
         # Pattern for task lines: - [ ] **task-001**: Description
-        task_pattern = r'^-\s*\[[ x]\]\s*\*\*([^*]+)\*\*:\s*(.+?)(?=^-\s*\[|\Z)'
+        task_pattern = r"^-\s*\[[ x]\]\s*\*\*([^*]+)\*\*:\s*(.+?)(?=^-\s*\[|\Z)"
         matches = re.finditer(task_pattern, content, re.MULTILINE | re.DOTALL)
 
         for match in matches:
@@ -155,34 +155,34 @@ class RoadmapParser:
             task_block = match.group(2).strip()
 
             # First line is description, rest are properties
-            lines = task_block.split('\n')
+            lines = task_block.split("\n")
             description = lines[0].strip()
 
             # Parse properties (indented lines with - property: value)
-            props = self._parse_task_properties('\n'.join(lines[1:]))
+            props = self._parse_task_properties("\n".join(lines[1:]))
 
             # Check if task is already marked complete
-            is_complete = '[x]' in match.group(0).lower()
+            is_complete = "[x]" in match.group(0).lower()
 
             # Build ralph config if enabled
             ralph_config = None
-            if props.get('ralph', False):
+            if props.get("ralph", False):
                 ralph_config = RalphConfig(
                     enabled=True,
-                    max_iterations=props.get('max_iterations', 30),
-                    completion_promise=props.get('completion_promise', 'COMPLETE'),
+                    max_iterations=props.get("max_iterations", 30),
+                    completion_promise=props.get("completion_promise", "COMPLETE"),
                 )
 
             task = Task(
                 id=task_id,
                 description=description,
                 phase=phase_name,
-                depends=props.get('depends', []),
-                timeout_minutes=props.get('timeout', 30),
-                success_criteria=props.get('success', ''),
-                cwd=props.get('cwd', './'),
-                cli=props.get('cli', ''),
-                model=props.get('model', ''),
+                depends=props.get("depends", []),
+                timeout_minutes=props.get("timeout", 30),
+                success_criteria=props.get("success", ""),
+                cwd=props.get("cwd", "./"),
+                cli=props.get("cli", ""),
+                model=props.get("model", ""),
                 status=TaskStatus.COMPLETED if is_complete else TaskStatus.PENDING,
                 ralph_config=ralph_config,
             )
@@ -199,51 +199,51 @@ class RoadmapParser:
         - completion_promise: TEXT - Custom promise text
         """
         props = {
-            'depends': [],
-            'timeout': 30,
-            'success': '',
-            'cwd': './',
-            'cli': '',
-            'model': '',
+            "depends": [],
+            "timeout": 30,
+            "success": "",
+            "cwd": "./",
+            "cli": "",
+            "model": "",
             # Ralph-specific properties
-            'ralph': False,
-            'max_iterations': 30,
-            'completion_promise': 'COMPLETE',
+            "ralph": False,
+            "max_iterations": 30,
+            "completion_promise": "COMPLETE",
         }
 
-        for line in content.split('\n'):
+        for line in content.split("\n"):
             line = line.strip()
-            if not line.startswith('-'):
+            if not line.startswith("-"):
                 continue
 
             line = line[1:].strip()  # Remove leading -
 
-            if line.startswith('timeout:'):
-                time_match = re.search(r'(\d+)', line)
+            if line.startswith("timeout:"):
+                time_match = re.search(r"(\d+)", line)
                 if time_match:
-                    props['timeout'] = int(time_match.group(1))
-            elif line.startswith('depends:'):
-                deps = line.split(':', 1)[1].strip()
-                if deps.lower() != 'none':
-                    props['depends'] = [d.strip() for d in deps.split(',')]
-            elif line.startswith('success:'):
-                props['success'] = line.split(':', 1)[1].strip()
-            elif line.startswith('cwd:'):
-                props['cwd'] = line.split(':', 1)[1].strip()
-            elif line.startswith('cli:'):
-                props['cli'] = line.split(':', 1)[1].strip().lower()
-            elif line.startswith('model:'):
-                props['model'] = line.split(':', 1)[1].strip()
+                    props["timeout"] = int(time_match.group(1))
+            elif line.startswith("depends:"):
+                deps = line.split(":", 1)[1].strip()
+                if deps.lower() != "none":
+                    props["depends"] = [d.strip() for d in deps.split(",")]
+            elif line.startswith("success:"):
+                props["success"] = line.split(":", 1)[1].strip()
+            elif line.startswith("cwd:"):
+                props["cwd"] = line.split(":", 1)[1].strip()
+            elif line.startswith("cli:"):
+                props["cli"] = line.split(":", 1)[1].strip().lower()
+            elif line.startswith("model:"):
+                props["model"] = line.split(":", 1)[1].strip()
             # Ralph-specific fields
-            elif line.startswith('ralph:'):
-                value = line.split(':', 1)[1].strip().lower()
-                props['ralph'] = value in ('true', 'yes', '1')
-            elif line.startswith('max_iterations:'):
-                iter_match = re.search(r'(\d+)', line)
+            elif line.startswith("ralph:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["ralph"] = value in ("true", "yes", "1")
+            elif line.startswith("max_iterations:"):
+                iter_match = re.search(r"(\d+)", line)
                 if iter_match:
-                    props['max_iterations'] = int(iter_match.group(1))
-            elif line.startswith('completion_promise:'):
-                props['completion_promise'] = line.split(':', 1)[1].strip()
+                    props["max_iterations"] = int(iter_match.group(1))
+            elif line.startswith("completion_promise:"):
+                props["completion_promise"] = line.split(":", 1)[1].strip()
 
         return props
 
@@ -253,17 +253,10 @@ class RoadmapParser:
 
         # Find and update the checkbox for this task
         if completed:
-            new_content = re.sub(
-                rf'\[ \](\s*\*\*{re.escape(task_id)}\*\*)',
-                r'[x]\1',
-                content
-            )
+            new_content = re.sub(rf"\[ \](\s*\*\*{re.escape(task_id)}\*\*)", r"[x]\1", content)
         else:
             new_content = re.sub(
-                rf'\[x\](\s*\*\*{re.escape(task_id)}\*\*)',
-                r'[ ]\1',
-                content,
-                flags=re.IGNORECASE
+                rf"\[x\](\s*\*\*{re.escape(task_id)}\*\*)", r"[ ]\1", content, flags=re.IGNORECASE
             )
 
         if new_content != content:
@@ -282,9 +275,9 @@ class RoadmapParser:
 """
 
         # Append before Growth Mode section if exists, otherwise at end
-        if '## Growth Mode' in content:
-            content = content.replace('## Growth Mode', f'{new_task_md}\n## Growth Mode')
+        if "## Growth Mode" in content:
+            content = content.replace("## Growth Mode", f"{new_task_md}\n## Growth Mode")
         else:
-            content += f'\n{new_task_md}'
+            content += f"\n{new_task_md}"
 
         self.roadmap_path.write_text(content)

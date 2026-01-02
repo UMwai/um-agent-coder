@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RalphResult:
     """Result from a ralph loop execution."""
+
     success: bool
     iterations: int
     total_duration: timedelta
@@ -199,8 +200,7 @@ class RalphExecutor:
 
         # Max iterations exceeded
         logger.warning(
-            f"Ralph loop exceeded max iterations ({tracker.max_iterations}) "
-            f"for task {task.id}"
+            f"Ralph loop exceeded max iterations ({tracker.max_iterations}) " f"for task {task.id}"
         )
         tracker.mark_exceeded()
         self.persistence.save_tracker(tracker)
@@ -234,34 +234,40 @@ class RalphExecutor:
         ]
 
         if task.success_criteria:
-            prompt_parts.extend([
-                "## Success Criteria",
-                task.success_criteria,
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "## Success Criteria",
+                    task.success_criteria,
+                    "",
+                ]
+            )
 
         if context:
-            prompt_parts.extend([
-                "## Context",
-                context,
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "## Context",
+                    context,
+                    "",
+                ]
+            )
 
         # Add ralph-specific instructions
-        prompt_parts.extend([
-            "## Completion Instructions",
-            "",
-            "This task is running in a ralph loop. When you have FULLY completed",
-            "all requirements and verified they work correctly, output:",
-            "",
-            f"    {promise_format}",
-            "",
-            "**CRITICAL**: Only output this promise when the task is TRULY complete.",
-            "The loop will continue until this promise is detected.",
-            "",
-            "If you cannot complete the task, explain the blocker clearly.",
-            "Do NOT output the promise if the work is incomplete.",
-        ])
+        prompt_parts.extend(
+            [
+                "## Completion Instructions",
+                "",
+                "This task is running in a ralph loop. When you have FULLY completed",
+                "all requirements and verified they work correctly, output:",
+                "",
+                f"    {promise_format}",
+                "",
+                "**CRITICAL**: Only output this promise when the task is TRULY complete.",
+                "The loop will continue until this promise is detected.",
+                "",
+                "If you cannot complete the task, explain the blocker clearly.",
+                "Do NOT output the promise if the work is incomplete.",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 

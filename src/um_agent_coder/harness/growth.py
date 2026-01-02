@@ -75,9 +75,10 @@ RATIONALE: Why this improvement matters (1-2 sentences)
         # Build context from completed work
         completed_summary = self._summarize_completed_tasks(completed_tasks)
         criteria_status = self._format_success_criteria(roadmap.success_criteria)
-        growth_instructions = "\n".join(
-            f"- {inst}" for inst in roadmap.growth_instructions
-        ) or "- Improve performance\n- Add features\n- Optimize for growth"
+        growth_instructions = (
+            "\n".join(f"- {inst}" for inst in roadmap.growth_instructions)
+            or "- Improve performance\n- Add features\n- Optimize for growth"
+        )
 
         prompt = self.GROWTH_PROMPT_TEMPLATE.format(
             project_name=roadmap.name,
@@ -116,7 +117,7 @@ RATIONALE: Why this improvement matters (1-2 sentences)
             lines.append(f"- [{status}] {task.id}: {task.description}")
             if task.output:
                 # Include brief output summary
-                output_preview = task.output[:200].replace('\n', ' ')
+                output_preview = task.output[:200].replace("\n", " ")
                 lines.append(f"  Output: {output_preview}...")
 
         return "\n".join(lines)
@@ -131,39 +132,45 @@ RATIONALE: Why this improvement matters (1-2 sentences)
     def _parse_growth_task(self, output: str) -> Optional[Task]:
         """Parse Codex output into a Task object."""
         try:
-            lines = output.strip().split('\n')
+            lines = output.strip().split("\n")
 
             task_data = {}
             for line in lines:
                 line = line.strip()
-                for key in ['TASK_ID:', 'DESCRIPTION:', 'TIMEOUT:', 'SUCCESS_CRITERIA:', 'RATIONALE:']:
+                for key in [
+                    "TASK_ID:",
+                    "DESCRIPTION:",
+                    "TIMEOUT:",
+                    "SUCCESS_CRITERIA:",
+                    "RATIONALE:",
+                ]:
                     if line.upper().startswith(key):
-                        value = line[len(key):].strip()
-                        task_data[key.replace(':', '').lower()] = value
+                        value = line[len(key) :].strip()
+                        task_data[key.replace(":", "").lower()] = value
                         break
 
-            if 'task_id' not in task_data or 'description' not in task_data:
+            if "task_id" not in task_data or "description" not in task_data:
                 logger.warning(f"Could not parse growth task from output: {output[:200]}")
                 return None
 
             # Ensure unique task ID
-            task_id = task_data['task_id']
-            if not task_id.startswith('growth-'):
+            task_id = task_data["task_id"]
+            if not task_id.startswith("growth-"):
                 task_id = f"growth-{self._growth_counter:03d}"
 
             timeout = 30  # default
-            if 'timeout' in task_data:
+            if "timeout" in task_data:
                 try:
-                    timeout = int(''.join(c for c in task_data['timeout'] if c.isdigit()))
+                    timeout = int("".join(c for c in task_data["timeout"] if c.isdigit()))
                 except ValueError:
                     pass
 
             return Task(
                 id=task_id,
-                description=task_data['description'],
+                description=task_data["description"],
                 phase="Growth",
                 timeout_minutes=timeout,
-                success_criteria=task_data.get('success_criteria', ''),
+                success_criteria=task_data.get("success_criteria", ""),
                 status=TaskStatus.PENDING,
             )
 
