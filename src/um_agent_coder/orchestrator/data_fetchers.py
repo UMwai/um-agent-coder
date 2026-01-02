@@ -16,8 +16,8 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
 from pathlib import Path
+from typing import Any, Optional
 
 try:
     import requests
@@ -28,6 +28,7 @@ except ImportError:
 @dataclass
 class FetchResult:
     """Result from a data fetch operation."""
+
     success: bool
     data: Any
     source: str
@@ -43,7 +44,7 @@ class DataFetcher(ABC):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_ttl = timedelta(hours=cache_ttl_hours)
-        self._memory_cache: Dict[str, FetchResult] = {}
+        self._memory_cache: dict[str, FetchResult] = {}
 
         # Use a persistent session for connection pooling
         self.session = requests.Session() if requests else None
@@ -85,7 +86,7 @@ class DataFetcher(ABC):
             return None
 
         try:
-            with open(cache_path, 'r') as f:
+            with open(cache_path) as f:
                 cached = json.load(f)
 
             fetched_at = datetime.fromisoformat(cached["fetched_at"])
@@ -95,7 +96,7 @@ class DataFetcher(ABC):
                     data=cached["data"],
                     source=self.source_name,
                     fetched_at=cached["fetched_at"],
-                    cached=True
+                    cached=True,
                 )
                 # Populate memory cache
                 self._memory_cache[cache_key] = result
@@ -116,11 +117,8 @@ class DataFetcher(ABC):
         # Update disk cache
         cache_path = self.cache_dir / f"{cache_key}.json"
         try:
-            with open(cache_path, 'w') as f:
-                json.dump({
-                    "data": result.data,
-                    "fetched_at": result.fetched_at
-                }, f)
+            with open(cache_path, "w") as f:
+                json.dump({"data": result.data, "fetched_at": result.fetched_at}, f)
         except Exception:
             pass
 
@@ -140,10 +138,7 @@ class SECEdgarFetcher(DataFetcher):
 
     def __init__(self, user_agent: str = "um-agent-coder/1.0", **kwargs):
         super().__init__(**kwargs)
-        self.headers = {
-            "User-Agent": user_agent,
-            "Accept": "application/json"
-        }
+        self.headers = {"User-Agent": user_agent, "Accept": "application/json"}
         if self.session:
             self.session.headers.update(self.headers)
 
@@ -157,7 +152,7 @@ class SECEdgarFetcher(DataFetcher):
         cik: Optional[str] = None,
         filing_type: str = "10-K",
         limit: int = 10,
-        **kwargs
+        **kwargs,
     ) -> FetchResult:
         """
         Fetch SEC filings.
@@ -173,7 +168,7 @@ class SECEdgarFetcher(DataFetcher):
                 success=False,
                 data=None,
                 source=self.source_name,
-                error="requests library not installed"
+                error="requests library not installed",
             )
 
         # Check cache
@@ -191,7 +186,7 @@ class SECEdgarFetcher(DataFetcher):
                         success=False,
                         data=None,
                         source=self.source_name,
-                        error=f"Could not find CIK for ticker {ticker}"
+                        error=f"Could not find CIK for ticker {ticker}",
                     )
 
             # Format CIK (pad to 10 digits)
@@ -215,12 +210,14 @@ class SECEdgarFetcher(DataFetcher):
 
             for i, form in enumerate(forms[:100]):  # Check first 100
                 if filing_type.upper() in form.upper():
-                    filings.append({
-                        "form": form,
-                        "date": dates[i] if i < len(dates) else None,
-                        "accession": accessions[i] if i < len(accessions) else None,
-                        "document": descriptions[i] if i < len(descriptions) else None
-                    })
+                    filings.append(
+                        {
+                            "form": form,
+                            "date": dates[i] if i < len(dates) else None,
+                            "accession": accessions[i] if i < len(accessions) else None,
+                            "document": descriptions[i] if i < len(descriptions) else None,
+                        }
+                    )
                     if len(filings) >= limit:
                         break
 
@@ -230,26 +227,20 @@ class SECEdgarFetcher(DataFetcher):
                     "company": data.get("name"),
                     "cik": cik,
                     "ticker": ticker,
-                    "filings": filings
+                    "filings": filings,
                 },
-                source=self.source_name
+                source=self.source_name,
             )
 
             self._save_cache(cache_key, result)
             return result
 
         except Exception as e:
-            return FetchResult(
-                success=False,
-                data=None,
-                source=self.source_name,
-                error=str(e)
-            )
+            return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
     def _ticker_to_cik(self, ticker: str) -> Optional[str]:
         """Convert ticker symbol to CIK."""
         try:
-            url = f"{self.BASE_URL}/submissions/CIK-lookup-data.txt"
             # This would need proper implementation
             # For now, return None to indicate lookup needed
             return None
@@ -260,8 +251,10 @@ class SECEdgarFetcher(DataFetcher):
         """Fetch company financial facts."""
         if not self.session:
             return FetchResult(
-                success=False, data=None, source=self.source_name,
-                error="requests library not installed"
+                success=False,
+                data=None,
+                source=self.source_name,
+                error="requests library not installed",
             )
 
         try:
@@ -271,19 +264,10 @@ class SECEdgarFetcher(DataFetcher):
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
-            return FetchResult(
-                success=True,
-                data=response.json(),
-                source=self.source_name
-            )
+            return FetchResult(success=True, data=response.json(), source=self.source_name)
 
         except Exception as e:
-            return FetchResult(
-                success=False,
-                data=None,
-                source=self.source_name,
-                error=str(e)
-            )
+            return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
 
 class YahooFinanceFetcher(DataFetcher):
@@ -300,11 +284,7 @@ class YahooFinanceFetcher(DataFetcher):
         return "yahoo_finance"
 
     def fetch(
-        self,
-        ticker: str,
-        include_financials: bool = True,
-        include_profile: bool = True,
-        **kwargs
+        self, ticker: str, include_financials: bool = True, include_profile: bool = True, **kwargs
     ) -> FetchResult:
         """
         Fetch stock data for a ticker.
@@ -319,7 +299,7 @@ class YahooFinanceFetcher(DataFetcher):
                 success=False,
                 data=None,
                 source=self.source_name,
-                error="requests library not installed"
+                error="requests library not installed",
             )
 
         cache_key = self._get_cache_key(ticker=ticker)
@@ -333,14 +313,12 @@ class YahooFinanceFetcher(DataFetcher):
             if include_profile:
                 modules.append("assetProfile")
             if include_financials:
-                modules.extend(["incomeStatementHistory", "balanceSheetHistory", "cashflowStatementHistory"])
+                modules.extend(
+                    ["incomeStatementHistory", "balanceSheetHistory", "cashflowStatementHistory"]
+                )
 
             url = f"{self.BASE_URL}/chart/{ticker}"
-            params = {
-                "modules": ",".join(modules),
-                "interval": "1d",
-                "range": "1mo"
-            }
+            params = {"modules": ",".join(modules), "interval": "1d", "range": "1mo"}
 
             response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
@@ -362,24 +340,15 @@ class YahooFinanceFetcher(DataFetcher):
                 quote_data = quote_response.json()
                 data["summary"] = quote_data.get("quoteSummary", {}).get("result", [{}])[0]
 
-            result = FetchResult(
-                success=True,
-                data=data,
-                source=self.source_name
-            )
+            result = FetchResult(success=True, data=data, source=self.source_name)
 
             self._save_cache(cache_key, result)
             return result
 
         except Exception as e:
-            return FetchResult(
-                success=False,
-                data=None,
-                source=self.source_name,
-                error=str(e)
-            )
+            return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
-    def fetch_multiple(self, tickers: List[str]) -> Dict[str, FetchResult]:
+    def fetch_multiple(self, tickers: list[str]) -> dict[str, FetchResult]:
         """Fetch data for multiple tickers."""
         results = {}
         for ticker in tickers:
@@ -406,7 +375,7 @@ class ClinicalTrialsFetcher(DataFetcher):
         phase: Optional[str] = None,
         status: str = "RECRUITING,ACTIVE_NOT_RECRUITING",
         limit: int = 50,
-        **kwargs
+        **kwargs,
     ) -> FetchResult:
         """
         Fetch clinical trials.
@@ -423,7 +392,7 @@ class ClinicalTrialsFetcher(DataFetcher):
                 success=False,
                 data=None,
                 source=self.source_name,
-                error="requests library not installed"
+                error="requests library not installed",
             )
 
         cache_key = self._get_cache_key(sponsor=sponsor, condition=condition, phase=phase)
@@ -434,11 +403,7 @@ class ClinicalTrialsFetcher(DataFetcher):
         try:
             url = f"{self.BASE_URL}/studies"
 
-            params = {
-                "format": "json",
-                "pageSize": min(limit, 100),
-                "countTotal": "true"
-            }
+            params = {"format": "json", "pageSize": min(limit, 100), "countTotal": "true"}
 
             # Build query
             query_parts = []
@@ -470,35 +435,31 @@ class ClinicalTrialsFetcher(DataFetcher):
                 design_module = protocol.get("designModule", {})
                 sponsor_module = protocol.get("sponsorCollaboratorsModule", {})
 
-                trials.append({
-                    "nct_id": id_module.get("nctId"),
-                    "title": id_module.get("briefTitle"),
-                    "status": status_module.get("overallStatus"),
-                    "phase": design_module.get("phases", []),
-                    "sponsor": sponsor_module.get("leadSponsor", {}).get("name"),
-                    "start_date": status_module.get("startDateStruct", {}).get("date"),
-                    "completion_date": status_module.get("completionDateStruct", {}).get("date")
-                })
+                trials.append(
+                    {
+                        "nct_id": id_module.get("nctId"),
+                        "title": id_module.get("briefTitle"),
+                        "status": status_module.get("overallStatus"),
+                        "phase": design_module.get("phases", []),
+                        "sponsor": sponsor_module.get("leadSponsor", {}).get("name"),
+                        "start_date": status_module.get("startDateStruct", {}).get("date"),
+                        "completion_date": status_module.get("completionDateStruct", {}).get(
+                            "date"
+                        ),
+                    }
+                )
 
             result = FetchResult(
                 success=True,
-                data={
-                    "total_count": data.get("totalCount", len(trials)),
-                    "trials": trials
-                },
-                source=self.source_name
+                data={"total_count": data.get("totalCount", len(trials)), "trials": trials},
+                source=self.source_name,
             )
 
             self._save_cache(cache_key, result)
             return result
 
         except Exception as e:
-            return FetchResult(
-                success=False,
-                data=None,
-                source=self.source_name,
-                error=str(e)
-            )
+            return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
 
 class NewsFetcher(DataFetcher):
@@ -518,13 +479,7 @@ class NewsFetcher(DataFetcher):
         super().__init__(**kwargs)
         self.api_key = api_key or os.getenv("NEWS_API_KEY")
 
-    def fetch(
-        self,
-        query: str,
-        days_back: int = 7,
-        limit: int = 20,
-        **kwargs
-    ) -> FetchResult:
+    def fetch(self, query: str, days_back: int = 7, limit: int = 20, **kwargs) -> FetchResult:
         """
         Fetch news articles.
 
@@ -538,7 +493,7 @@ class NewsFetcher(DataFetcher):
                 success=False,
                 data=None,
                 source=self.source_name,
-                error="requests library not installed"
+                error="requests library not installed",
             )
 
         cache_key = self._get_cache_key(query=query, days_back=days_back)
@@ -564,7 +519,7 @@ class NewsFetcher(DataFetcher):
                 "from": from_date,
                 "sortBy": "relevancy",
                 "pageSize": min(limit, 100),
-                "apiKey": self.api_key
+                "apiKey": self.api_key,
             }
 
             response = self.session.get(url, params=params, timeout=30)
@@ -578,7 +533,7 @@ class NewsFetcher(DataFetcher):
                     "source": a.get("source", {}).get("name"),
                     "published": a.get("publishedAt"),
                     "url": a.get("url"),
-                    "description": a.get("description")
+                    "description": a.get("description"),
                 }
                 for a in data.get("articles", [])
             ]
@@ -586,19 +541,14 @@ class NewsFetcher(DataFetcher):
             result = FetchResult(
                 success=True,
                 data={"articles": articles, "total": data.get("totalResults", len(articles))},
-                source=self.source_name
+                source=self.source_name,
             )
 
             self._save_cache(self._get_cache_key(query=query, days_back=days_back), result)
             return result
 
         except Exception as e:
-            return FetchResult(
-                success=False,
-                data=None,
-                source=self.source_name,
-                error=str(e)
-            )
+            return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
     def _fetch_google_news(self, query: str, limit: int) -> FetchResult:
         """Fetch from Google News RSS."""
@@ -614,41 +564,34 @@ class NewsFetcher(DataFetcher):
             # Parse RSS (basic parsing without external library)
             import re
 
-            items = re.findall(r'<item>(.*?)</item>', response.text, re.DOTALL)
+            items = re.findall(r"<item>(.*?)</item>", response.text, re.DOTALL)
 
             articles = []
             for item in items[:limit]:
-                title = re.search(r'<title>(.*?)</title>', item)
-                link = re.search(r'<link>(.*?)</link>', item)
-                pub_date = re.search(r'<pubDate>(.*?)</pubDate>', item)
+                title = re.search(r"<title>(.*?)</title>", item)
+                link = re.search(r"<link>(.*?)</link>", item)
+                pub_date = re.search(r"<pubDate>(.*?)</pubDate>", item)
 
-                articles.append({
-                    "title": title.group(1) if title else None,
-                    "url": link.group(1) if link else None,
-                    "published": pub_date.group(1) if pub_date else None,
-                    "source": "Google News"
-                })
+                articles.append(
+                    {
+                        "title": title.group(1) if title else None,
+                        "url": link.group(1) if link else None,
+                        "published": pub_date.group(1) if pub_date else None,
+                        "source": "Google News",
+                    }
+                )
 
-            return FetchResult(
-                success=True,
-                data={"articles": articles},
-                source=self.source_name
-            )
+            return FetchResult(success=True, data={"articles": articles}, source=self.source_name)
 
         except Exception as e:
-            return FetchResult(
-                success=False,
-                data=None,
-                source=self.source_name,
-                error=str(e)
-            )
+            return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
 
 class DataFetcherRegistry:
     """Registry of available data fetchers."""
 
     def __init__(self):
-        self.fetchers: Dict[str, DataFetcher] = {}
+        self.fetchers: dict[str, DataFetcher] = {}
 
         # Register default fetchers
         self.register("sec_edgar", SECEdgarFetcher())
@@ -669,13 +612,10 @@ class DataFetcherRegistry:
         fetcher = self.get(source)
         if not fetcher:
             return FetchResult(
-                success=False,
-                data=None,
-                source=source,
-                error=f"Unknown data source: {source}"
+                success=False, data=None, source=source, error=f"Unknown data source: {source}"
             )
         return fetcher.fetch(**kwargs)
 
-    def list_sources(self) -> List[str]:
+    def list_sources(self) -> list[str]:
         """List available data sources."""
         return list(self.fetchers.keys())

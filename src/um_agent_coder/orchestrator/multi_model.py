@@ -13,18 +13,16 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable
 from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Optional
 
-from .task_decomposer import (
-    DecomposedTask, SubTask, SubTaskType, ModelRole,
-    TaskDecomposer
-)
+from .task_decomposer import DecomposedTask, ModelRole, SubTask, TaskDecomposer
 
 
 class PipelineStatus(Enum):
     """Status of the overall pipeline."""
+
     PENDING = "pending"
     RUNNING = "running"
     PAUSED = "paused"
@@ -35,15 +33,16 @@ class PipelineStatus(Enum):
 @dataclass
 class PipelineStep:
     """A single step in the execution pipeline."""
+
     subtask: SubTask
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
-    input_data: Dict[str, Any] = field(default_factory=dict)
+    input_data: dict[str, Any] = field(default_factory=dict)
     output_data: Optional[Any] = None
     error: Optional[str] = None
     retries: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "subtask": self.subtask.to_dict(),
             "started_at": self.started_at,
@@ -51,11 +50,11 @@ class PipelineStep:
             "input_data": self.input_data,
             "output_data": self.output_data,
             "error": self.error,
-            "retries": self.retries
+            "retries": self.retries,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'PipelineStep':
+    def from_dict(cls, data: dict[str, Any]) -> "PipelineStep":
         return cls(
             subtask=SubTask.from_dict(data["subtask"]),
             started_at=data.get("started_at"),
@@ -63,23 +62,24 @@ class PipelineStep:
             input_data=data.get("input_data", {}),
             output_data=data.get("output_data"),
             error=data.get("error"),
-            retries=data.get("retries", 0)
+            retries=data.get("retries", 0),
         )
 
 
 @dataclass
 class TaskPipeline:
     """Complete pipeline state for a decomposed task."""
+
     task_id: str
     decomposed_task: DecomposedTask
-    steps: List[PipelineStep]
+    steps: list[PipelineStep]
     status: PipelineStatus
     current_step_index: int = 0
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     final_output: Optional[Any] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "status": self.status.value,
@@ -89,11 +89,11 @@ class TaskPipeline:
             "steps": [step.to_dict() for step in self.steps],
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "final_output": self.final_output
+            "final_output": self.final_output,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TaskPipeline':
+    def from_dict(cls, data: dict[str, Any]) -> "TaskPipeline":
         return cls(
             task_id=data["task_id"],
             status=PipelineStatus(data["status"]),
@@ -102,7 +102,7 @@ class TaskPipeline:
             current_step_index=data.get("current_step_index", 0),
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
-            final_output=data.get("final_output")
+            final_output=data.get("final_output"),
         )
 
 
@@ -135,7 +135,7 @@ class MultiModelOrchestrator:
         codex=None,
         claude=None,
         checkpoint_dir: str = ".pipeline_checkpoints",
-        verbose: bool = True
+        verbose: bool = True,
     ):
         """
         Initialize orchestrator with model instances.
@@ -147,11 +147,7 @@ class MultiModelOrchestrator:
             checkpoint_dir: Directory for pipeline checkpoints
             verbose: Print progress updates
         """
-        self.models = {
-            ModelRole.GEMINI: gemini,
-            ModelRole.CODEX: codex,
-            ModelRole.CLAUDE: claude
-        }
+        self.models = {ModelRole.GEMINI: gemini, ModelRole.CODEX: codex, ModelRole.CLAUDE: claude}
 
         # Use first available model as fallback decomposer
         decomposer_llm = claude or gemini or codex
@@ -168,11 +164,8 @@ class MultiModelOrchestrator:
         self.on_pipeline_complete: Optional[Callable] = None
 
     def run(
-        self,
-        prompt: str,
-        task_id: Optional[str] = None,
-        max_retries: int = 2
-    ) -> Dict[str, Any]:
+        self, prompt: str, task_id: Optional[str] = None, max_retries: int = 2
+    ) -> dict[str, Any]:
         """
         Run a complex task through the multi-model pipeline.
 
@@ -185,11 +178,12 @@ class MultiModelOrchestrator:
             Dict with final output and execution metadata
         """
         import uuid
+
         task_id = task_id or str(uuid.uuid4())[:8]
 
         if self.verbose:
             print(f"\n{'='*60}")
-            print(f"MULTI-MODEL ORCHESTRATOR")
+            print("MULTI-MODEL ORCHESTRATOR")
             print(f"Task ID: {task_id}")
             print(f"{'='*60}")
 
@@ -219,14 +213,14 @@ class MultiModelOrchestrator:
 
         return result
 
-    def resume(self, task_id: str, max_retries: int = 2) -> Dict[str, Any]:
+    def resume(self, task_id: str, max_retries: int = 2) -> dict[str, Any]:
         """Resume a paused or failed pipeline from checkpoint."""
         pipeline = self._load_checkpoint(task_id)
         if not pipeline:
             return {
                 "success": False,
                 "error": f"No checkpoint found for task {task_id}",
-                "task_id": task_id
+                "task_id": task_id,
             }
 
         if self.verbose:
@@ -247,17 +241,10 @@ class MultiModelOrchestrator:
                 steps.append(PipelineStep(subtask=subtask))
 
         return TaskPipeline(
-            task_id=task_id,
-            decomposed_task=decomposed,
-            steps=steps,
-            status=PipelineStatus.PENDING
+            task_id=task_id, decomposed_task=decomposed, steps=steps, status=PipelineStatus.PENDING
         )
 
-    def _execute_pipeline(
-        self,
-        pipeline: TaskPipeline,
-        max_retries: int
-    ) -> Dict[str, Any]:
+    def _execute_pipeline(self, pipeline: TaskPipeline, max_retries: int) -> dict[str, Any]:
         """Execute the pipeline steps."""
         pipeline.status = PipelineStatus.RUNNING
         outputs = {}  # Store outputs by subtask ID
@@ -302,7 +289,9 @@ class MultiModelOrchestrator:
                     success = True
 
                     if self.verbose:
-                        preview = str(output)[:100] + "..." if len(str(output)) > 100 else str(output)
+                        preview = (
+                            str(output)[:100] + "..." if len(str(output)) > 100 else str(output)
+                        )
                         print(f"      -> {preview}")
 
                     # Fire callback
@@ -318,7 +307,7 @@ class MultiModelOrchestrator:
                     if attempt < max_retries:
                         if self.verbose:
                             print(f"      Retry {attempt + 1}/{max_retries}: {e}")
-                        time.sleep(2 ** attempt)  # Exponential backoff
+                        time.sleep(2**attempt)  # Exponential backoff
                     else:
                         step.subtask.status = "failed"
                         if self.verbose:
@@ -335,7 +324,7 @@ class MultiModelOrchestrator:
                     "error": f"Step {step.subtask.id} failed: {step.error}",
                     "completed_steps": i,
                     "total_steps": len(pipeline.steps),
-                    "partial_outputs": outputs
+                    "partial_outputs": outputs,
                 }
 
         # Pipeline completed successfully
@@ -352,10 +341,10 @@ class MultiModelOrchestrator:
             "output": pipeline.final_output,
             "all_outputs": outputs,
             "steps_completed": len(pipeline.steps),
-            "pipeline": pipeline.to_dict()
+            "pipeline": pipeline.to_dict(),
         }
 
-    def _execute_step(self, step: PipelineStep, input_data: Dict[str, Any]) -> Any:
+    def _execute_step(self, step: PipelineStep, input_data: dict[str, Any]) -> Any:
         """Execute a single pipeline step."""
         model = self.models.get(step.subtask.model)
 
@@ -366,10 +355,7 @@ class MultiModelOrchestrator:
         prompt = step.subtask.prompt
 
         if input_data:
-            context = "\n\n".join([
-                f"=== Input from {k} ===\n{v}"
-                for k, v in input_data.items()
-            ])
+            context = "\n\n".join([f"=== Input from {k} ===\n{v}" for k, v in input_data.items()])
             prompt = f"{prompt}\n\n--- CONTEXT FROM PREVIOUS STEPS ---\n{context}"
 
         # Execute
@@ -381,7 +367,7 @@ class MultiModelOrchestrator:
         pipeline.updated_at = datetime.now().isoformat()
         checkpoint_path = self.checkpoint_dir / f"{pipeline.task_id}.json"
 
-        with open(checkpoint_path, 'w') as f:
+        with open(checkpoint_path, "w") as f:
             json.dump(pipeline.to_dict(), f, indent=2, default=str)
 
     def _load_checkpoint(self, task_id: str) -> Optional[TaskPipeline]:
@@ -392,7 +378,7 @@ class MultiModelOrchestrator:
             return None
 
         try:
-            with open(checkpoint_path, 'r') as f:
+            with open(checkpoint_path) as f:
                 data = json.load(f)
 
             return TaskPipeline.from_dict(data)
@@ -401,29 +387,31 @@ class MultiModelOrchestrator:
             print(f"Error loading checkpoint: {e}")
             return None
 
-    def list_pipelines(self) -> List[Dict[str, Any]]:
+    def list_pipelines(self) -> list[dict[str, Any]]:
         """List all pipeline checkpoints."""
         pipelines = []
 
         for checkpoint_file in self.checkpoint_dir.glob("*.json"):
             try:
-                with open(checkpoint_file, 'r') as f:
+                with open(checkpoint_file) as f:
                     data = json.load(f)
 
-                pipelines.append({
-                    "task_id": data["task_id"],
-                    "status": data["status"],
-                    "progress": f"{data.get('current_step_index', 0)}/{data.get('total_steps', 0)}",
-                    "created_at": data.get("created_at"),
-                    "updated_at": data.get("updated_at")
-                })
+                pipelines.append(
+                    {
+                        "task_id": data["task_id"],
+                        "status": data["status"],
+                        "progress": f"{data.get('current_step_index', 0)}/{data.get('total_steps', 0)}",
+                        "created_at": data.get("created_at"),
+                        "updated_at": data.get("updated_at"),
+                    }
+                )
             except Exception:
                 continue
 
         return sorted(pipelines, key=lambda x: x.get("updated_at", ""), reverse=True)
 
 
-def create_orchestrator_from_config(config: Dict[str, Any]) -> MultiModelOrchestrator:
+def create_orchestrator_from_config(config: dict[str, Any]) -> MultiModelOrchestrator:
     """
     Factory function to create orchestrator from config.
 
@@ -448,27 +436,18 @@ def create_orchestrator_from_config(config: Dict[str, Any]) -> MultiModelOrchest
     claude = None
 
     if orch_config.get("gemini"):
-        gemini = MCPLocalLLM(
-            backend="gemini",
-            **orch_config["gemini"]
-        )
+        gemini = MCPLocalLLM(backend="gemini", **orch_config["gemini"])
 
     if orch_config.get("codex"):
-        codex = MCPLocalLLM(
-            backend="codex",
-            **orch_config["codex"]
-        )
+        codex = MCPLocalLLM(backend="codex", **orch_config["codex"])
 
     if orch_config.get("claude"):
-        claude = MCPLocalLLM(
-            backend="claude",
-            **orch_config["claude"]
-        )
+        claude = MCPLocalLLM(backend="claude", **orch_config["claude"])
 
     return MultiModelOrchestrator(
         gemini=gemini,
         codex=codex,
         claude=claude,
         checkpoint_dir=orch_config.get("checkpoint_dir", ".pipeline_checkpoints"),
-        verbose=orch_config.get("verbose", True)
+        verbose=orch_config.get("verbose", True),
     )

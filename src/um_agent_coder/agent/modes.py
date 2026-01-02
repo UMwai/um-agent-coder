@@ -3,13 +3,14 @@ Agent modes inspired by Roo-Code's multi-mode architecture.
 Each mode represents a specialized persona with specific capabilities and approaches.
 """
 
-from enum import Enum
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
 
 
 class AgentMode(Enum):
     """Available agent modes."""
+
     CODE = "code"
     ARCHITECT = "architect"
     ASK = "ask"
@@ -21,15 +22,16 @@ class AgentMode(Enum):
 @dataclass
 class ModeConfig:
     """Configuration for an agent mode."""
+
     name: str
     description: str
     system_prompt: str
     temperature: float = 0.7
     max_tokens: Optional[int] = None
-    preferred_tools: List[str] = None
-    auto_approve_actions: List[str] = None
-    context_priorities: Dict[str, int] = None
-    
+    preferred_tools: list[str] = None
+    auto_approve_actions: list[str] = None
+    context_priorities: dict[str, int] = None
+
     def __post_init__(self):
         if self.preferred_tools is None:
             self.preferred_tools = []
@@ -41,15 +43,15 @@ class ModeConfig:
 
 class ModeManager:
     """Manages different agent modes and their configurations."""
-    
+
     def __init__(self):
-        self.modes: Dict[AgentMode, ModeConfig] = {}
+        self.modes: dict[AgentMode, ModeConfig] = {}
         self._initialize_default_modes()
         self.current_mode: AgentMode = AgentMode.CODE
-    
+
     def _initialize_default_modes(self):
         """Initialize default agent modes."""
-        
+
         # Code Mode - General coding tasks
         self.modes[AgentMode.CODE] = ModeConfig(
             name="Code Mode",
@@ -75,10 +77,10 @@ When implementing features:
                 "project_structure": 9,
                 "related_code": 10,
                 "test_files": 7,
-                "documentation": 6
-            }
+                "documentation": 6,
+            },
         )
-        
+
         # Architect Mode - System design and planning
         self.modes[AgentMode.ARCHITECT] = ModeConfig(
             name="Architect Mode",
@@ -104,10 +106,10 @@ When designing systems:
                 "project_structure": 10,
                 "architecture_docs": 9,
                 "config_files": 8,
-                "interfaces": 8
-            }
+                "interfaces": 8,
+            },
         )
-        
+
         # Ask Mode - Information and Q&A
         self.modes[AgentMode.ASK] = ModeConfig(
             name="Ask Mode",
@@ -129,13 +131,9 @@ When answering questions:
             temperature=0.5,
             preferred_tools=["FileReader", "CodeSearcher", "ProjectAnalyzer"],
             auto_approve_actions=["FileReader", "CodeSearcher", "ProjectAnalyzer"],
-            context_priorities={
-                "documentation": 10,
-                "related_code": 8,
-                "project_info": 7
-            }
+            context_priorities={"documentation": 10, "related_code": 8, "project_info": 7},
         )
-        
+
         # Debug Mode - Problem diagnosis and fixing
         self.modes[AgentMode.DEBUG] = ModeConfig(
             name="Debug Mode",
@@ -161,10 +159,10 @@ When debugging:
                 "error_logs": 10,
                 "stack_traces": 10,
                 "related_code": 9,
-                "test_files": 8
-            }
+                "test_files": 8,
+            },
         )
-        
+
         # Review Mode - Code review and quality assurance
         self.modes[AgentMode.REVIEW] = ModeConfig(
             name="Review Mode",
@@ -190,35 +188,35 @@ When reviewing code:
                 "changed_files": 10,
                 "test_files": 9,
                 "related_code": 8,
-                "style_guides": 7
-            }
+                "style_guides": 7,
+            },
         )
-    
+
     def set_mode(self, mode: AgentMode) -> ModeConfig:
         """Set the current agent mode."""
         if mode not in self.modes:
             raise ValueError(f"Unknown mode: {mode}")
         self.current_mode = mode
         return self.modes[mode]
-    
+
     def get_current_mode(self) -> ModeConfig:
         """Get the current mode configuration."""
         return self.modes[self.current_mode]
-    
+
     def add_custom_mode(self, name: str, config: ModeConfig):
         """Add a custom mode configuration."""
         self.modes[AgentMode.CUSTOM] = config
-    
+
     def detect_mode_from_prompt(self, prompt: str) -> AgentMode:
         """Detect the appropriate mode from user prompt."""
         prompt_lower = prompt.lower()
-        
+
         # Mode detection keywords
         debug_keywords = ["debug", "fix", "error", "bug", "issue", "problem", "crash", "exception"]
         architect_keywords = ["design", "architecture", "structure", "plan", "scale", "system"]
         ask_keywords = ["what", "how", "why", "explain", "tell me", "describe", "understand"]
         review_keywords = ["review", "check", "audit", "quality", "improve", "refactor"]
-        
+
         # Check for mode indicators
         if any(keyword in prompt_lower for keyword in debug_keywords):
             return AgentMode.DEBUG
@@ -230,19 +228,19 @@ When reviewing code:
             return AgentMode.REVIEW
         else:
             return AgentMode.CODE
-    
+
     def get_mode_prompt(self, mode: Optional[AgentMode] = None) -> str:
         """Get the system prompt for a mode."""
         if mode is None:
             mode = self.current_mode
         return self.modes[mode].system_prompt
-    
-    def get_mode_tools(self, mode: Optional[AgentMode] = None) -> List[str]:
+
+    def get_mode_tools(self, mode: Optional[AgentMode] = None) -> list[str]:
         """Get preferred tools for a mode."""
         if mode is None:
             mode = self.current_mode
         return self.modes[mode].preferred_tools
-    
+
     def should_auto_approve(self, action: str, mode: Optional[AgentMode] = None) -> bool:
         """Check if an action should be auto-approved in the current mode."""
         if mode is None:

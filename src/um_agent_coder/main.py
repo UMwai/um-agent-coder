@@ -1,8 +1,10 @@
 import argparse
 import os
+
+from um_agent_coder.agent.agent import Agent
 from um_agent_coder.config import Config
 from um_agent_coder.llm.providers.openai import OpenAILLM
-from um_agent_coder.agent.agent import Agent
+
 
 def main():
     """
@@ -24,9 +26,9 @@ def main():
         os.makedirs(os.path.dirname(args.config), exist_ok=True)
         with open(args.config, "w") as f:
             f.write(
-                'llm:\\n'
-                '  provider: openai\\n'
-                '  openai:\\n'
+                "llm:\\n"
+                "  provider: openai\\n"
+                "  openai:\\n"
                 '    api_key: "YOUR_OPENAI_API_KEY"\\n'
                 '    model: "gpt-3.5-turbo"\\n'
             )
@@ -61,6 +63,7 @@ def main():
 
     # Print the response
     print(response)
+
 
 if __name__ == "__main__":
     main()

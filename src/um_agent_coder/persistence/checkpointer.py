@@ -7,17 +7,17 @@ and resume from exactly where they left off.
 """
 
 import json
-import os
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 class TaskStatus(Enum):
     """Status of a long-running task."""
+
     PENDING = "pending"
     RUNNING = "running"
     PAUSED = "paused"
@@ -28,12 +28,13 @@ class TaskStatus(Enum):
 @dataclass
 class StepState:
     """State of a single execution step."""
+
     step_index: int
     description: str
     action: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     status: str  # pending, completed, failed
-    result: Optional[Dict[str, Any]] = None
+    result: Optional[dict[str, Any]] = None
     error: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -50,6 +51,7 @@ class TaskState:
     - Context and cost tracking state
     - Timing information
     """
+
     # Identity
     task_id: str
     prompt: str
@@ -59,16 +61,16 @@ class TaskState:
     current_step: int
 
     # Execution state
-    steps: List[StepState] = field(default_factory=list)
+    steps: list[StepState] = field(default_factory=list)
 
     # Context state (serialized from ContextManager)
-    context_items: List[Dict[str, Any]] = field(default_factory=list)
+    context_items: list[dict[str, Any]] = field(default_factory=list)
 
     # Cost tracking state (serialized from CostTracker)
-    cost_state: Dict[str, Any] = field(default_factory=dict)
+    cost_state: dict[str, Any] = field(default_factory=dict)
 
     # Task analysis (for resume without re-analyzing)
-    task_analysis: Optional[Dict[str, Any]] = None
+    task_analysis: Optional[dict[str, Any]] = None
 
     # Timing
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -76,16 +78,16 @@ class TaskState:
     completed_at: Optional[str] = None
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = asdict(self)
         data["status"] = self.status.value
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskState":
+    def from_dict(cls, data: dict[str, Any]) -> "TaskState":
         """Create from dictionary (JSON deserialization)."""
         data = data.copy()
         data["status"] = TaskStatus(data["status"])
@@ -93,8 +95,7 @@ class TaskState:
         # Convert steps back to StepState objects
         if "steps" in data:
             data["steps"] = [
-                StepState(**step) if isinstance(step, dict) else step
-                for step in data["steps"]
+                StepState(**step) if isinstance(step, dict) else step for step in data["steps"]
             ]
 
         return cls(**data)
@@ -161,7 +162,7 @@ class TaskCheckpointer:
 
             # Save current state
             task_path = self._get_task_path(state.task_id)
-            with open(task_path, 'w') as f:
+            with open(task_path, "w") as f:
                 json.dump(state.to_dict(), f, indent=2)
 
             # Optionally save versioned copy
@@ -170,7 +171,7 @@ class TaskCheckpointer:
                 history_dir.mkdir(parents=True, exist_ok=True)
 
                 version_file = history_dir / f"{int(time.time() * 1000)}.json"
-                with open(version_file, 'w') as f:
+                with open(version_file, "w") as f:
                     json.dump(state.to_dict(), f, indent=2)
 
             return True
@@ -195,7 +196,7 @@ class TaskCheckpointer:
             return None
 
         try:
-            with open(task_path, 'r') as f:
+            with open(task_path) as f:
                 data = json.load(f)
             return TaskState.from_dict(data)
         except Exception as e:
@@ -219,14 +220,14 @@ class TaskCheckpointer:
             return None
 
         try:
-            with open(version_file, 'r') as f:
+            with open(version_file) as f:
                 data = json.load(f)
             return TaskState.from_dict(data)
         except Exception as e:
             print(f"Error loading checkpoint version: {e}")
             return None
 
-    def list_versions(self, task_id: str) -> List[Dict[str, Any]]:
+    def list_versions(self, task_id: str) -> list[dict[str, Any]]:
         """
         List all versions of a task checkpoint.
 
@@ -241,11 +242,13 @@ class TaskCheckpointer:
         versions = []
         for version_file in sorted(history_dir.glob("*.json"), reverse=True):
             ts = int(version_file.stem)
-            versions.append({
-                "timestamp": ts,
-                "datetime": datetime.fromtimestamp(ts / 1000).isoformat(),
-                "path": str(version_file)
-            })
+            versions.append(
+                {
+                    "timestamp": ts,
+                    "datetime": datetime.fromtimestamp(ts / 1000).isoformat(),
+                    "path": str(version_file),
+                }
+            )
 
         return versions
 
@@ -277,7 +280,7 @@ class TaskCheckpointer:
             print(f"Error deleting checkpoint: {e}")
             return False
 
-    def list_tasks(self, status_filter: Optional[TaskStatus] = None) -> List[Dict[str, Any]]:
+    def list_tasks(self, status_filter: Optional[TaskStatus] = None) -> list[dict[str, Any]]:
         """
         List all tasks with their current status.
 
@@ -291,7 +294,7 @@ class TaskCheckpointer:
 
         for task_file in self.storage_path.glob("*.json"):
             try:
-                with open(task_file, 'r') as f:
+                with open(task_file) as f:
                     data = json.load(f)
 
                 task_status = TaskStatus(data.get("status", "pending"))
@@ -304,16 +307,24 @@ class TaskCheckpointer:
                 completed_steps = sum(1 for s in steps if s.get("status") == "completed")
                 total_steps = len(steps)
 
-                tasks.append({
-                    "task_id": data["task_id"],
-                    "prompt": data["prompt"][:80] + "..." if len(data["prompt"]) > 80 else data["prompt"],
-                    "status": task_status.value,
-                    "progress": f"{completed_steps}/{total_steps}",
-                    "progress_pct": (completed_steps / total_steps * 100) if total_steps > 0 else 0,
-                    "created_at": data.get("created_at"),
-                    "updated_at": data.get("updated_at"),
-                    "current_step": data.get("current_step", 0)
-                })
+                tasks.append(
+                    {
+                        "task_id": data["task_id"],
+                        "prompt": (
+                            data["prompt"][:80] + "..."
+                            if len(data["prompt"]) > 80
+                            else data["prompt"]
+                        ),
+                        "status": task_status.value,
+                        "progress": f"{completed_steps}/{total_steps}",
+                        "progress_pct": (
+                            (completed_steps / total_steps * 100) if total_steps > 0 else 0
+                        ),
+                        "created_at": data.get("created_at"),
+                        "updated_at": data.get("updated_at"),
+                        "current_step": data.get("current_step", 0),
+                    }
+                )
 
             except Exception as e:
                 print(f"Error reading task file {task_file}: {e}")
@@ -324,7 +335,7 @@ class TaskCheckpointer:
 
         return tasks
 
-    def get_resumable_tasks(self) -> List[Dict[str, Any]]:
+    def get_resumable_tasks(self) -> list[dict[str, Any]]:
         """
         Get all tasks that can be resumed (running or paused).
 
@@ -333,7 +344,8 @@ class TaskCheckpointer:
         """
         all_tasks = self.list_tasks()
         return [
-            t for t in all_tasks
+            t
+            for t in all_tasks
             if t["status"] in [TaskStatus.RUNNING.value, TaskStatus.PAUSED.value]
         ]
 

@@ -1,3 +1,3 @@
-from .registry import ModelRegistry, ModelInfo, ModelCategory
+from .registry import ModelCategory, ModelInfo, ModelRegistry
 
 __all__ = ["ModelRegistry", "ModelInfo", "ModelCategory"]

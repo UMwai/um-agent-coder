@@ -17,7 +17,7 @@ class Config:
         Returns:
             A dictionary containing the configuration.
         """
-        with open(self.config_path, 'r') as f:
+        with open(self.config_path) as f:
             return yaml.safe_load(f)
 
     def get(self, key: str, default=None):
@@ -31,7 +31,7 @@ class Config:
         Returns:
             The configuration value.
         """
-        keys = key.split('.')
+        keys = key.split(".")
         value = self.config
         for k in keys:
             if isinstance(value, dict):

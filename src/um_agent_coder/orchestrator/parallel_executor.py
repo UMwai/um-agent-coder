@@ -14,31 +14,32 @@ import json
 import os
 import subprocess
 import threading
-import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
-from queue import Queue, Empty
+from queue import Queue
+from typing import Any, Callable, Optional
 
-from .task_decomposer import SubTask, ModelRole, DecomposedTask
 from .claude_subagent import ClaudeCodeSubagentSpawner, SubagentType
+from .task_decomposer import DecomposedTask, ModelRole, SubTask
 
 
 class ExecutionMode(Enum):
     """How to execute subtasks."""
-    SEQUENTIAL = "sequential"      # One at a time
-    PARALLEL_THREADS = "threads"   # ThreadPoolExecutor
-    PARALLEL_ASYNC = "async"       # asyncio
-    SUBAGENT_SPAWN = "subagent"    # Spawn separate processes (legacy)
+
+    SEQUENTIAL = "sequential"  # One at a time
+    PARALLEL_THREADS = "threads"  # ThreadPoolExecutor
+    PARALLEL_ASYNC = "async"  # asyncio
+    SUBAGENT_SPAWN = "subagent"  # Spawn separate processes (legacy)
     CLAUDE_CODE_SPAWN = "claude_code"  # Spawn using ClaudeCodeSubagentSpawner
 
 
 @dataclass
 class SubagentResult:
     """Result from a subagent execution."""
+
     subtask_id: str
     success: bool
     output: Any
@@ -56,9 +57,10 @@ class ExecutionGraph:
 
     Tracks which tasks can run in parallel vs. which must wait.
     """
-    subtasks: Dict[str, SubTask]
-    dependencies: Dict[str, Set[str]]  # task_id -> set of task_ids it depends on
-    dependents: Dict[str, Set[str]]    # task_id -> set of task_ids that depend on it
+
+    subtasks: dict[str, SubTask]
+    dependencies: dict[str, set[str]]  # task_id -> set of task_ids it depends on
+    dependents: dict[str, set[str]]  # task_id -> set of task_ids that depend on it
 
     @classmethod
     def from_decomposed_task(cls, task: DecomposedTask) -> "ExecutionGraph":
@@ -67,19 +69,15 @@ class ExecutionGraph:
         dependencies = {st.id: set(st.depends_on) for st in task.subtasks}
 
         # Build reverse dependency map
-        dependents: Dict[str, Set[str]] = {st.id: set() for st in task.subtasks}
+        dependents: dict[str, set[str]] = {st.id: set() for st in task.subtasks}
         for task_id, deps in dependencies.items():
             for dep in deps:
                 if dep in dependents:
                     dependents[dep].add(task_id)
 
-        return cls(
-            subtasks=subtasks,
-            dependencies=dependencies,
-            dependents=dependents
-        )
+        return cls(subtasks=subtasks, dependencies=dependencies, dependents=dependents)
 
-    def get_ready_tasks(self, completed: Set[str]) -> List[str]:
+    def get_ready_tasks(self, completed: set[str]) -> list[str]:
         """Get tasks that are ready to execute (all dependencies met)."""
         ready = []
         for task_id, deps in self.dependencies.items():
@@ -87,7 +85,7 @@ class ExecutionGraph:
                 ready.append(task_id)
         return ready
 
-    def get_parallel_groups(self) -> List[List[str]]:
+    def get_parallel_groups(self) -> list[list[str]]:
         """
         Get tasks grouped by execution level.
 
@@ -95,8 +93,8 @@ class ExecutionGraph:
         Level 1: Tasks that depend only on level 0 (can run in parallel after level 0)
         etc.
         """
-        completed: Set[str] = set()
-        groups: List[List[str]] = []
+        completed: set[str] = set()
+        groups: list[list[str]] = []
         remaining = set(self.subtasks.keys())
 
         while remaining:
@@ -143,12 +141,12 @@ class ParallelExecutor:
         human_approval_callback: Optional[Callable] = None,
         verbose: bool = True,
         use_claude_code_spawner: bool = True,
-        claude_spawner_fallback: bool = True
+        claude_spawner_fallback: bool = True,
     ):
         self.models = {
             ModelRole.GEMINI: gemini_llm,
             ModelRole.CODEX: codex_llm,
-            ModelRole.CLAUDE: claude_llm
+            ModelRole.CLAUDE: claude_llm,
         }
 
         self.max_workers = max_workers
@@ -161,15 +159,19 @@ class ParallelExecutor:
 
         # Claude Code subagent spawner
         self.use_claude_code_spawner = use_claude_code_spawner
-        self.claude_spawner = ClaudeCodeSubagentSpawner(
-            use_task_tool=True,
-            fallback_to_subprocess=claude_spawner_fallback,
-            verbose=verbose,
-            checkpoint_dir=str(self.checkpoint_dir / "claude_subagents")
-        ) if use_claude_code_spawner else None
+        self.claude_spawner = (
+            ClaudeCodeSubagentSpawner(
+                use_task_tool=True,
+                fallback_to_subprocess=claude_spawner_fallback,
+                verbose=verbose,
+                checkpoint_dir=str(self.checkpoint_dir / "claude_subagents"),
+            )
+            if use_claude_code_spawner
+            else None
+        )
 
         # Execution state
-        self.results: Dict[str, SubagentResult] = {}
+        self.results: dict[str, SubagentResult] = {}
         self.lock = threading.Lock()
 
         # Human-in-the-loop control
@@ -180,8 +182,8 @@ class ParallelExecutor:
         self,
         task: DecomposedTask,
         task_id: Optional[str] = None,
-        require_approval_at: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        require_approval_at: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
         """
         Execute all subtasks with parallelization.
 
@@ -202,7 +204,7 @@ class ParallelExecutor:
 
         if self.verbose:
             print(f"\n{'='*60}")
-            print(f"PARALLEL EXECUTOR")
+            print("PARALLEL EXECUTOR")
             print(f"{'='*60}")
             print(f"Task ID: {task_id}")
             print(f"Total subtasks: {len(task.subtasks)}")
@@ -212,8 +214,8 @@ class ParallelExecutor:
             print(f"{'='*60}\n")
 
         # Execute by level
-        completed: Set[str] = set()
-        all_results: Dict[str, SubagentResult] = {}
+        completed: set[str] = set()
+        all_results: dict[str, SubagentResult] = {}
 
         for level, group in enumerate(parallel_groups):
             if self.verbose:
@@ -228,15 +230,12 @@ class ParallelExecutor:
                         "task_id": task_id,
                         "error": "Human approval denied",
                         "completed_tasks": list(completed),
-                        "results": {k: v.output for k, v in all_results.items()}
+                        "results": {k: v.output for k, v in all_results.items()},
                     }
 
             # Execute group in parallel
             group_results = self._execute_parallel_group(
-                group,
-                graph.subtasks,
-                all_results,
-                task_id
+                group, graph.subtasks, all_results, task_id
             )
 
             # Collect results
@@ -251,7 +250,7 @@ class ParallelExecutor:
                         "task_id": task_id,
                         "error": f"Subtask {subtask_id} failed: {result.error}",
                         "completed_tasks": list(completed),
-                        "results": {k: v.output for k, v in all_results.items()}
+                        "results": {k: v.output for k, v in all_results.items()},
                     }
 
             # Checkpoint after each level
@@ -259,9 +258,9 @@ class ParallelExecutor:
 
         # Get final output (from last task in execution order)
         final_task_id = task.execution_order[-1] if task.execution_order else None
-        final_output = all_results.get(final_task_id, SubagentResult(
-            subtask_id="", success=False, output=None
-        )).output
+        final_output = all_results.get(
+            final_task_id, SubagentResult(subtask_id="", success=False, output=None)
+        ).output
 
         return {
             "success": True,
@@ -271,17 +270,17 @@ class ParallelExecutor:
             "execution_summary": {
                 "total_tasks": len(task.subtasks),
                 "completed": len(completed),
-                "parallel_levels": len(parallel_groups)
-            }
+                "parallel_levels": len(parallel_groups),
+            },
         }
 
     def _execute_parallel_group(
         self,
-        group: List[str],
-        subtasks: Dict[str, SubTask],
-        prior_results: Dict[str, SubagentResult],
-        task_id: str
-    ) -> Dict[str, SubagentResult]:
+        group: list[str],
+        subtasks: dict[str, SubTask],
+        prior_results: dict[str, SubagentResult],
+        task_id: str,
+    ) -> dict[str, SubagentResult]:
         """Execute a group of independent tasks in parallel."""
 
         if self.execution_mode == ExecutionMode.SEQUENTIAL:
@@ -291,9 +290,7 @@ class ParallelExecutor:
             return self._execute_threaded(group, subtasks, prior_results)
 
         elif self.execution_mode == ExecutionMode.PARALLEL_ASYNC:
-            return asyncio.run(
-                self._execute_async(group, subtasks, prior_results)
-            )
+            return asyncio.run(self._execute_async(group, subtasks, prior_results))
 
         elif self.execution_mode == ExecutionMode.CLAUDE_CODE_SPAWN:
             return self._execute_claude_code_subagents(group, subtasks, prior_results, task_id)
@@ -306,10 +303,10 @@ class ParallelExecutor:
 
     def _execute_sequential(
         self,
-        group: List[str],
-        subtasks: Dict[str, SubTask],
-        prior_results: Dict[str, SubagentResult]
-    ) -> Dict[str, SubagentResult]:
+        group: list[str],
+        subtasks: dict[str, SubTask],
+        prior_results: dict[str, SubagentResult],
+    ) -> dict[str, SubagentResult]:
         """Execute tasks one at a time."""
         results = {}
         for task_id in group:
@@ -319,19 +316,17 @@ class ParallelExecutor:
 
     def _execute_threaded(
         self,
-        group: List[str],
-        subtasks: Dict[str, SubTask],
-        prior_results: Dict[str, SubagentResult]
-    ) -> Dict[str, SubagentResult]:
+        group: list[str],
+        subtasks: dict[str, SubTask],
+        prior_results: dict[str, SubagentResult],
+    ) -> dict[str, SubagentResult]:
         """Execute tasks in parallel using threads."""
         results = {}
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_task = {
                 executor.submit(
-                    self._execute_single_task,
-                    subtasks[task_id],
-                    prior_results
+                    self._execute_single_task, subtasks[task_id], prior_results
                 ): task_id
                 for task_id in group
             }
@@ -342,30 +337,24 @@ class ParallelExecutor:
                     results[task_id] = future.result()
                 except Exception as e:
                     results[task_id] = SubagentResult(
-                        subtask_id=task_id,
-                        success=False,
-                        output=None,
-                        error=str(e)
+                        subtask_id=task_id, success=False, output=None, error=str(e)
                     )
 
         return results
 
     async def _execute_async(
         self,
-        group: List[str],
-        subtasks: Dict[str, SubTask],
-        prior_results: Dict[str, SubagentResult]
-    ) -> Dict[str, SubagentResult]:
+        group: list[str],
+        subtasks: dict[str, SubTask],
+        prior_results: dict[str, SubagentResult],
+    ) -> dict[str, SubagentResult]:
         """Execute tasks in parallel using asyncio."""
 
         async def run_task(task_id: str) -> tuple:
             # Run in thread pool since LLM calls are blocking
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
-                None,
-                self._execute_single_task,
-                subtasks[task_id],
-                prior_results
+                None, self._execute_single_task, subtasks[task_id], prior_results
             )
             return task_id, result
 
@@ -383,11 +372,11 @@ class ParallelExecutor:
 
     def _execute_claude_code_subagents(
         self,
-        group: List[str],
-        subtasks: Dict[str, SubTask],
-        prior_results: Dict[str, SubagentResult],
-        parent_task_id: str
-    ) -> Dict[str, SubagentResult]:
+        group: list[str],
+        subtasks: dict[str, SubTask],
+        prior_results: dict[str, SubagentResult],
+        parent_task_id: str,
+    ) -> dict[str, SubagentResult]:
         """
         Spawn subagents using ClaudeCodeSubagentSpawner.
 
@@ -420,10 +409,7 @@ class ParallelExecutor:
                 input_data = self._gather_inputs(subtask, prior_results)
 
                 # Determine subagent type
-                subagent_type = model_to_subagent_type.get(
-                    subtask.model,
-                    SubagentType.GENERIC
-                )
+                subagent_type = model_to_subagent_type.get(subtask.model, SubagentType.GENERIC)
 
                 # Build context
                 context = {
@@ -465,7 +451,9 @@ class ParallelExecutor:
 
                     if self.verbose:
                         status = "✓" if claude_result.success else "✗"
-                        print(f"    {status} {task_id} completed in {claude_result.duration_seconds:.2f}s")
+                        print(
+                            f"    {status} {task_id} completed in {claude_result.duration_seconds:.2f}s"
+                        )
 
                 except Exception as e:
                     results[task_id] = SubagentResult(
@@ -484,11 +472,11 @@ class ParallelExecutor:
 
     def _execute_subagents(
         self,
-        group: List[str],
-        subtasks: Dict[str, SubTask],
-        prior_results: Dict[str, SubagentResult],
-        parent_task_id: str
-    ) -> Dict[str, SubagentResult]:
+        group: list[str],
+        subtasks: dict[str, SubTask],
+        prior_results: dict[str, SubagentResult],
+        parent_task_id: str,
+    ) -> dict[str, SubagentResult]:
         """
         Spawn separate subagent processes for each task (legacy method).
 
@@ -505,11 +493,7 @@ class ParallelExecutor:
             input_data = self._gather_inputs(subtask, prior_results)
 
             # Create subagent script
-            script_path = self._create_subagent_script(
-                parent_task_id,
-                subtask,
-                input_data
-            )
+            script_path = self._create_subagent_script(parent_task_id, subtask, input_data)
 
             if self.verbose:
                 print(f"    Spawning subagent for {task_id} [{subtask.model.value}]...")
@@ -519,7 +503,7 @@ class ParallelExecutor:
                 ["python3", str(script_path)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                cwd=os.getcwd()
+                cwd=os.getcwd(),
             )
             processes[task_id] = (proc, script_path, datetime.now().isoformat())
 
@@ -531,14 +515,14 @@ class ParallelExecutor:
 
                 if proc.returncode == 0:
                     # Parse output
-                    output = stdout.decode('utf-8').strip()
+                    output = stdout.decode("utf-8").strip()
                     results[task_id] = SubagentResult(
                         subtask_id=task_id,
                         success=True,
                         output=output,
                         started_at=started_at,
                         completed_at=completed_at,
-                        model_used=subtasks[task_id].model.value
+                        model_used=subtasks[task_id].model.value,
                     )
                     if self.verbose:
                         print(f"    ✓ {task_id} completed")
@@ -547,9 +531,9 @@ class ParallelExecutor:
                         subtask_id=task_id,
                         success=False,
                         output=None,
-                        error=stderr.decode('utf-8'),
+                        error=stderr.decode("utf-8"),
                         started_at=started_at,
-                        completed_at=completed_at
+                        completed_at=completed_at,
                     )
                     if self.verbose:
                         print(f"    ✗ {task_id} failed")
@@ -557,10 +541,7 @@ class ParallelExecutor:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 results[task_id] = SubagentResult(
-                    subtask_id=task_id,
-                    success=False,
-                    output=None,
-                    error="Timeout expired"
+                    subtask_id=task_id, success=False, output=None, error="Timeout expired"
                 )
 
             # Cleanup script
@@ -572,9 +553,7 @@ class ParallelExecutor:
         return results
 
     def _execute_single_task(
-        self,
-        subtask: SubTask,
-        prior_results: Dict[str, SubagentResult]
+        self, subtask: SubTask, prior_results: dict[str, SubagentResult]
     ) -> SubagentResult:
         """Execute a single subtask."""
         started_at = datetime.now().isoformat()
@@ -591,10 +570,9 @@ class ParallelExecutor:
             # Build prompt with context
             prompt = subtask.prompt
             if input_data:
-                context = "\n\n".join([
-                    f"=== Input from {k} ===\n{v}"
-                    for k, v in input_data.items()
-                ])
+                context = "\n\n".join(
+                    [f"=== Input from {k} ===\n{v}" for k, v in input_data.items()]
+                )
                 prompt = f"{prompt}\n\n--- CONTEXT FROM PREVIOUS STEPS ---\n{context}"
 
             if self.verbose:
@@ -613,7 +591,7 @@ class ParallelExecutor:
                 output=output,
                 started_at=started_at,
                 completed_at=datetime.now().isoformat(),
-                model_used=subtask.model.value
+                model_used=subtask.model.value,
             )
 
         except Exception as e:
@@ -626,14 +604,12 @@ class ParallelExecutor:
                 output=None,
                 error=str(e),
                 started_at=started_at,
-                completed_at=datetime.now().isoformat()
+                completed_at=datetime.now().isoformat(),
             )
 
     def _gather_inputs(
-        self,
-        subtask: SubTask,
-        prior_results: Dict[str, SubagentResult]
-    ) -> Dict[str, Any]:
+        self, subtask: SubTask, prior_results: dict[str, SubagentResult]
+    ) -> dict[str, Any]:
         """Gather inputs from upstream tasks."""
         inputs = {}
         for dep_id in subtask.input_from:
@@ -642,10 +618,7 @@ class ParallelExecutor:
         return inputs
 
     def _create_subagent_script(
-        self,
-        parent_task_id: str,
-        subtask: SubTask,
-        input_data: Dict[str, Any]
+        self, parent_task_id: str, subtask: SubTask, input_data: dict[str, Any]
     ) -> Path:
         """Create a temporary Python script for subagent execution."""
         script_content = f'''#!/usr/bin/env python3
@@ -682,10 +655,7 @@ except Exception as e:
         return script_path
 
     def _request_human_approval(
-        self,
-        task_id: str,
-        subtask_ids: List[str],
-        current_results: Dict[str, SubagentResult]
+        self, task_id: str, subtask_ids: list[str], current_results: dict[str, SubagentResult]
     ) -> bool:
         """Request human approval before proceeding."""
         if self.human_approval_callback:
@@ -705,13 +675,10 @@ except Exception as e:
                 print(f"  {status} {st_id}")
 
         response = input("\nProceed? (y/n): ").strip().lower()
-        return response == 'y'
+        return response == "y"
 
     def _save_checkpoint(
-        self,
-        task_id: str,
-        results: Dict[str, SubagentResult],
-        completed: Set[str]
+        self, task_id: str, results: dict[str, SubagentResult], completed: set[str]
     ):
         """Save execution checkpoint."""
         checkpoint = {
@@ -722,25 +689,25 @@ except Exception as e:
                     "success": v.success,
                     "output": v.output,
                     "error": v.error,
-                    "model": v.model_used
+                    "model": v.model_used,
                 }
                 for k, v in results.items()
             },
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         path = self.checkpoint_dir / f"{task_id}_checkpoint.json"
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(checkpoint, f, indent=2, default=str)
 
     def request_pause(self):
         """Request pause at next checkpoint."""
         self.pause_requested = True
 
-    def resume_from_checkpoint(self, task_id: str) -> Optional[Dict]:
+    def resume_from_checkpoint(self, task_id: str) -> Optional[dict]:
         """Load checkpoint for resuming."""
         path = self.checkpoint_dir / f"{task_id}_checkpoint.json"
         if path.exists():
-            with open(path, 'r') as f:
+            with open(path) as f:
                 return json.load(f)
         return None

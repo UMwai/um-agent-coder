@@ -1,22 +1,22 @@
-from .multi_model import MultiModelOrchestrator, TaskPipeline, PipelineStep
-from .task_decomposer import TaskDecomposer, SubTask, DecomposedTask, ModelRole
-from .parallel_executor import ParallelExecutor, ExecutionMode, ExecutionGraph
-from .claude_subagent import ClaudeCodeSubagentSpawner, SubagentType, SubagentConfig
+from .claude_subagent import ClaudeCodeSubagentSpawner, SubagentConfig, SubagentType
+from .data_fetchers import (
+    ClinicalTrialsFetcher,
+    DataFetcherRegistry,
+    FetchResult,
+    NewsFetcher,
+    SECEdgarFetcher,
+    YahooFinanceFetcher,
+)
+from .multi_model import MultiModelOrchestrator, PipelineStep, TaskPipeline
+from .parallel_executor import ExecutionGraph, ExecutionMode, ParallelExecutor
+from .task_decomposer import DecomposedTask, ModelRole, SubTask, TaskDecomposer
 from .task_spec import (
-    TaskSpec,
     RepoTarget,
+    TaskSpec,
     TaskUpdate,
     UpdateType,
     WebhookNotifier,
-    create_spec_template
-)
-from .data_fetchers import (
-    DataFetcherRegistry,
-    SECEdgarFetcher,
-    YahooFinanceFetcher,
-    ClinicalTrialsFetcher,
-    NewsFetcher,
-    FetchResult
+    create_spec_template,
 )
 
 __all__ = [
@@ -50,5 +50,5 @@ __all__ = [
     "YahooFinanceFetcher",
     "ClinicalTrialsFetcher",
     "NewsFetcher",
-    "FetchResult"
+    "FetchResult",
 ]

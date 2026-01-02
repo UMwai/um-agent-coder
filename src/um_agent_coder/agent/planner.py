@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
 from enum import Enum
+from typing import Any
 
 
 class TaskType(Enum):
@@ -19,7 +19,7 @@ class TaskType(Enum):
 class TaskStep:
     description: str
     action: str  # tool to use
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     estimated_tokens: int
     priority: int = 5
 
@@ -29,14 +29,14 @@ class TaskAnalysis:
     task_type: TaskType
     complexity: int  # 1-10
     estimated_tokens: int
-    required_tools: List[str]
-    files_to_analyze: List[str]
-    potential_risks: List[str]
+    required_tools: list[str]
+    files_to_analyze: list[str]
+    potential_risks: list[str]
 
 
 @dataclass
 class ExecutionPlan:
-    steps: List[TaskStep]
+    steps: list[TaskStep]
     total_estimated_tokens: int
     estimated_cost: float
     estimated_time_minutes: float
@@ -44,7 +44,7 @@ class ExecutionPlan:
 
 class TaskPlanner:
     """Plans and decomposes tasks for efficient execution."""
-    
+
     def __init__(self):
         self.task_patterns = {
             "implement": TaskType.CODE_GENERATION,
@@ -62,130 +62,142 @@ class TaskPlanner:
             "plan": TaskType.ARCHITECTURE_DESIGN,
             "spec": TaskType.ARCHITECTURE_DESIGN,
             "blueprint": TaskType.ARCHITECTURE_DESIGN,
-            "scaffold": TaskType.ARCHITECTURE_DESIGN
+            "scaffold": TaskType.ARCHITECTURE_DESIGN,
         }
-    
+
     def analyze_task(self, prompt: str) -> TaskAnalysis:
         """
         Analyze a user prompt to understand the task.
         """
         # Determine task type
         task_type = self._determine_task_type(prompt)
-        
+
         # Estimate complexity
         complexity = self._estimate_complexity(prompt, task_type)
-        
+
         # Identify required tools
         required_tools = self._identify_required_tools(prompt, task_type)
-        
+
         # Find files to analyze
         files_to_analyze = self._extract_file_references(prompt)
-        
+
         # Identify risks
         risks = self._identify_risks(prompt, task_type)
-        
+
         # Estimate tokens
         estimated_tokens = complexity * 1000  # Rough estimate
-        
+
         return TaskAnalysis(
             task_type=task_type,
             complexity=complexity,
             estimated_tokens=estimated_tokens,
             required_tools=required_tools,
             files_to_analyze=files_to_analyze,
-            potential_risks=risks
+            potential_risks=risks,
         )
-    
+
     def create_execution_plan(self, analysis: TaskAnalysis, prompt: str) -> ExecutionPlan:
         """
         Create a step-by-step execution plan.
         """
         steps = []
-        
+
         # Step 1: Analyze project structure if needed
         if analysis.complexity > 5 and analysis.task_type != TaskType.ARCHITECTURE_DESIGN:
-            steps.append(TaskStep(
-                description="Analyze project structure",
-                action="ProjectAnalyzer",
-                parameters={"directory": "."},
-                estimated_tokens=500,
-                priority=9
-            ))
-        
+            steps.append(
+                TaskStep(
+                    description="Analyze project structure",
+                    action="ProjectAnalyzer",
+                    parameters={"directory": "."},
+                    estimated_tokens=500,
+                    priority=9,
+                )
+            )
+
         # Step 2: Read relevant files
         for file in analysis.files_to_analyze:
-            steps.append(TaskStep(
-                description=f"Read {file}",
-                action="FileReader",
-                parameters={"file_path": file},
-                estimated_tokens=200,
-                priority=8
-            ))
-        
+            steps.append(
+                TaskStep(
+                    description=f"Read {file}",
+                    action="FileReader",
+                    parameters={"file_path": file},
+                    estimated_tokens=200,
+                    priority=8,
+                )
+            )
+
         # Step 3: Search for related code if needed
         if analysis.task_type in [TaskType.CODE_MODIFICATION, TaskType.DEBUGGING]:
-            steps.append(TaskStep(
-                description="Search for related code",
-                action="CodeSearcher",
-                parameters={"pattern": self._extract_search_pattern(prompt)},
-                estimated_tokens=300,
-                priority=7
-            ))
-        
+            steps.append(
+                TaskStep(
+                    description="Search for related code",
+                    action="CodeSearcher",
+                    parameters={"pattern": self._extract_search_pattern(prompt)},
+                    estimated_tokens=300,
+                    priority=7,
+                )
+            )
+
         # Step 4: Main task execution
         main_step = self._create_main_task_step(analysis, prompt)
         steps.append(main_step)
-        
+
         # Step 5: Post-processing (Validation or Saving)
         if analysis.task_type in [TaskType.CODE_GENERATION, TaskType.CODE_MODIFICATION]:
-            steps.append(TaskStep(
-                description="Validate changes",
-                action="CommandExecutor",
-                parameters={"command": "python -m py_compile"},
-                estimated_tokens=100,
-                priority=6
-            ))
+            steps.append(
+                TaskStep(
+                    description="Validate changes",
+                    action="CommandExecutor",
+                    parameters={"command": "python -m py_compile"},
+                    estimated_tokens=100,
+                    priority=6,
+                )
+            )
         elif analysis.task_type == TaskType.ARCHITECTURE_DESIGN:
-            steps.append(TaskStep(
-                description="Save Specification",
-                action="FileWriter",
-                parameters={
-                    "file_path": "SPEC.md",
-                    "content": "{{ArchitectTool_result.spec_content}}"
-                },
-                estimated_tokens=100,
-                priority=6
-            ))
-        
+            steps.append(
+                TaskStep(
+                    description="Save Specification",
+                    action="FileWriter",
+                    parameters={
+                        "file_path": "SPEC.md",
+                        "content": "{{ArchitectTool_result.spec_content}}",
+                    },
+                    estimated_tokens=100,
+                    priority=6,
+                )
+            )
+
         # Calculate totals
         total_tokens = sum(step.estimated_tokens for step in steps)
         estimated_cost = self._estimate_cost(total_tokens)
         estimated_time = len(steps) * 0.5  # 30 seconds per step
-        
+
         return ExecutionPlan(
             steps=steps,
             total_estimated_tokens=total_tokens,
             estimated_cost=estimated_cost,
-            estimated_time_minutes=estimated_time
+            estimated_time_minutes=estimated_time,
         )
-    
+
     def _determine_task_type(self, prompt: str) -> TaskType:
         """Determine task type from prompt."""
         prompt_lower = prompt.lower()
-        
+
         # Check for specific phrases for Architecture first (as they can be abstract)
         if "build a" in prompt_lower or "create a new" in prompt_lower:
             # Heuristic: if it's a big thing like "build a website", it's architecture
             # If it's "build a function", it's code generation
-            if any(w in prompt_lower for w in ["app", "site", "system", "platform", "clone", "service"]):
+            if any(
+                w in prompt_lower for w in ["app", "site", "system", "platform", "clone", "service"]
+            ):
                 return TaskType.ARCHITECTURE_DESIGN
-        
+
         for keyword, task_type in self.task_patterns.items():
             if keyword in prompt_lower:
                 return task_type
-        
+
         return TaskType.GENERAL
-    
+
     def _estimate_complexity(self, prompt: str, task_type: TaskType) -> int:
         """Estimate task complexity (1-10)."""
         # Base complexity by task type
@@ -198,11 +210,11 @@ class TaskPlanner:
             TaskType.ANALYSIS: 4,
             TaskType.TESTING: 5,
             TaskType.ARCHITECTURE_DESIGN: 9,
-            TaskType.GENERAL: 4
+            TaskType.GENERAL: 4,
         }
-        
+
         complexity = base_complexity.get(task_type, 5)
-        
+
         # Adjust based on prompt indicators
         if "complex" in prompt.lower() or "entire" in prompt.lower():
             complexity += 2
@@ -210,13 +222,13 @@ class TaskPlanner:
             complexity -= 1
         if len(prompt) > 500:  # Long detailed prompt
             complexity += 1
-        
+
         return max(1, min(10, complexity))
-    
-    def _identify_required_tools(self, prompt: str, task_type: TaskType) -> List[str]:
+
+    def _identify_required_tools(self, prompt: str, task_type: TaskType) -> list[str]:
         """Identify tools needed for the task."""
         tools = []
-        
+
         # Base tools by task type
         if task_type == TaskType.CODE_GENERATION:
             tools.extend(["FileWriter", "FileReader"])
@@ -228,38 +240,38 @@ class TaskPlanner:
             tools.extend(["ProjectAnalyzer", "CodeSearcher"])
         elif task_type == TaskType.ARCHITECTURE_DESIGN:
             tools.extend(["ArchitectTool", "FileWriter"])
-        
+
         # Add tools based on prompt content
         if "test" in prompt.lower():
             tools.append("CommandExecutor")
         if "search" in prompt.lower() or "find" in prompt.lower():
             tools.append("CodeSearcher")
-        
+
         return list(set(tools))  # Remove duplicates
-    
-    def _extract_file_references(self, prompt: str) -> List[str]:
+
+    def _extract_file_references(self, prompt: str) -> list[str]:
         """Extract file paths mentioned in prompt."""
         import re
-        
+
         # Common file patterns
         patterns = [
             r'[\'"`]([^\'"`]+\.[a-zA-Z]+)[\'"`]',  # Quoted filenames
-            r'(\S+\.py)',  # Python files
-            r'(\S+\.js)',  # JavaScript files
-            r'(\S+\.md)',  # Markdown files
+            r"(\S+\.py)",  # Python files
+            r"(\S+\.js)",  # JavaScript files
+            r"(\S+\.md)",  # Markdown files
         ]
-        
+
         files = []
         for pattern in patterns:
             matches = re.findall(pattern, prompt)
             files.extend(matches)
-        
+
         return list(set(files))
-    
-    def _identify_risks(self, prompt: str, task_type: TaskType) -> List[str]:
+
+    def _identify_risks(self, prompt: str, task_type: TaskType) -> list[str]:
         """Identify potential risks in the task."""
         risks = []
-        
+
         if task_type == TaskType.REFACTORING:
             risks.append("May break existing functionality")
         if "delete" in prompt.lower() or "remove" in prompt.lower():
@@ -271,26 +283,26 @@ class TaskPlanner:
         if task_type == TaskType.ARCHITECTURE_DESIGN:
             risks.append("High complexity - requires careful review")
             risks.append("Scope creep potential")
-        
+
         return risks
-    
+
     def _extract_search_pattern(self, prompt: str) -> str:
         """Extract search pattern from prompt."""
         # Simple heuristic - find quoted strings or function names
         import re
-        
+
         # Look for quoted strings
         quoted = re.findall(r'[\'"`]([^\'"`]+)[\'"`]', prompt)
         if quoted:
             return quoted[0]
-        
+
         # Look for function/class names (CamelCase or snake_case)
-        identifiers = re.findall(r'\b([A-Z][a-zA-Z0-9_]*|[a-z]+_[a-z_]+)\b', prompt)
+        identifiers = re.findall(r"\b([A-Z][a-zA-Z0-9_]*|[a-z]+_[a-z_]+)\b", prompt)
         if identifiers:
             return identifiers[0]
-        
+
         return "TODO"  # Default search pattern
-    
+
     def _create_main_task_step(self, analysis: TaskAnalysis, prompt: str) -> TaskStep:
         """Create the main execution step."""
         action_map = {
@@ -302,7 +314,7 @@ class TaskPlanner:
             TaskType.ANALYSIS: "ProjectAnalyzer",
             TaskType.TESTING: "CommandExecutor",
             TaskType.ARCHITECTURE_DESIGN: "ArchitectTool",
-            TaskType.GENERAL: "FileReader"
+            TaskType.GENERAL: "FileReader",
         }
 
         action = action_map.get(analysis.task_type, "FileReader")
@@ -315,12 +327,12 @@ class TaskPlanner:
             action=action,
             parameters=parameters,
             estimated_tokens=analysis.estimated_tokens,
-            priority=10
+            priority=10,
         )
 
     def _build_tool_parameters(
         self, action: str, analysis: TaskAnalysis, prompt: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build appropriate parameters for each tool type."""
         if action == "ProjectAnalyzer":
             return {"directory": "."}
@@ -348,7 +360,7 @@ class TaskPlanner:
 
         else:
             return {}
-    
+
     def _estimate_cost(self, tokens: int) -> float:
         """Estimate cost based on tokens."""
         # Assuming average model cost

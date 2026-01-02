@@ -3,13 +3,14 @@ Data-focused agent modes for data engineering, science, and ML tasks.
 Specialized personas for handling data architecture, pipelines, and models.
 """
 
-from enum import Enum
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
 
 
 class DataAgentMode(Enum):
     """Available data-focused agent modes."""
+
     DATA_ENGINEER = "data_engineer"
     DATA_ARCHITECT = "data_architect"
     DATA_SCIENTIST = "data_scientist"
@@ -21,16 +22,17 @@ class DataAgentMode(Enum):
 @dataclass
 class DataModeConfig:
     """Configuration for a data agent mode."""
+
     name: str
     description: str
     system_prompt: str
     temperature: float = 0.7
     max_tokens: Optional[int] = None
-    preferred_tools: List[str] = None
-    auto_approve_actions: List[str] = None
-    context_priorities: Dict[str, int] = None
-    specialized_capabilities: List[str] = None
-    
+    preferred_tools: list[str] = None
+    auto_approve_actions: list[str] = None
+    context_priorities: dict[str, int] = None
+    specialized_capabilities: list[str] = None
+
     def __post_init__(self):
         if self.preferred_tools is None:
             self.preferred_tools = []
@@ -44,15 +46,15 @@ class DataModeConfig:
 
 class DataModeManager:
     """Manages data-focused agent modes and their configurations."""
-    
+
     def __init__(self):
-        self.modes: Dict[DataAgentMode, DataModeConfig] = {}
+        self.modes: dict[DataAgentMode, DataModeConfig] = {}
         self._initialize_data_modes()
         self.current_mode: DataAgentMode = DataAgentMode.DATA_ENGINEER
-    
+
     def _initialize_data_modes(self):
         """Initialize data-focused agent modes."""
-        
+
         # Data Engineer Mode - ETL/ELT pipelines and data infrastructure
         self.modes[DataAgentMode.DATA_ENGINEER] = DataModeConfig(
             name="Data Engineer Mode",
@@ -84,22 +86,29 @@ When building pipelines:
 - Implement SLA monitoring""",
             temperature=0.6,
             preferred_tools=[
-                "SQLExecutor", "SchemaAnalyzer", "PipelineBuilder",
-                "DataProfiler", "DataValidator", "OrchestrationTool"
+                "SQLExecutor",
+                "SchemaAnalyzer",
+                "PipelineBuilder",
+                "DataProfiler",
+                "DataValidator",
+                "OrchestrationTool",
             ],
             auto_approve_actions=["SchemaAnalyzer", "DataProfiler"],
             context_priorities={
                 "data_schemas": 10,
                 "pipeline_configs": 9,
                 "data_quality_rules": 8,
-                "performance_metrics": 7
+                "performance_metrics": 7,
             },
             specialized_capabilities=[
-                "sql_optimization", "pipeline_orchestration", "data_quality",
-                "streaming_processing", "data_warehouse_design"
-            ]
+                "sql_optimization",
+                "pipeline_orchestration",
+                "data_quality",
+                "streaming_processing",
+                "data_warehouse_design",
+            ],
         )
-        
+
         # Data Architect Mode - Data modeling and architecture design
         self.modes[DataAgentMode.DATA_ARCHITECT] = DataModeConfig(
             name="Data Architect Mode",
@@ -134,22 +143,28 @@ When designing data models:
 - Document business rules and definitions""",
             temperature=0.7,
             preferred_tools=[
-                "ERDiagramBuilder", "SchemaDesigner", "DataCatalog",
-                "ModelValidator", "GovernanceChecker"
+                "ERDiagramBuilder",
+                "SchemaDesigner",
+                "DataCatalog",
+                "ModelValidator",
+                "GovernanceChecker",
             ],
             auto_approve_actions=["SchemaAnalyzer", "DataCatalog"],
             context_priorities={
                 "business_requirements": 10,
                 "existing_schemas": 9,
                 "data_governance_policies": 8,
-                "performance_requirements": 7
+                "performance_requirements": 7,
             },
             specialized_capabilities=[
-                "dimensional_modeling", "data_vault", "mdm",
-                "data_governance", "schema_design"
-            ]
+                "dimensional_modeling",
+                "data_vault",
+                "mdm",
+                "data_governance",
+                "schema_design",
+            ],
         )
-        
+
         # Data Scientist Mode - ML models and statistical analysis
         self.modes[DataAgentMode.DATA_SCIENTIST] = DataModeConfig(
             name="Data Scientist Mode",
@@ -184,22 +199,29 @@ When building models:
 - Create reproducible analyses""",
             temperature=0.7,
             preferred_tools=[
-                "NotebookExecutor", "DataProfiler", "ModelTrainer",
-                "FeatureEngineer", "ExperimentTracker", "Visualizer"
+                "NotebookExecutor",
+                "DataProfiler",
+                "ModelTrainer",
+                "FeatureEngineer",
+                "ExperimentTracker",
+                "Visualizer",
             ],
             auto_approve_actions=["DataProfiler", "Visualizer"],
             context_priorities={
                 "data_statistics": 10,
                 "feature_importance": 9,
                 "model_metrics": 8,
-                "business_context": 7
+                "business_context": 7,
             },
             specialized_capabilities=[
-                "statistical_analysis", "machine_learning", "deep_learning",
-                "feature_engineering", "experiment_design"
-            ]
+                "statistical_analysis",
+                "machine_learning",
+                "deep_learning",
+                "feature_engineering",
+                "experiment_design",
+            ],
         )
-        
+
         # ML Engineer Mode - ML systems and deployment
         self.modes[DataAgentMode.ML_ENGINEER] = DataModeConfig(
             name="ML Engineer Mode",
@@ -235,22 +257,29 @@ When building ML systems:
 - Plan for model retraining""",
             temperature=0.6,
             preferred_tools=[
-                "MLPipelineBuilder", "ModelDeployer", "FeatureStore",
-                "ModelMonitor", "PerformanceOptimizer", "ContainerBuilder"
+                "MLPipelineBuilder",
+                "ModelDeployer",
+                "FeatureStore",
+                "ModelMonitor",
+                "PerformanceOptimizer",
+                "ContainerBuilder",
             ],
             auto_approve_actions=["ModelMonitor", "PerformanceOptimizer"],
             context_priorities={
                 "model_artifacts": 10,
                 "deployment_configs": 9,
                 "monitoring_metrics": 8,
-                "infrastructure_specs": 7
+                "infrastructure_specs": 7,
             },
             specialized_capabilities=[
-                "mlops", "model_deployment", "feature_stores",
-                "model_monitoring", "distributed_training"
-            ]
+                "mlops",
+                "model_deployment",
+                "feature_stores",
+                "model_monitoring",
+                "distributed_training",
+            ],
         )
-        
+
         # Analytics Engineer Mode - Transform data for analytics
         self.modes[DataAgentMode.ANALYTICS_ENGINEER] = DataModeConfig(
             name="Analytics Engineer Mode",
@@ -284,22 +313,28 @@ When building analytics models:
 - Design for business user consumption""",
             temperature=0.6,
             preferred_tools=[
-                "dbtBuilder", "SQLTransformer", "DataTester",
-                "DocumentationGenerator", "MetricsDefiner"
+                "dbtBuilder",
+                "SQLTransformer",
+                "DataTester",
+                "DocumentationGenerator",
+                "MetricsDefiner",
             ],
             auto_approve_actions=["DataTester", "DocumentationGenerator"],
             context_priorities={
                 "business_logic": 10,
                 "transformation_dag": 9,
                 "data_tests": 8,
-                "documentation": 7
+                "documentation": 7,
             },
             specialized_capabilities=[
-                "dbt", "sql_transformations", "metrics_layer",
-                "data_testing", "documentation"
-            ]
+                "dbt",
+                "sql_transformations",
+                "metrics_layer",
+                "data_testing",
+                "documentation",
+            ],
         )
-        
+
         # Data Analyst Mode - Analysis and insights
         self.modes[DataAgentMode.DATA_ANALYST] = DataModeConfig(
             name="Data Analyst Mode",
@@ -333,77 +368,121 @@ When performing analysis:
 - Consider stakeholder audience""",
             temperature=0.7,
             preferred_tools=[
-                "SQLQueryBuilder", "Visualizer", "StatisticalAnalyzer",
-                "ReportGenerator", "DashboardBuilder"
+                "SQLQueryBuilder",
+                "Visualizer",
+                "StatisticalAnalyzer",
+                "ReportGenerator",
+                "DashboardBuilder",
             ],
             auto_approve_actions=["SQLQueryBuilder", "Visualizer"],
             context_priorities={
                 "business_questions": 10,
                 "data_definitions": 9,
                 "historical_analyses": 8,
-                "stakeholder_requirements": 7
+                "stakeholder_requirements": 7,
             },
             specialized_capabilities=[
-                "data_analysis", "visualization", "reporting",
-                "business_intelligence", "statistical_analysis"
-            ]
+                "data_analysis",
+                "visualization",
+                "reporting",
+                "business_intelligence",
+                "statistical_analysis",
+            ],
         )
-    
+
     def set_mode(self, mode: DataAgentMode) -> DataModeConfig:
         """Set the current data agent mode."""
         if mode not in self.modes:
             raise ValueError(f"Unknown mode: {mode}")
-        
+
         self.current_mode = mode
         return self.modes[mode]
-    
+
     def get_mode(self, mode: DataAgentMode) -> Optional[DataModeConfig]:
         """Get a specific mode configuration."""
         return self.modes.get(mode)
-    
+
     def detect_mode_from_prompt(self, prompt: str) -> DataAgentMode:
         """Detect the most appropriate mode from the user's prompt."""
         prompt_lower = prompt.lower()
-        
+
         # Keywords for each mode
         mode_keywords = {
             DataAgentMode.DATA_ENGINEER: [
-                "pipeline", "etl", "elt", "airflow", "spark", "kafka",
-                "streaming", "batch", "ingestion", "orchestration"
+                "pipeline",
+                "etl",
+                "elt",
+                "airflow",
+                "spark",
+                "kafka",
+                "streaming",
+                "batch",
+                "ingestion",
+                "orchestration",
             ],
             DataAgentMode.DATA_ARCHITECT: [
-                "data model", "schema", "dimensional", "star schema",
-                "snowflake schema", "data vault", "governance", "mdm"
+                "data model",
+                "schema",
+                "dimensional",
+                "star schema",
+                "snowflake schema",
+                "data vault",
+                "governance",
+                "mdm",
             ],
             DataAgentMode.DATA_SCIENTIST: [
-                "model", "predict", "forecast", "classification", "regression",
-                "clustering", "neural network", "machine learning", "ml"
+                "model",
+                "predict",
+                "forecast",
+                "classification",
+                "regression",
+                "clustering",
+                "neural network",
+                "machine learning",
+                "ml",
             ],
             DataAgentMode.ML_ENGINEER: [
-                "deploy", "mlops", "production", "serve", "inference",
-                "feature store", "model monitoring", "drift"
+                "deploy",
+                "mlops",
+                "production",
+                "serve",
+                "inference",
+                "feature store",
+                "model monitoring",
+                "drift",
             ],
             DataAgentMode.ANALYTICS_ENGINEER: [
-                "dbt", "transform", "mart", "metrics", "kpi",
-                "analytics model", "semantic layer"
+                "dbt",
+                "transform",
+                "mart",
+                "metrics",
+                "kpi",
+                "analytics model",
+                "semantic layer",
             ],
             DataAgentMode.DATA_ANALYST: [
-                "analyze", "insight", "report", "dashboard", "visualization",
-                "business intelligence", "bi", "metric"
-            ]
+                "analyze",
+                "insight",
+                "report",
+                "dashboard",
+                "visualization",
+                "business intelligence",
+                "bi",
+                "metric",
+            ],
         }
-        
+
         # Count keyword matches for each mode
         mode_scores = {}
         for mode, keywords in mode_keywords.items():
             score = sum(1 for keyword in keywords if keyword in prompt_lower)
             mode_scores[mode] = score
-        
+
         # Return mode with highest score, default to DATA_ENGINEER
         best_mode = max(mode_scores.items(), key=lambda x: x[1])
         return best_mode[0] if best_mode[1] > 0 else DataAgentMode.DATA_ENGINEER
-    
-    def get_recommended_models(self, mode: DataAgentMode) -> List[str]:
+
+    def get_recommended_models(self, mode: DataAgentMode) -> list[str]:
         """Get recommended LLM models for a specific data mode."""
         # Models particularly good for data/analytical tasks
         recommendations = {
@@ -436,7 +515,7 @@ When performing analysis:
                 "gpt-4o",  # Good for business understanding
                 "claude-3.5-sonnet-20241022",  # Strong analytical reasoning
                 "gemini-2.0-flash",  # Cost-effective for queries
-            ]
+            ],
         }
-        
+
         return recommendations.get(mode, ["claude-3.5-sonnet-20241022"])

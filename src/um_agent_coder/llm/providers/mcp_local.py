@@ -10,10 +10,11 @@ These tools run locally without requiring API keys when used through
 Claude Code's MCP infrastructure.
 """
 
-import subprocess
 import json
 import os
-from typing import Dict, Any, Optional, List
+import subprocess
+from typing import Any, Optional
+
 from ..base import LLM
 
 
@@ -49,7 +50,7 @@ class MCPLocalLLM(LLM):
             "default_model": "claude-sonnet",
             "cost_per_1k_input": 0.0,
             "cost_per_1k_output": 0.0,
-        }
+        },
     }
 
     def __init__(
@@ -58,7 +59,7 @@ class MCPLocalLLM(LLM):
         model: Optional[str] = None,
         cwd: Optional[str] = None,
         sandbox: str = "read-only",
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize MCP Local LLM provider.
@@ -70,7 +71,9 @@ class MCPLocalLLM(LLM):
             sandbox: Sandbox mode for codex (read-only, workspace-write, danger-full-access)
         """
         if backend not in self.BACKENDS:
-            raise ValueError(f"Unknown backend: {backend}. Choose from: {list(self.BACKENDS.keys())}")
+            raise ValueError(
+                f"Unknown backend: {backend}. Choose from: {list(self.BACKENDS.keys())}"
+            )
 
         self.backend = backend
         self.model = model or self.BACKENDS[backend]["default_model"]
@@ -136,11 +139,7 @@ class MCPLocalLLM(LLM):
         # Use claude CLI directly
         try:
             result = subprocess.run(
-                ["claude", "-p", prompt],
-                capture_output=True,
-                text=True,
-                timeout=300,
-                cwd=self.cwd
+                ["claude", "-p", prompt], capture_output=True, text=True, timeout=300, cwd=self.cwd
             )
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -151,7 +150,7 @@ class MCPLocalLLM(LLM):
         except subprocess.TimeoutExpired:
             return "Error: Request timed out"
 
-    def _execute_mcp_codex(self, request: Dict[str, Any]) -> str:
+    def _execute_mcp_codex(self, request: dict[str, Any]) -> str:
         """
         Execute Codex via MCP.
 
@@ -172,16 +171,12 @@ class MCPLocalLLM(LLM):
             cmd.append(request["prompt"])
 
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,
-                cwd=request.get("cwd", self.cwd)
+                cmd, capture_output=True, text=True, timeout=600, cwd=request.get("cwd", self.cwd)
             )
 
             if result.returncode == 0:
                 # Parse JSONL output - last message typically has the response
-                lines = result.stdout.strip().split('\n')
+                lines = result.stdout.strip().split("\n")
                 for line in reversed(lines):
                     try:
                         data = json.loads(line)
@@ -201,7 +196,7 @@ class MCPLocalLLM(LLM):
         except subprocess.TimeoutExpired:
             return "Error: Codex request timed out"
 
-    def _execute_mcp_gemini(self, request: Dict[str, Any]) -> str:
+    def _execute_mcp_gemini(self, request: dict[str, Any]) -> str:
         """
         Execute Gemini via MCP.
 
@@ -216,13 +211,7 @@ class MCPLocalLLM(LLM):
             if request.get("model"):
                 cmd.extend(["-m", request["model"]])
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                cwd=self.cwd
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=self.cwd)
 
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -235,7 +224,7 @@ class MCPLocalLLM(LLM):
         except subprocess.TimeoutExpired:
             return "Error: Gemini request timed out"
 
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """Get information about the current model."""
         backend_info = self.BACKENDS[self.backend]
         return {
@@ -254,10 +243,7 @@ class MCPLocalLLM(LLM):
     # These methods mirror how Claude Code invokes MCP tools directly
 
     def mcp_gemini_ask(
-        self,
-        prompt: str,
-        model: Optional[str] = None,
-        files: Optional[List[str]] = None
+        self, prompt: str, model: Optional[str] = None, files: Optional[list[str]] = None
     ) -> str:
         """
         Invoke mcp__gemini-cli__ask-gemini tool.
@@ -294,10 +280,7 @@ class MCPLocalLLM(LLM):
         return self._execute_mcp_gemini(request)
 
     def mcp_gemini_brainstorm(
-        self,
-        topic: str,
-        context: Optional[str] = None,
-        model: Optional[str] = None
+        self, topic: str, context: Optional[str] = None, model: Optional[str] = None
     ) -> str:
         """
         Invoke mcp__gemini-cli__brainstorm tool.
@@ -338,7 +321,7 @@ class MCPLocalLLM(LLM):
         sandbox: Optional[str] = None,
         approval_policy: str = "never",
         conversation_id: Optional[str] = None,
-        cwd: Optional[str] = None
+        cwd: Optional[str] = None,
     ) -> str:
         """
         Invoke mcp__codex__codex tool.
@@ -387,10 +370,7 @@ class MCPLocalLLM(LLM):
         return self._execute_mcp_codex(request)
 
     def mcp_codex_plan(
-        self,
-        task: str,
-        context: Optional[str] = None,
-        model: Optional[str] = None
+        self, task: str, context: Optional[str] = None, model: Optional[str] = None
     ) -> str:
         """
         Use Codex to generate an implementation plan.
@@ -419,10 +399,7 @@ class MCPLocalLLM(LLM):
         prompt += "\n\nProvide step-by-step plan with specific file changes needed."
 
         return self.mcp_codex_invoke(
-            prompt=prompt,
-            model=model,
-            sandbox="read-only",
-            approval_policy="never"
+            prompt=prompt, model=model, sandbox="read-only", approval_policy="never"
         )
 
 
@@ -455,7 +432,7 @@ class MCPOrchestrator:
         self.codex = MCPLocalLLM(backend="codex", cwd=self.cwd, sandbox="workspace-write")
         self.claude = MCPLocalLLM(backend="claude", cwd=self.cwd)
 
-    def gather_context(self, prompt: str, files: Optional[List[str]] = None) -> str:
+    def gather_context(self, prompt: str, files: Optional[list[str]] = None) -> str:
         """
         Use Gemini for large context gathering.
         Good for: reading large files, codebase exploration, research.
@@ -497,10 +474,7 @@ class MCPOrchestrator:
         return self.codex.mcp_codex_plan(task, context=context)
 
     def implement(
-        self,
-        prompt: str,
-        sandbox: str = "workspace-write",
-        model: Optional[str] = None
+        self, prompt: str, sandbox: str = "workspace-write", model: Optional[str] = None
     ) -> str:
         """
         Use Codex for code implementation.
@@ -514,10 +488,7 @@ class MCPOrchestrator:
             Implementation result from Codex
         """
         return self.codex.mcp_codex_invoke(
-            prompt=prompt,
-            sandbox=sandbox,
-            model=model,
-            approval_policy="never"
+            prompt=prompt, sandbox=sandbox, model=model, approval_policy="never"
         )
 
     def execute(self, prompt: str) -> str:
@@ -548,10 +519,8 @@ class MCPOrchestrator:
             return self.execute(prompt)
 
     def full_workflow(
-        self,
-        user_request: str,
-        files_to_analyze: Optional[List[str]] = None
-    ) -> Dict[str, str]:
+        self, user_request: str, files_to_analyze: Optional[list[str]] = None
+    ) -> dict[str, str]:
         """
         Execute a full multi-model workflow.
 
@@ -571,7 +540,7 @@ class MCPOrchestrator:
         results["context"] = self.gather_context(context_prompt, files=files_to_analyze)
 
         # Phase 2: Plan with Codex
-        plan_prompt = f"Create implementation plan for: {user_request}\n\nContext:\n{results['context']}"
+        f"Create implementation plan for: {user_request}\n\nContext:\n{results['context']}"
         results["plan"] = self.plan(user_request, context=results["context"])
 
         # Phase 3: Implement with Codex
@@ -597,7 +566,9 @@ class MCPOrchestrator:
             return "plan"
 
         # Implementation keywords
-        if any(kw in prompt_lower for kw in ["implement", "create", "generate", "write code", "build"]):
+        if any(
+            kw in prompt_lower for kw in ["implement", "create", "generate", "write code", "build"]
+        ):
             return "implement"
 
         # Default to execute

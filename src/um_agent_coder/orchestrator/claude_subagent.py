@@ -38,33 +38,35 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 
 class SubagentType(Enum):
     """Types of Claude Code subagents that can be spawned."""
-    EXPLORE = "Explore"          # Multi-round search and analysis
+
+    EXPLORE = "Explore"  # Multi-round search and analysis
     CODE_REVIEWER = "code-reviewer"  # Code review specialist
-    ARCHITECT = "Architect"      # System design and architecture
-    DEBUGGER = "Debugger"       # Debugging specialist
-    OPTIMIZER = "Optimizer"     # Performance optimization
-    TESTER = "Tester"           # Test generation and validation
-    DOCUMENTER = "Documenter"   # Documentation generation
-    GENERIC = "Generic"         # Generic task execution
+    ARCHITECT = "Architect"  # System design and architecture
+    DEBUGGER = "Debugger"  # Debugging specialist
+    OPTIMIZER = "Optimizer"  # Performance optimization
+    TESTER = "Tester"  # Test generation and validation
+    DOCUMENTER = "Documenter"  # Documentation generation
+    GENERIC = "Generic"  # Generic task execution
 
 
 @dataclass
 class SubagentConfig:
     """Configuration for a subagent."""
+
     subagent_type: SubagentType
     prompt: str
     working_directory: Optional[str] = None
     timeout: int = 600  # seconds
     max_iterations: int = 10  # for explore agents
-    focus_files: Optional[List[str]] = None
-    context: Optional[Dict[str, Any]] = None
+    focus_files: Optional[list[str]] = None
+    context: Optional[dict[str, Any]] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "type": self.subagent_type.value,
@@ -80,6 +82,7 @@ class SubagentConfig:
 @dataclass
 class SubagentResult:
     """Result from a spawned subagent."""
+
     success: bool
     output: Any
     error: Optional[str] = None
@@ -87,9 +90,9 @@ class SubagentResult:
     started_at: str = ""
     completed_at: str = ""
     duration_seconds: float = 0.0
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "success": self.success,
@@ -137,7 +140,7 @@ class ClaudeCodeSubagentSpawner:
         fallback_to_subprocess: bool = True,
         working_directory: Optional[str] = None,
         verbose: bool = False,
-        checkpoint_dir: str = ".subagent_results"
+        checkpoint_dir: str = ".subagent_results",
     ):
         """
         Initialize the subagent spawner.
@@ -157,16 +160,16 @@ class ClaudeCodeSubagentSpawner:
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         # Track spawned agents
-        self.active_agents: Dict[str, Dict[str, Any]] = {}
+        self.active_agents: dict[str, dict[str, Any]] = {}
 
     def spawn_task(
         self,
         prompt: str,
         subagent_type: Union[SubagentType, str] = SubagentType.GENERIC,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[dict[str, Any]] = None,
         timeout: int = 600,
         max_iterations: int = 10,
-        focus_files: Optional[List[str]] = None,
+        focus_files: Optional[list[str]] = None,
         working_directory: Optional[str] = None,
     ) -> SubagentResult:
         """
@@ -207,7 +210,7 @@ class ClaudeCodeSubagentSpawner:
         query: str,
         files_pattern: Optional[str] = None,
         max_iterations: int = 10,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[dict[str, Any]] = None,
     ) -> SubagentResult:
         """
         Spawn an Explore agent for multi-round search and analysis.
@@ -237,10 +240,10 @@ class ClaudeCodeSubagentSpawner:
 
     def spawn_code_reviewer(
         self,
-        files: List[str],
+        files: list[str],
         focus: Optional[str] = None,
-        review_criteria: Optional[List[str]] = None,
-        context: Optional[Dict[str, Any]] = None,
+        review_criteria: Optional[list[str]] = None,
+        context: Optional[dict[str, Any]] = None,
     ) -> SubagentResult:
         """
         Spawn a code-reviewer agent for code review.
@@ -267,8 +270,8 @@ class ClaudeCodeSubagentSpawner:
         self,
         task: str,
         existing_architecture: Optional[str] = None,
-        constraints: Optional[List[str]] = None,
-        context: Optional[Dict[str, Any]] = None,
+        constraints: Optional[list[str]] = None,
+        context: Optional[dict[str, Any]] = None,
     ) -> SubagentResult:
         """
         Spawn an Architect agent for system design.
@@ -293,9 +296,9 @@ class ClaudeCodeSubagentSpawner:
     def spawn_debugger_agent(
         self,
         issue_description: str,
-        files_to_investigate: Optional[List[str]] = None,
+        files_to_investigate: Optional[list[str]] = None,
         error_logs: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[dict[str, Any]] = None,
     ) -> SubagentResult:
         """
         Spawn a Debugger agent to investigate and fix issues.
@@ -310,10 +313,7 @@ class ClaudeCodeSubagentSpawner:
             SubagentResult with debugging findings and fixes
         """
         prompt = self._format_debugger_prompt(
-            issue_description,
-            files_to_investigate,
-            error_logs,
-            context
+            issue_description, files_to_investigate, error_logs, context
         )
 
         return self.spawn_task(
@@ -328,7 +328,7 @@ class ClaudeCodeSubagentSpawner:
         code_to_test: str,
         test_type: str = "unit",
         coverage_requirements: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[dict[str, Any]] = None,
     ) -> SubagentResult:
         """
         Spawn a Tester agent to generate tests.
@@ -342,12 +342,7 @@ class ClaudeCodeSubagentSpawner:
         Returns:
             SubagentResult with generated tests
         """
-        prompt = self._format_tester_prompt(
-            code_to_test,
-            test_type,
-            coverage_requirements,
-            context
-        )
+        prompt = self._format_tester_prompt(code_to_test, test_type, coverage_requirements, context)
 
         return self.spawn_task(
             prompt=prompt,
@@ -360,7 +355,7 @@ class ClaudeCodeSubagentSpawner:
         target: str,
         doc_type: str = "api",
         audience: str = "developers",
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[dict[str, Any]] = None,
     ) -> SubagentResult:
         """
         Spawn a Documenter agent to generate documentation.
@@ -385,10 +380,7 @@ class ClaudeCodeSubagentSpawner:
     # Prompt formatting methods
 
     def _format_explore_prompt(
-        self,
-        query: str,
-        files_pattern: Optional[str],
-        context: Optional[Dict[str, Any]]
+        self, query: str, files_pattern: Optional[str], context: Optional[dict[str, Any]]
     ) -> str:
         """Format a prompt for an Explore agent."""
         prompt_parts = [
@@ -405,21 +397,23 @@ class ClaudeCodeSubagentSpawner:
             prompt_parts.append(json.dumps(context, indent=2))
             prompt_parts.append("")
 
-        prompt_parts.extend([
-            "Please:",
-            "1. Search for relevant files and code patterns",
-            "2. Analyze findings across multiple files",
-            "3. Provide a comprehensive answer with specific code references",
-        ])
+        prompt_parts.extend(
+            [
+                "Please:",
+                "1. Search for relevant files and code patterns",
+                "2. Analyze findings across multiple files",
+                "3. Provide a comprehensive answer with specific code references",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
     def _format_code_review_prompt(
         self,
-        files: List[str],
+        files: list[str],
         focus: Optional[str],
-        review_criteria: Optional[List[str]],
-        context: Optional[Dict[str, Any]]
+        review_criteria: Optional[list[str]],
+        context: Optional[dict[str, Any]],
     ) -> str:
         """Format a prompt for a code-reviewer agent."""
         prompt_parts = [
@@ -441,15 +435,17 @@ class ClaudeCodeSubagentSpawner:
                 prompt_parts.append(f"- {criterion}")
             prompt_parts.append("")
         else:
-            prompt_parts.extend([
-                "Check for:",
-                "- Code quality and best practices",
-                "- Potential bugs and edge cases",
-                "- Security vulnerabilities",
-                "- Performance issues",
-                "- Documentation completeness",
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "Check for:",
+                    "- Code quality and best practices",
+                    "- Potential bugs and edge cases",
+                    "- Security vulnerabilities",
+                    "- Performance issues",
+                    "- Documentation completeness",
+                    "",
+                ]
+            )
 
         if context:
             prompt_parts.append("Additional context:")
@@ -464,8 +460,8 @@ class ClaudeCodeSubagentSpawner:
         self,
         task: str,
         existing_architecture: Optional[str],
-        constraints: Optional[List[str]],
-        context: Optional[Dict[str, Any]]
+        constraints: Optional[list[str]],
+        context: Optional[dict[str, Any]],
     ) -> str:
         """Format a prompt for an Architect agent."""
         prompt_parts = [
@@ -489,23 +485,25 @@ class ClaudeCodeSubagentSpawner:
             prompt_parts.append(json.dumps(context, indent=2))
             prompt_parts.append("")
 
-        prompt_parts.extend([
-            "Please provide:",
-            "1. High-level architecture design",
-            "2. Component breakdown and responsibilities",
-            "3. Data flow and interactions",
-            "4. Technology recommendations",
-            "5. Implementation considerations",
-        ])
+        prompt_parts.extend(
+            [
+                "Please provide:",
+                "1. High-level architecture design",
+                "2. Component breakdown and responsibilities",
+                "3. Data flow and interactions",
+                "4. Technology recommendations",
+                "5. Implementation considerations",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
     def _format_debugger_prompt(
         self,
         issue_description: str,
-        files_to_investigate: Optional[List[str]],
+        files_to_investigate: Optional[list[str]],
         error_logs: Optional[str],
-        context: Optional[Dict[str, Any]]
+        context: Optional[dict[str, Any]],
     ) -> str:
         """Format a prompt for a Debugger agent."""
         prompt_parts = [
@@ -531,13 +529,15 @@ class ClaudeCodeSubagentSpawner:
             prompt_parts.append(json.dumps(context, indent=2))
             prompt_parts.append("")
 
-        prompt_parts.extend([
-            "Please:",
-            "1. Investigate the issue",
-            "2. Identify root cause",
-            "3. Propose a fix with code changes",
-            "4. Explain why the fix works",
-        ])
+        prompt_parts.extend(
+            [
+                "Please:",
+                "1. Investigate the issue",
+                "2. Identify root cause",
+                "3. Propose a fix with code changes",
+                "4. Explain why the fix works",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
@@ -546,7 +546,7 @@ class ClaudeCodeSubagentSpawner:
         code_to_test: str,
         test_type: str,
         coverage_requirements: Optional[str],
-        context: Optional[Dict[str, Any]]
+        context: Optional[dict[str, Any]],
     ) -> str:
         """Format a prompt for a Tester agent."""
         prompt_parts = [
@@ -563,23 +563,21 @@ class ClaudeCodeSubagentSpawner:
             prompt_parts.append(json.dumps(context, indent=2))
             prompt_parts.append("")
 
-        prompt_parts.extend([
-            "Please provide:",
-            "1. Comprehensive test cases",
-            "2. Edge case coverage",
-            "3. Test setup and teardown code",
-            "4. Assertions for expected behavior",
-            "5. Mock/stub configurations if needed",
-        ])
+        prompt_parts.extend(
+            [
+                "Please provide:",
+                "1. Comprehensive test cases",
+                "2. Edge case coverage",
+                "3. Test setup and teardown code",
+                "4. Assertions for expected behavior",
+                "5. Mock/stub configurations if needed",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
     def _format_documenter_prompt(
-        self,
-        target: str,
-        doc_type: str,
-        audience: str,
-        context: Optional[Dict[str, Any]]
+        self, target: str, doc_type: str, audience: str, context: Optional[dict[str, Any]]
     ) -> str:
         """Format a prompt for a Documenter agent."""
         prompt_parts = [
@@ -617,11 +615,14 @@ class ClaudeCodeSubagentSpawner:
             ],
         }
 
-        requirements = doc_type_requirements.get(doc_type, [
-            "1. Clear explanation",
-            "2. Code examples",
-            "3. Usage instructions",
-        ])
+        requirements = doc_type_requirements.get(
+            doc_type,
+            [
+                "1. Clear explanation",
+                "2. Code examples",
+                "3. Usage instructions",
+            ],
+        )
 
         prompt_parts.append("Include:")
         prompt_parts.extend(requirements)
@@ -710,9 +711,7 @@ class ClaudeCodeSubagentSpawner:
         return result
 
     def _execute_via_task_tool(
-        self,
-        config: SubagentConfig,
-        agent_id: str
+        self, config: SubagentConfig, agent_id: str
     ) -> Optional[SubagentResult]:
         """
         Execute via Claude Code's Task tool.
@@ -742,11 +741,7 @@ class ClaudeCodeSubagentSpawner:
 
         return None
 
-    def _execute_via_subprocess(
-        self,
-        config: SubagentConfig,
-        agent_id: str
-    ) -> SubagentResult:
+    def _execute_via_subprocess(self, config: SubagentConfig, agent_id: str) -> SubagentResult:
         """
         Execute via subprocess as fallback.
 
@@ -758,10 +753,7 @@ class ClaudeCodeSubagentSpawner:
         script_content = self._create_subagent_script(config, agent_id)
 
         with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.py',
-            delete=False,
-            dir=self.checkpoint_dir
+            mode="w", suffix=".py", delete=False, dir=self.checkpoint_dir
         ) as script_file:
             script_file.write(script_content)
             script_path = script_file.name
@@ -784,7 +776,7 @@ class ClaudeCodeSubagentSpawner:
                 duration = (completed_at - started_at).total_seconds()
 
                 if proc.returncode == 0:
-                    output = stdout.decode('utf-8').strip()
+                    output = stdout.decode("utf-8").strip()
                     return SubagentResult(
                         success=True,
                         output=output,
@@ -797,7 +789,7 @@ class ClaudeCodeSubagentSpawner:
                     return SubagentResult(
                         success=False,
                         output=None,
-                        error=stderr.decode('utf-8'),
+                        error=stderr.decode("utf-8"),
                         subagent_type=config.subagent_type.value,
                         started_at=started_at.isoformat(),
                         completed_at=completed_at.isoformat(),
@@ -826,11 +818,7 @@ class ClaudeCodeSubagentSpawner:
             except Exception:
                 pass
 
-    def _create_subagent_script(
-        self,
-        config: SubagentConfig,
-        agent_id: str
-    ) -> str:
+    def _create_subagent_script(self, config: SubagentConfig, agent_id: str) -> str:
         """Create a Python script for subagent execution."""
         context_json = json.dumps(config.context or {}, indent=2)
 
@@ -889,10 +877,10 @@ except Exception as e:
         """Save subagent result to checkpoint."""
         checkpoint_path = self.checkpoint_dir / f"{agent_id}_result.json"
 
-        with open(checkpoint_path, 'w') as f:
+        with open(checkpoint_path, "w") as f:
             json.dump(result.to_dict(), f, indent=2, default=str)
 
-    def get_active_agents(self) -> Dict[str, Dict[str, Any]]:
+    def get_active_agents(self) -> dict[str, dict[str, Any]]:
         """Get information about active agents."""
         return self.active_agents.copy()
 
@@ -903,7 +891,7 @@ except Exception as e:
         if not checkpoint_path.exists():
             return None
 
-        with open(checkpoint_path, 'r') as f:
+        with open(checkpoint_path) as f:
             data = json.load(f)
 
         return SubagentResult(**data)
