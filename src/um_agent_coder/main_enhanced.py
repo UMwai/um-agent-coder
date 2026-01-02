@@ -160,7 +160,6 @@ def main():
             else:
                 print(f"Error: {env_var} not found in config or environment")
                 print(f"Please set the {env_var} environment variable or update config.yaml")
-                print(f"Please set the {env_var} environment variable or update config.yaml")
                 sys.exit(1)
     
     # Handle Router Mode
