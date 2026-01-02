@@ -600,10 +600,18 @@ class NewsFetcher(DataFetcher):
                 error=str(e)
             )
 
+    # Pre-compile regex patterns for better performance
+    import re
+    _ITEM_PATTERN = re.compile(r'<item>(.*?)</item>', re.DOTALL)
+    _TITLE_PATTERN = re.compile(r'<title>(.*?)</title>')
+    _LINK_PATTERN = re.compile(r'<link>(.*?)</link>')
+    _PUBDATE_PATTERN = re.compile(r'<pubDate>(.*?)</pubDate>')
+
     def _fetch_google_news(self, query: str, limit: int) -> FetchResult:
         """Fetch from Google News RSS."""
         try:
             import urllib.parse
+            import itertools
 
             encoded_query = urllib.parse.quote(query)
             url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
@@ -612,15 +620,15 @@ class NewsFetcher(DataFetcher):
             response.raise_for_status()
 
             # Parse RSS (basic parsing without external library)
-            import re
-
-            items = re.findall(r'<item>(.*?)</item>', response.text, re.DOTALL)
+            # Use finditer + islice for lazy evaluation and performance
+            items = self._ITEM_PATTERN.finditer(response.text)
 
             articles = []
-            for item in items[:limit]:
-                title = re.search(r'<title>(.*?)</title>', item)
-                link = re.search(r'<link>(.*?)</link>', item)
-                pub_date = re.search(r'<pubDate>(.*?)</pubDate>', item)
+            for match in itertools.islice(items, limit):
+                item = match.group(1)
+                title = self._TITLE_PATTERN.search(item)
+                link = self._LINK_PATTERN.search(item)
+                pub_date = self._PUBDATE_PATTERN.search(item)
 
                 articles.append({
                     "title": title.group(1) if title else None,
