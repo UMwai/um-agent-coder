@@ -7,8 +7,16 @@ try:
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
-from google.auth import default
-from google.auth.transport.requests import Request
+
+try:
+    from google.auth import default
+    from google.auth.transport.requests import Request
+
+    HAS_GOOGLE_AUTH = True
+except ImportError:
+    HAS_GOOGLE_AUTH = False
+    default = None
+    Request = None
 
 from um_agent_coder.llm.base import LLM
 from um_agent_coder.models import ModelRegistry
@@ -32,6 +40,13 @@ class GoogleADCProvider(LLM):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.model_registry = ModelRegistry()
+
+        # Check for google-auth dependency
+        if not HAS_GOOGLE_AUTH:
+            raise ImportError(
+                "google-auth is required for GoogleADCProvider. "
+                "Install it with: pip install google-auth google-auth-oauthlib"
+            )
 
         # Setup ADC
         try:
