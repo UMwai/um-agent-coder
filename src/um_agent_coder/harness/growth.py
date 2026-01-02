@@ -9,11 +9,10 @@ After completing all roadmap tasks, enters growth mode to:
 """
 
 import logging
-from datetime import datetime
 from typing import Optional
 
-from .models import Task, TaskStatus, Roadmap, ExecutionResult
 from .codex_executor import CodexExecutor
+from .models import Roadmap, Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 

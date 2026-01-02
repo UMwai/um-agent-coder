@@ -7,12 +7,13 @@ Uses SQLite for durable state across restarts.
 import json
 import logging
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Optional
 
-from .models import Task, TaskStatus, HarnessState, ExecutionResult
+from .models import ExecutionResult, HarnessState, RalphConfig, Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,9 @@ class StateManager:
                     error TEXT DEFAULT '',
                     conversation_id TEXT,
                     started_at TEXT,
-                    completed_at TEXT
+                    completed_at TEXT,
+                    ralph_config TEXT DEFAULT '',
+                    ralph_iterations INTEGER DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS execution_log (
@@ -185,13 +188,19 @@ class StateManager:
 
     def save_task(self, task: Task) -> None:
         """Save or update a task."""
+        # Serialize ralph_config if present
+        ralph_config_json = ""
+        if task.ralph_config:
+            ralph_config_json = json.dumps(task.ralph_config.to_dict())
+
         with self._connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO tasks (
                     id, description, phase, depends, timeout_minutes,
                     success_criteria, cwd, cli, model, status, attempts, max_retries,
-                    output, error, conversation_id, started_at, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    output, error, conversation_id, started_at, completed_at,
+                    ralph_config, ralph_iterations
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task.id,
                 task.description,
@@ -210,6 +219,8 @@ class StateManager:
                 task.conversation_id,
                 task.started_at.isoformat() if task.started_at else None,
                 task.completed_at.isoformat() if task.completed_at else None,
+                ralph_config_json,
+                task.ralph_iterations,
             ))
 
     def load_task(self, task_id: str) -> Optional[Task]:
@@ -248,6 +259,14 @@ class StateManager:
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
         """Convert a database row to a Task object."""
+        # Deserialize ralph_config if present
+        ralph_config = None
+        ralph_config_str = row["ralph_config"] if "ralph_config" in row.keys() else ""
+        if ralph_config_str:
+            ralph_config = RalphConfig.from_dict(json.loads(ralph_config_str))
+
+        ralph_iterations = row["ralph_iterations"] if "ralph_iterations" in row.keys() else 0
+
         return Task(
             id=row["id"],
             description=row["description"],
@@ -266,6 +285,8 @@ class StateManager:
             conversation_id=row["conversation_id"],
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
             completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            ralph_config=ralph_config,
+            ralph_iterations=ralph_iterations,
         )
 
     # Execution Log Operations

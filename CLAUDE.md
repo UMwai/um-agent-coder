@@ -140,7 +140,37 @@ Autonomous task execution via Codex, Gemini, or Claude CLI with roadmap-driven p
 
 ### State Files
 - `.harness/state.db` - SQLite task state
+- `.harness/ralph_state.db` - Ralph iteration history
 - `.harness/harness.log` - Execution logs
+
+### Ralph Loop Tasks
+
+Enable iterative autonomous execution until completion criteria are met:
+
+```markdown
+## Tasks
+- [ ] **task-001**: Implement feature X. Output <promise>FEATURE_COMPLETE</promise> when done.
+  - ralph: true
+  - max_iterations: 30
+  - completion_promise: FEATURE_COMPLETE
+  - timeout: 60min
+  - success: Tests pass, coverage > 80%
+  - cli: codex
+```
+
+Ralph-specific CLI flags:
+```bash
+python -m src.um_agent_coder.harness --ralph-default-iterations 50
+python -m src.um_agent_coder.harness --ralph-default-promise "TASK_DONE"
+```
+
+| Ralph Property | Default | Description |
+|----------------|---------|-------------|
+| `ralph` | false | Enable Ralph Loop |
+| `max_iterations` | 30 | Max loop iterations |
+| `completion_promise` | "COMPLETE" | Promise text to detect |
+
+See `docs/ralph-loop.md` for detailed documentation.
 
 ## Key Patterns
 

@@ -2,13 +2,13 @@
 Roadmap parser for specs/roadmap.md format.
 
 Parses markdown roadmap files into structured Roadmap objects.
+Supports ralph loop task definitions with special fields.
 """
 
 import re
 from pathlib import Path
-from typing import Optional
 
-from .models import Roadmap, Phase, Task, TaskStatus
+from .models import Phase, RalphConfig, Roadmap, Task, TaskStatus
 
 
 class RoadmapParser:
@@ -164,6 +164,15 @@ class RoadmapParser:
             # Check if task is already marked complete
             is_complete = '[x]' in match.group(0).lower()
 
+            # Build ralph config if enabled
+            ralph_config = None
+            if props.get('ralph', False):
+                ralph_config = RalphConfig(
+                    enabled=True,
+                    max_iterations=props.get('max_iterations', 30),
+                    completion_promise=props.get('completion_promise', 'COMPLETE'),
+                )
+
             task = Task(
                 id=task_id,
                 description=description,
@@ -175,13 +184,20 @@ class RoadmapParser:
                 cli=props.get('cli', ''),
                 model=props.get('model', ''),
                 status=TaskStatus.COMPLETED if is_complete else TaskStatus.PENDING,
+                ralph_config=ralph_config,
             )
             tasks.append(task)
 
         return tasks
 
     def _parse_task_properties(self, content: str) -> dict:
-        """Parse task properties from indented lines."""
+        """Parse task properties from indented lines.
+
+        Supports ralph-specific fields:
+        - ralph: true/false - Enable ralph loop for this task
+        - max_iterations: N - Override default max iterations
+        - completion_promise: TEXT - Custom promise text
+        """
         props = {
             'depends': [],
             'timeout': 30,
@@ -189,6 +205,10 @@ class RoadmapParser:
             'cwd': './',
             'cli': '',
             'model': '',
+            # Ralph-specific properties
+            'ralph': False,
+            'max_iterations': 30,
+            'completion_promise': 'COMPLETE',
         }
 
         for line in content.split('\n'):
@@ -214,6 +234,16 @@ class RoadmapParser:
                 props['cli'] = line.split(':', 1)[1].strip().lower()
             elif line.startswith('model:'):
                 props['model'] = line.split(':', 1)[1].strip()
+            # Ralph-specific fields
+            elif line.startswith('ralph:'):
+                value = line.split(':', 1)[1].strip().lower()
+                props['ralph'] = value in ('true', 'yes', '1')
+            elif line.startswith('max_iterations:'):
+                iter_match = re.search(r'(\d+)', line)
+                if iter_match:
+                    props['max_iterations'] = int(iter_match.group(1))
+            elif line.startswith('completion_promise:'):
+                props['completion_promise'] = line.split(':', 1)[1].strip()
 
         return props
 
@@ -222,19 +252,16 @@ class RoadmapParser:
         content = self.roadmap_path.read_text()
 
         # Find and update the checkbox for this task
-        old_pattern = rf'(\[[ ]\]\s*\*\*{re.escape(task_id)}\*\*)'
-        new_status = '[x]' if completed else '[ ]'
-
         if completed:
             new_content = re.sub(
                 rf'\[ \](\s*\*\*{re.escape(task_id)}\*\*)',
-                rf'[x]\1',
+                r'[x]\1',
                 content
             )
         else:
             new_content = re.sub(
                 rf'\[x\](\s*\*\*{re.escape(task_id)}\*\*)',
-                rf'[ ]\1',
+                r'[ ]\1',
                 content,
                 flags=re.IGNORECASE
             )

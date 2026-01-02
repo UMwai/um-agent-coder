@@ -5,14 +5,12 @@ Wraps the Codex CLI (via subprocess or MCP) to execute tasks autonomously.
 Configured for gpt-5.2 with high reasoning effort.
 """
 
-import json
 import logging
 import subprocess
 import time
-from pathlib import Path
 from typing import Optional
 
-from .models import Task, ExecutionResult
+from .models import ExecutionResult, Task
 
 logger = logging.getLogger(__name__)
 

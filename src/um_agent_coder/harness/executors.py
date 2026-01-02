@@ -8,7 +8,6 @@ Supports:
 """
 
 import logging
-import re
 import shutil
 import subprocess
 import time
@@ -16,7 +15,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional, Union
 
-from .models import Task, ExecutionResult
+from .models import ExecutionResult, Task
 
 logger = logging.getLogger(__name__)
 

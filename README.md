@@ -271,6 +271,53 @@ examples/
 └── claude_subagent_example.py
 ```
 
+## Ralph Loop - Autonomous Iterative Execution
+
+The Ralph Loop enables tasks to iterate autonomously until completion criteria are met. Perfect for complex tasks that require multiple refinement cycles.
+
+### Quick Start
+
+Define a ralph-enabled task in your roadmap:
+
+```markdown
+## Tasks
+
+- [ ] **feat-001**: Implement user auth with tests. Output <promise>AUTH_COMPLETE</promise> when done.
+  - ralph: true
+  - max_iterations: 30
+  - completion_promise: AUTH_COMPLETE
+  - success: Login/logout work, JWT tokens issued, 10+ unit tests pass
+  - cli: codex
+```
+
+Run the harness:
+
+```bash
+python -m src.um_agent_coder.harness --roadmap specs/roadmap.md
+```
+
+The task loops until `AUTH_COMPLETE` is detected in the output or max iterations reached.
+
+### Configuration Options
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `ralph` | false | Enable Ralph Loop for task |
+| `max_iterations` | 30 | Max iterations before giving up |
+| `completion_promise` | "COMPLETE" | Text to detect for completion |
+
+### CLI Flags
+
+```bash
+# Override default iterations
+python -m src.um_agent_coder.harness --ralph-default-iterations 50
+
+# Override default promise
+python -m src.um_agent_coder.harness --ralph-default-promise "TASK_DONE"
+```
+
+See [docs/ralph-loop.md](docs/ralph-loop.md) for detailed documentation and [examples/ralph-prompts/](examples/ralph-prompts/) for templates.
+
 ## Recommended Models
 
 | Provider | Model | Use Case |

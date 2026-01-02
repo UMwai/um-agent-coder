@@ -19,6 +19,39 @@ class TaskStatus(Enum):
 
 
 @dataclass
+class RalphConfig:
+    """Configuration for ralph loop execution.
+
+    When a task has ralph config, it will be executed using the
+    RalphExecutor wrapper which loops until completion promise
+    is detected or max_iterations is exceeded.
+    """
+    enabled: bool = True
+    max_iterations: int = 30
+    completion_promise: str = "COMPLETE"
+    require_xml_format: bool = True
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            "enabled": self.enabled,
+            "max_iterations": self.max_iterations,
+            "completion_promise": self.completion_promise,
+            "require_xml_format": self.require_xml_format,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "RalphConfig":
+        """Create from dictionary."""
+        return cls(
+            enabled=data.get("enabled", True),
+            max_iterations=data.get("max_iterations", 30),
+            completion_promise=data.get("completion_promise", "COMPLETE"),
+            require_xml_format=data.get("require_xml_format", True),
+        )
+
+
+@dataclass
 class Task:
     """A single executable task from the roadmap."""
     id: str
@@ -38,6 +71,8 @@ class Task:
     conversation_id: Optional[str] = None  # For conversation continuity
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    ralph_config: Optional[RalphConfig] = None  # Ralph loop config (None = not a ralph task)
+    ralph_iterations: int = 0  # Actual iterations used (for ralph tasks)
 
     def can_execute(self, completed_tasks: set[str]) -> bool:
         """Check if all dependencies are satisfied."""
@@ -46,6 +81,11 @@ class Task:
     def is_terminal(self) -> bool:
         """Check if task is in a terminal state."""
         return self.status in (TaskStatus.COMPLETED, TaskStatus.BLOCKED)
+
+    @property
+    def is_ralph_task(self) -> bool:
+        """Check if this is a ralph loop task."""
+        return self.ralph_config is not None and self.ralph_config.enabled
 
 
 @dataclass

@@ -15,24 +15,22 @@ Usage:
 import argparse
 import logging
 import signal
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .models import Task, TaskStatus, Roadmap, HarnessState
-from .roadmap_parser import RoadmapParser
 from .executors import (
     BaseCLIExecutor,
-    CLIBackend,
+    ClaudeExecutor,
     CodexExecutor,
     GeminiExecutor,
-    ClaudeExecutor,
-    create_executor,
 )
-from .state import StateManager
 from .growth import GrowthLoop
+from .models import HarnessState, Roadmap, Task, TaskStatus
+from .ralph import RalphExecutor, RalphPersistence
+from .roadmap_parser import RoadmapParser
+from .state import StateManager
 
 # Ensure .harness directory exists for logging
 Path(".harness").mkdir(exist_ok=True)
@@ -67,12 +65,22 @@ class Harness:
         reasoning_effort: str = "high",
         cooldown_seconds: int = 10,
         dry_run: bool = False,
+        parallel: bool = False,
+        max_parallel_tasks: int = 4,
+        ralph_default_iterations: int = 30,
+        ralph_default_promise: str = "COMPLETE",
     ):
         self.roadmap_path = roadmap_path
         self.dry_run = dry_run
         self.cooldown_seconds = cooldown_seconds
         self.default_cli = cli.lower()
         self.default_model = model or self.DEFAULT_MODELS.get(self.default_cli, "")
+        self.parallel = parallel
+        self.max_parallel_tasks = max_parallel_tasks
+
+        # Ralph-specific defaults
+        self.ralph_default_iterations = ralph_default_iterations
+        self.ralph_default_promise = ralph_default_promise
 
         # Initialize components
         self.parser = RoadmapParser(roadmap_path)
@@ -92,6 +100,9 @@ class Harness:
         self.state = StateManager()
         self.growth = GrowthLoop(self.default_executor)
         self.reasoning_effort = reasoning_effort
+
+        # Ralph persistence (shared across ralph executors)
+        self.ralph_persistence = RalphPersistence()
 
         # Runtime state
         self.roadmap: Optional[Roadmap] = None
@@ -291,7 +302,11 @@ class Harness:
         return None
 
     def _execute_task(self, task: Task) -> None:
-        """Execute a single task."""
+        """Execute a single task.
+
+        If the task has ralph_config enabled, it will be executed via
+        RalphExecutor which loops until promise is detected.
+        """
         task.status = TaskStatus.IN_PROGRESS
         task.attempts += 1
         task.started_at = datetime.utcnow()
@@ -303,6 +318,85 @@ class Harness:
         if task.model:
             cli_info += f" ({task.model})"
 
+        # Check if this is a ralph task
+        if task.is_ralph_task:
+            self._execute_ralph_task(task, executor, cli_info)
+        else:
+            self._execute_regular_task(task, executor, cli_info)
+
+    def _execute_ralph_task(
+        self,
+        task: Task,
+        base_executor: BaseCLIExecutor,
+        cli_info: str,
+    ) -> None:
+        """Execute a task using the ralph loop."""
+        config = task.ralph_config
+
+        logger.info(
+            f"Starting ralph loop execution via {cli_info} "
+            f"(max {config.max_iterations} iterations, promise: {config.completion_promise})"
+        )
+
+        # Create ralph executor wrapping the base executor
+        ralph_executor = RalphExecutor(
+            base_executor=base_executor,
+            max_iterations=config.max_iterations,
+            completion_promise=config.completion_promise,
+            persistence=self.ralph_persistence,
+            require_xml_format=config.require_xml_format,
+        )
+
+        # Build context from dependencies
+        context = self._build_task_context(task)
+
+        # Execute via ralph loop
+        result = ralph_executor.execute(task, context, resume=True)
+
+        # Update task based on result
+        task.output = result.final_output
+        task.ralph_iterations = result.iterations
+
+        if result.success:
+            task.status = TaskStatus.COMPLETED
+            task.completed_at = datetime.utcnow()
+            self.harness_state.tasks_completed += 1
+            logger.info(
+                f"Task {task.id} completed via ralph loop in {result.iterations} iterations"
+            )
+
+            # Update roadmap file
+            self.parser.update_task_status(task.id, completed=True)
+        else:
+            task.error = result.error or result.reason
+            if task.attempts >= task.max_retries:
+                task.status = TaskStatus.BLOCKED
+                self.harness_state.tasks_failed += 1
+                logger.error(
+                    f"Task {task.id} failed ralph loop after {result.iterations} iterations: "
+                    f"{result.reason}"
+                )
+            else:
+                task.status = TaskStatus.FAILED
+                logger.warning(
+                    f"Task {task.id} failed ralph loop ({result.reason}), will retry"
+                )
+
+        # Save state
+        self.state.save_task(task)
+        self.state.update_harness_state(
+            tasks_completed=self.harness_state.tasks_completed,
+            tasks_failed=self.harness_state.tasks_failed,
+            execution_time=result.total_duration.total_seconds(),
+        )
+
+    def _execute_regular_task(
+        self,
+        task: Task,
+        executor: BaseCLIExecutor,
+        cli_info: str,
+    ) -> None:
+        """Execute a regular (non-ralph) task."""
         logger.info(f"Starting execution (attempt {task.attempts}/{task.max_retries}) via {cli_info}")
 
         # Build context from dependencies
@@ -322,7 +416,7 @@ class Harness:
         if result.success:
             # Verify success criteria if defined
             if task.success_criteria and not executor.verify_success(task, result):
-                logger.warning(f"Task output did not meet success criteria")
+                logger.warning("Task output did not meet success criteria")
                 result.success = False
 
         if result.success:
@@ -458,6 +552,18 @@ def main():
         default=4,
         help="Maximum number of tasks to run in parallel (default: 4)"
     )
+    parser.add_argument(
+        "--ralph-default-iterations",
+        type=int,
+        default=30,
+        help="Default max iterations for ralph loop tasks (default: 30)"
+    )
+    parser.add_argument(
+        "--ralph-default-promise",
+        type=str,
+        default="COMPLETE",
+        help="Default completion promise for ralph loop tasks (default: COMPLETE)"
+    )
 
     args = parser.parse_args()
 
@@ -489,6 +595,8 @@ def main():
         dry_run=args.dry_run,
         parallel=args.parallel,
         max_parallel_tasks=args.max_parallel,
+        ralph_default_iterations=args.ralph_default_iterations,
+        ralph_default_promise=args.ralph_default_promise,
     )
 
     harness.run()
