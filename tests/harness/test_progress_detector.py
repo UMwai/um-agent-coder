@@ -423,7 +423,7 @@ class TestFileChangesScore:
     def test_small_changes(self):
         """Test with small changes (< 100 lines)."""
         with patch(
-            "src.um_agent_coder.harness.autonomous.progress_detector.subprocess.run"
+            "um_agent_coder.harness.autonomous.progress_detector.subprocess.run"
         ) as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
