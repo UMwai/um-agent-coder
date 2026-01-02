@@ -10,13 +10,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.executor import (
+from um_agent_coder.harness.autonomous.executor import (
     AutonomousConfig,
     AutonomousExecutor,
     AutonomousResult,
     TerminationReason,
 )
-from src.um_agent_coder.harness.models import Task
+from um_agent_coder.harness.models import Task
 
 
 @dataclass

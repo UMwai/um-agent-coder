@@ -5,27 +5,27 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.recovery.stuck_detector import (
+from um_agent_coder.harness.autonomous.recovery.stuck_detector import (
     ProgressRecord,
     StuckDetector,
     StuckState,
 )
-from src.um_agent_coder.harness.autonomous.recovery.prompt_mutator import (
+from um_agent_coder.harness.autonomous.recovery.prompt_mutator import (
     MutationResult,
     MutationType,
     PromptMutator,
 )
-from src.um_agent_coder.harness.autonomous.recovery.model_escalator import (
+from um_agent_coder.harness.autonomous.recovery.model_escalator import (
     ESCALATION_ORDER,
     EscalationResult,
     ModelEscalator,
 )
-from src.um_agent_coder.harness.autonomous.recovery.branch_explorer import (
+from um_agent_coder.harness.autonomous.recovery.branch_explorer import (
     BranchApproach,
     BranchExplorer,
     ExplorationBranch,
 )
-from src.um_agent_coder.harness.autonomous.recovery.recovery_manager import (
+from um_agent_coder.harness.autonomous.recovery.recovery_manager import (
     RecoveryManager,
     RecoveryResult,
     RecoveryStrategy,

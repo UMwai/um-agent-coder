@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.progress_detector import (
+from um_agent_coder.harness.autonomous.progress_detector import (
     DEFAULT_WEIGHTS,
     GitDiffStats,
     ProgressDetector,
@@ -18,7 +18,7 @@ from src.um_agent_coder.harness.autonomous.progress_detector import (
     file_changes_score,
     output_diff_score,
 )
-from src.um_agent_coder.harness.autonomous.progress_markers import (
+from um_agent_coder.harness.autonomous.progress_markers import (
     count_progress_markers,
     extract_progress_markers,
     has_progress_markers,

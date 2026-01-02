@@ -7,17 +7,17 @@ from pathlib import Path
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.monitoring import (
+from um_agent_coder.harness.autonomous.monitoring import (
     LogLevel,
     RealTimeLogger,
     StatusFormat,
     StatusReporter,
 )
-from src.um_agent_coder.harness.autonomous.monitoring.status_reporter import (
+from um_agent_coder.harness.autonomous.monitoring.status_reporter import (
     LoopStatus,
     MetricsCollector,
 )
-from src.um_agent_coder.harness.autonomous.context_manager import (
+from um_agent_coder.harness.autonomous.context_manager import (
     IterationContext,
     LoopContext,
 )

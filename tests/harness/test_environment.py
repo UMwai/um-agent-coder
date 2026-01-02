@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.environment import (
+from um_agent_coder.harness.autonomous.environment import (
     FileEvent,
     FileEventType,
     WorkspaceWatcher,
@@ -22,7 +22,7 @@ from src.um_agent_coder.harness.autonomous.environment import (
     EnvironmentManager,
     EnvironmentState,
 )
-from src.um_agent_coder.harness.autonomous.environment.file_watcher import (
+from um_agent_coder.harness.autonomous.environment.file_watcher import (
     DEFAULT_IGNORE_PATTERNS,
     PollingWatcher,
 )

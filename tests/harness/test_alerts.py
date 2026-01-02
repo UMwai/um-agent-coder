@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.alerts import (
+from um_agent_coder.harness.autonomous.alerts import (
     Alert,
     AlertConfig,
     AlertManager,
@@ -19,7 +19,7 @@ from src.um_agent_coder.harness.autonomous.alerts import (
     RunawayConfig,
     RunawayDetector,
 )
-from src.um_agent_coder.harness.autonomous.alerts.runaway_detector import (
+from um_agent_coder.harness.autonomous.alerts.runaway_detector import (
     RunawayState,
     hash_output,
 )

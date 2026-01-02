@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.context_manager import (
+from um_agent_coder.harness.autonomous.context_manager import (
     ContextManager,
     ContextSummarizer,
     IterationContext,

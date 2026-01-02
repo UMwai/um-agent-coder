@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.um_agent_coder.harness.autonomous.cli_router import (
+from um_agent_coder.harness.autonomous.cli_router import (
     AutoRouter,
     CLIRouter,
     OpusGuard,
