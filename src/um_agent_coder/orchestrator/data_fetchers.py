@@ -10,9 +10,12 @@ Provides standardized interfaces for:
 """
 
 import hashlib
+import itertools
 import json
 import os
+import re
 import time
+import urllib.parse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -550,27 +553,31 @@ class NewsFetcher(DataFetcher):
         except Exception as e:
             return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
+    # Pre-compile regex patterns for better performance
+    _RSS_ITEM_PATTERN = re.compile(r"<item>(.*?)</item>", re.DOTALL)
+    _RSS_TITLE_PATTERN = re.compile(r"<title>(.*?)</title>")
+    _RSS_LINK_PATTERN = re.compile(r"<link>(.*?)</link>")
+    _RSS_PUBDATE_PATTERN = re.compile(r"<pubDate>(.*?)</pubDate>")
+
     def _fetch_google_news(self, query: str, limit: int) -> FetchResult:
         """Fetch from Google News RSS."""
         try:
-            import urllib.parse
-
             encoded_query = urllib.parse.quote(query)
             url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
 
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
-            # Parse RSS (basic parsing without external library)
-            import re
-
-            items = re.findall(r"<item>(.*?)</item>", response.text, re.DOTALL)
-
+            # Lazy parsing using iterator to avoid loading all items into memory
+            # and stop processing once limit is reached
             articles = []
-            for item in items[:limit]:
-                title = re.search(r"<title>(.*?)</title>", item)
-                link = re.search(r"<link>(.*?)</link>", item)
-                pub_date = re.search(r"<pubDate>(.*?)</pubDate>", item)
+            items_iter = self._RSS_ITEM_PATTERN.finditer(response.text)
+
+            for match in itertools.islice(items_iter, limit):
+                item = match.group(1)
+                title = self._RSS_TITLE_PATTERN.search(item)
+                link = self._RSS_LINK_PATTERN.search(item)
+                pub_date = self._RSS_PUBDATE_PATTERN.search(item)
 
                 articles.append(
                     {
