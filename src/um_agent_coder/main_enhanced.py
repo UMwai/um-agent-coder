@@ -89,8 +89,15 @@ def main():
 
     # Create a dummy config file if it doesn't exist
     if not os.path.exists(args.config):
-        print(f"Warning: Config file not found at {args.config}.")
-        print("Creating a default config file.")
+        print("\n" + ANSI.style("=" * 60, ANSI.BLUE))
+        print(ANSI.style("WELCOME TO UM AGENT CODER", ANSI.BOLD))
+        print(ANSI.style("=" * 60, ANSI.BLUE))
+
+        print(f"\n{ANSI.style('ℹ Config file not found.', ANSI.CYAN)}")
+        print(
+            f"Creating default configuration at: {ANSI.style(os.path.abspath(args.config), ANSI.BOLD)}"
+        )
+
         os.makedirs(os.path.dirname(args.config), exist_ok=True)
         with open(args.config, "w") as f:
             f.write(
@@ -111,6 +118,13 @@ def main():
                 "  auto_summarize: true\n"
                 "  require_approval: false\n"
             )
+
+        print(f"\n{ANSI.style('⚠ ACTION REQUIRED', ANSI.WARNING)}")
+        print("To get started, you need to provide an API key.")
+        print("Option 1: Edit the config file above.")
+        print("Option 2: Set an environment variable (e.g., OPENAI_API_KEY).")
+        print(f"\n{ANSI.style('Exiting to allow setup.', ANSI.CYAN)}")
+        sys.exit(0)
 
     # Load configuration
     config = Config(args.config)
@@ -141,9 +155,10 @@ def main():
             if api_key:
                 provider_config["api_key"] = api_key
             else:
-                print(f"Error: {env_var} not found in config or environment")
-                print(f"Please set the {env_var} environment variable or update config.yaml")
-                print(f"Please set the {env_var} environment variable or update config.yaml")
+                print(f"{ANSI.style('Error:', ANSI.FAIL)} {env_var} not found in config or environment")
+                print(
+                    f"Please set the {ANSI.style(env_var, ANSI.BOLD)} environment variable or update config.yaml"
+                )
                 sys.exit(1)
 
     # Handle Router Mode
