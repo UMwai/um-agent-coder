@@ -89,7 +89,7 @@ def main():
 
     # Create a dummy config file if it doesn't exist
     if not os.path.exists(args.config):
-        print(f"Warning: Config file not found at {args.config}.")
+        print(f"{ANSI.style('Warning:', ANSI.WARNING)} Config file not found at {args.config}.")
         print("Creating a default config file.")
         os.makedirs(os.path.dirname(args.config), exist_ok=True)
         with open(args.config, "w") as f:
@@ -141,9 +141,9 @@ def main():
             if api_key:
                 provider_config["api_key"] = api_key
             else:
-                print(f"Error: {env_var} not found in config or environment")
-                print(f"Please set the {env_var} environment variable or update config.yaml")
-                print(f"Please set the {env_var} environment variable or update config.yaml")
+                print(f"\n{ANSI.style('Error:', ANSI.FAIL)} {env_var} not found in config or environment")
+                print(f"Please set the {ANSI.style(env_var, ANSI.BOLD)} environment variable or update config.yaml")
+                print(f"\n{ANSI.style('Tip:', ANSI.CYAN)} You can get an API key from your provider's dashboard.")
                 sys.exit(1)
 
     # Handle Router Mode
