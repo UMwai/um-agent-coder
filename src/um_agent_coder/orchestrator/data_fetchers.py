@@ -550,9 +550,34 @@ class NewsFetcher(DataFetcher):
         except Exception as e:
             return FetchResult(success=False, data=None, source=self.source_name, error=str(e))
 
+    # Pre-compiled regex patterns for RSS parsing
+    _RSS_ITEM_PATTERN = None
+    _RSS_TITLE_PATTERN = None
+    _RSS_LINK_PATTERN = None
+    _RSS_PUB_DATE_PATTERN = None
+
+    @classmethod
+    def _get_rss_patterns(cls):
+        """Lazy initialization of regex patterns."""
+        import re
+
+        if cls._RSS_ITEM_PATTERN is None:
+            cls._RSS_ITEM_PATTERN = re.compile(r"<item>(.*?)</item>", re.DOTALL)
+            cls._RSS_TITLE_PATTERN = re.compile(r"<title>(.*?)</title>")
+            cls._RSS_LINK_PATTERN = re.compile(r"<link>(.*?)</link>")
+            cls._RSS_PUB_DATE_PATTERN = re.compile(r"<pubDate>(.*?)</pubDate>")
+
+        return (
+            cls._RSS_ITEM_PATTERN,
+            cls._RSS_TITLE_PATTERN,
+            cls._RSS_LINK_PATTERN,
+            cls._RSS_PUB_DATE_PATTERN,
+        )
+
     def _fetch_google_news(self, query: str, limit: int) -> FetchResult:
         """Fetch from Google News RSS."""
         try:
+            import itertools
             import urllib.parse
 
             encoded_query = urllib.parse.quote(query)
@@ -562,15 +587,16 @@ class NewsFetcher(DataFetcher):
             response.raise_for_status()
 
             # Parse RSS (basic parsing without external library)
-            import re
-
-            items = re.findall(r"<item>(.*?)</item>", response.text, re.DOTALL)
+            # Optimization: Use pre-compiled regex and lazy evaluation
+            item_pattern, title_pattern, link_pattern, pub_date_pattern = self._get_rss_patterns()
 
             articles = []
-            for item in items[:limit]:
-                title = re.search(r"<title>(.*?)</title>", item)
-                link = re.search(r"<link>(.*?)</link>", item)
-                pub_date = re.search(r"<pubDate>(.*?)</pubDate>", item)
+            # Use finditer and islice to avoid processing the whole feed if we only need a few items
+            for match in itertools.islice(item_pattern.finditer(response.text), limit):
+                item = match.group(1)
+                title = title_pattern.search(item)
+                link = link_pattern.search(item)
+                pub_date = pub_date_pattern.search(item)
 
                 articles.append(
                     {
