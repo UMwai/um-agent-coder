@@ -18,10 +18,12 @@ class Spinner:
         self.running = False
         self.thread: Optional[threading.Thread] = None
         self._is_tty = sys.stdout.isatty()
+        self.start_time: Optional[float] = None
 
     def start(self):
         if not self.verbose:
             return
+        self.start_time = time.time()
         if not self._is_tty:
             print(f"{self.text}..." if not self.text.endswith("...") else self.text)
             return
@@ -36,9 +38,13 @@ class Spinner:
         self.running = False
         if self.thread:
             self.thread.join()
+
+        elapsed = time.time() - (self.start_time or time.time())
+        time_str = f"({elapsed:.1f}s)"
+
         if self._is_tty:
             symbol = ANSI.style("✓", ANSI.GREEN) if success else ANSI.style("✗", ANSI.FAIL)
-            sys.stdout.write(f"\r{symbol} {self.text}\033[K\n")
+            sys.stdout.write(f"\r{symbol} {self.text} {ANSI.style(time_str, ANSI.BLUE)}\033[K\n")
             sys.stdout.flush()
 
     def update(self, text: str):
@@ -46,7 +52,9 @@ class Spinner:
 
     def _spin(self):
         while self.running:
-            sys.stdout.write(f"\r{ANSI.style(next(self.spinner), ANSI.CYAN)} {self.text}\033[K")
+            elapsed = time.time() - (self.start_time or time.time())
+            time_str = f"({elapsed:.1f}s)"
+            sys.stdout.write(f"\r{ANSI.style(next(self.spinner), ANSI.CYAN)} {self.text} {ANSI.style(time_str, ANSI.BLUE)}\033[K")
             sys.stdout.flush()
             time.sleep(self.delay)
 
