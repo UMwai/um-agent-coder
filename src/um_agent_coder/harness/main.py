@@ -10,15 +10,20 @@ Usage:
     python -m src.um_agent_coder.harness --roadmap specs/roadmap.md
     python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli gemini
     python -m src.um_agent_coder.harness --roadmap specs/roadmap.md --cli claude --daemon
+
+Sub-harness mode (spawned by meta-harness):
+    python -m src.um_agent_coder.harness --roadmap specs/task.md --subprocess --harness-id task-001
 """
 
 import argparse
+import json
 import logging
+import os
 import signal
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from .executors import (
     BaseCLIExecutor,
@@ -32,8 +37,13 @@ from .ralph import RalphExecutor, RalphPersistence
 from .roadmap_parser import RoadmapParser
 from .state import StateManager
 
-# Ensure .harness directory exists for logging
-Path(".harness").mkdir(exist_ok=True)
+# Get state directory from environment (for subprocess mode) or use default
+HARNESS_STATE_DIR = Path(os.environ.get("HARNESS_STATE_DIR", ".harness"))
+HARNESS_ID = os.environ.get("HARNESS_ID", "main")
+IS_SUBPROCESS = os.environ.get("HARNESS_SUBPROCESS", "0") == "1"
+
+# Ensure state directory exists for logging
+HARNESS_STATE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(
@@ -41,7 +51,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(".harness/harness.log"),
+        logging.FileHandler(HARNESS_STATE_DIR / "harness.log"),
     ],
 )
 logger = logging.getLogger(__name__)
@@ -69,6 +79,11 @@ class Harness:
         max_parallel_tasks: int = 4,
         ralph_default_iterations: int = 30,
         ralph_default_promise: str = "COMPLETE",
+        # Sub-harness mode parameters
+        subprocess_mode: bool = False,
+        harness_id: str = "main",
+        state_dir: Optional[Path] = None,
+        parent_context: Optional[Dict[str, Any]] = None,
     ):
         self.roadmap_path = roadmap_path
         self.dry_run = dry_run
@@ -77,6 +92,12 @@ class Harness:
         self.default_model = model or self.DEFAULT_MODELS.get(self.default_cli, "")
         self.parallel = parallel
         self.max_parallel_tasks = max_parallel_tasks
+
+        # Sub-harness mode settings
+        self.subprocess_mode = subprocess_mode
+        self.harness_id = harness_id
+        self.state_dir = state_dir or HARNESS_STATE_DIR
+        self.parent_context = parent_context or {}
 
         # Ralph-specific defaults
         self.ralph_default_iterations = ralph_default_iterations
@@ -95,12 +116,15 @@ class Harness:
         # Cache for task-specific executors
         self._executors: dict[str, BaseCLIExecutor] = {self.default_cli: self.default_executor}
 
-        self.state = StateManager()
+        # Use isolated state for subprocess mode
+        self.state = StateManager(db_path=self.state_dir / "state.db")
         self.growth = GrowthLoop(self.default_executor)
         self.reasoning_effort = reasoning_effort
 
-        # Ralph persistence (shared across ralph executors)
-        self.ralph_persistence = RalphPersistence()
+        # Ralph persistence (shared across ralph executors, but isolated per harness)
+        self.ralph_persistence = RalphPersistence(
+            db_path=self.state_dir / "ralph_state.db"
+        )
 
         # Runtime state
         self.roadmap: Optional[Roadmap] = None
@@ -111,6 +135,13 @@ class Harness:
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+
+        # Log sub-harness mode info
+        if self.subprocess_mode:
+            logger.info(f"Running as sub-harness: {self.harness_id}")
+            logger.info(f"State directory: {self.state_dir}")
+            if self.parent_context:
+                logger.info(f"Parent context keys: {list(self.parent_context.keys())}")
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
@@ -173,6 +204,13 @@ class Harness:
 
         self._running = True
         while self._running and not self._shutdown_requested:
+            # Check for stop/pause files (subprocess mode control)
+            if self._check_control_files():
+                break
+
+            # Process inbox instructions
+            self._process_inbox()
+
             try:
                 self._iteration()
             except Exception as e:
@@ -184,6 +222,49 @@ class Harness:
 
         logger.info("Harness shutdown complete")
         self._print_summary()
+
+    def _check_control_files(self) -> bool:
+        """Check for control files (stop, pause) from parent harness.
+
+        Returns True if should exit the main loop.
+        """
+        stop_file = self.state_dir / "stop"
+        pause_file = self.state_dir / "pause"
+
+        if stop_file.exists():
+            logger.info("Stop file detected, shutting down...")
+            self._shutdown_requested = True
+            return True
+
+        if pause_file.exists():
+            logger.info("Pause file detected, waiting...")
+            while pause_file.exists() and not self._shutdown_requested:
+                time.sleep(1)
+            logger.info("Pause file removed, resuming...")
+
+        return False
+
+    def _process_inbox(self) -> None:
+        """Process instruction files from inbox directory."""
+        inbox_dir = self.state_dir / "inbox"
+        if not inbox_dir.exists():
+            return
+
+        # Process files in sorted order (timestamp-based naming)
+        for instruction_file in sorted(inbox_dir.glob("*.txt")):
+            try:
+                instruction = instruction_file.read_text().strip()
+                logger.info(f"Processing instruction: {instruction[:100]}...")
+
+                # Store instruction for context
+                if not hasattr(self, "_pending_instructions"):
+                    self._pending_instructions = []
+                self._pending_instructions.append(instruction)
+
+                # Remove processed file
+                instruction_file.unlink()
+            except Exception as e:
+                logger.error(f"Error processing instruction {instruction_file}: {e}")
 
     def _initialize(self) -> None:
         """Initialize harness state and load roadmap."""
@@ -537,24 +618,103 @@ def main():
         help="Default completion promise for ralph loop tasks (default: COMPLETE)",
     )
 
+    # Sub-harness mode arguments
+    parser.add_argument(
+        "--subprocess",
+        action="store_true",
+        help="Run as a sub-harness (spawned by meta-harness)",
+    )
+    parser.add_argument(
+        "--harness-id",
+        type=str,
+        default=None,
+        help="Unique identifier for this sub-harness",
+    )
+
+    # Meta-harness mode arguments
+    parser.add_argument(
+        "--meta",
+        action="store_true",
+        help="Enable meta-harness mode (manage multiple sub-harnesses)",
+    )
+    parser.add_argument(
+        "--meta-status",
+        action="store_true",
+        help="Show meta-harness dashboard and exit",
+    )
+    parser.add_argument(
+        "--meta-stop-all",
+        action="store_true",
+        help="Stop all running sub-harnesses",
+    )
+    parser.add_argument(
+        "--meta-logs",
+        type=str,
+        default=None,
+        metavar="HARNESS_ID",
+        help="Show logs for a specific sub-harness",
+    )
+
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Ensure .harness directory exists
-    Path(".harness").mkdir(exist_ok=True)
+    # Handle meta-harness commands first (before normal harness logic)
+    if args.meta_status:
+        from .dashboard import MetaHarnessDashboard
+        dashboard = MetaHarnessDashboard()
+        dashboard.print_status()
+        return
+
+    if args.meta_logs:
+        from .dashboard import MetaHarnessDashboard
+        dashboard = MetaHarnessDashboard()
+        dashboard.print_harness_logs(args.meta_logs, tail=100)
+        return
+
+    if args.meta_stop_all:
+        from .manager import HarnessManager
+        manager = HarnessManager()
+        logger.info("Stopping all sub-harnesses...")
+        manager.request_stop_all()
+        print("Stop requested for all sub-harnesses")
+        return
+
+    # Determine state directory and harness ID
+    # Priority: CLI args > environment variables > defaults
+    subprocess_mode = args.subprocess or IS_SUBPROCESS
+    harness_id = args.harness_id or HARNESS_ID
+    state_dir = HARNESS_STATE_DIR
+
+    # For subprocess mode, state_dir should already be set via environment
+    # If running standalone with --subprocess, create isolated dir
+    if subprocess_mode and harness_id != "main":
+        state_dir = Path(".harness") / harness_id
+        state_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        # Ensure default .harness directory exists
+        Path(".harness").mkdir(exist_ok=True)
+
+    # Load parent context if provided (for subprocess mode)
+    parent_context: Dict[str, Any] = {}
+    if subprocess_mode:
+        context_file = state_dir / "parent_context.json"
+        if context_file.exists():
+            try:
+                parent_context = json.loads(context_file.read_text())
+                logger.info(f"Loaded parent context from {context_file}")
+            except Exception as e:
+                logger.warning(f"Could not load parent context: {e}")
 
     if args.status:
-        state = StateManager()
+        state = StateManager(db_path=state_dir / "state.db")
         stats = state.get_statistics()
-        import json
-
         print(json.dumps(stats, indent=2, default=str))
         return
 
     if args.reset:
-        state = StateManager()
+        state = StateManager(db_path=state_dir / "state.db")
         state.reset()
         print("State reset complete")
         return
@@ -570,6 +730,11 @@ def main():
         max_parallel_tasks=args.max_parallel,
         ralph_default_iterations=args.ralph_default_iterations,
         ralph_default_promise=args.ralph_default_promise,
+        # Sub-harness mode parameters
+        subprocess_mode=subprocess_mode,
+        harness_id=harness_id,
+        state_dir=state_dir,
+        parent_context=parent_context,
     )
 
     harness.run()

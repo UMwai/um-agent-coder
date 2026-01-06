@@ -6,6 +6,7 @@ into a unified interface for the autonomous loop.
 Reference: specs/autonomous-loop-spec.md Section 4.5
 """
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -147,7 +148,9 @@ class EnvironmentManager:
         # Initialize file watcher
         self._file_watcher: Optional[WorkspaceWatcher | PollingWatcher] = None
         self._enable_file_watcher = enable_file_watcher
-        self._use_polling = use_polling
+        force_polling = os.environ.get("UM_AGENT_CODER_FORCE_POLLING", "").lower() in ("1", "true", "yes")
+        under_pytest = "PYTEST_CURRENT_TEST" in os.environ
+        self._use_polling = use_polling or force_polling or under_pytest
 
         if enable_file_watcher:
             self._init_file_watcher()

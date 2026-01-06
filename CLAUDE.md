@@ -2,6 +2,43 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Vision
+
+um-agent-coder is a **meta-harness** - a harness that can manage other harnesses. Core capabilities:
+- **Meta-Harness** (50%): Spawn, coordinate, aggregate sub-harnesses
+- **Autonomous Loop** (30%): 24/7 unattended execution with recovery
+- **Foundation** (20%): CLI routing, progress detection, stuck recovery
+
+## Specifications
+
+All technical specs are in `specs/`:
+
+| Spec | Purpose |
+|------|---------|
+| `specs/README.md` | Index and reading guide |
+| `specs/architecture/overview.md` | System architecture |
+| `specs/architecture/interfaces.md` | Component contracts |
+| `specs/features/meta-harness/spec.md` | **Meta-harness specification** |
+| `specs/features/autonomous-loop/spec.md` | Autonomous execution |
+| `specs/features/foundation/*.md` | CLI routing, progress, recovery |
+
+## Prompts for Building This Repo
+
+Use prompts in `prompts/self-build/` for AI-driven development:
+
+```bash
+# Build meta-harness feature
+cat prompts/self-build/implement-meta-harness.md
+
+# Build autonomous loop enhancements
+cat prompts/self-build/implement-autonomous-loop.md
+
+# Review and test
+cat prompts/self-build/review-and-test.md
+```
+
+User templates for running harness on other projects: `prompts/user-templates/`
+
 ## Commands
 
 ### Running the Agent
