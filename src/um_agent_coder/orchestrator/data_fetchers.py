@@ -10,9 +10,12 @@ Provides standardized interfaces for:
 """
 
 import hashlib
+import itertools
 import json
 import os
+import re
 import time
+import urllib.parse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -471,6 +474,12 @@ class NewsFetcher(DataFetcher):
     - Google News RSS (free)
     """
 
+    # Pre-compile regex patterns for performance
+    ITEM_PATTERN = re.compile(r"<item>(.*?)</item>", re.DOTALL)
+    TITLE_PATTERN = re.compile(r"<title>(.*?)</title>", re.DOTALL)
+    LINK_PATTERN = re.compile(r"<link>(.*?)</link>", re.DOTALL)
+    PUBDATE_PATTERN = re.compile(r"<pubDate>(.*?)</pubDate>", re.DOTALL)
+
     @property
     def source_name(self) -> str:
         return "news"
@@ -553,8 +562,6 @@ class NewsFetcher(DataFetcher):
     def _fetch_google_news(self, query: str, limit: int) -> FetchResult:
         """Fetch from Google News RSS."""
         try:
-            import urllib.parse
-
             encoded_query = urllib.parse.quote(query)
             url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
 
@@ -562,15 +569,15 @@ class NewsFetcher(DataFetcher):
             response.raise_for_status()
 
             # Parse RSS (basic parsing without external library)
-            import re
-
-            items = re.findall(r"<item>(.*?)</item>", response.text, re.DOTALL)
+            # Optimized to use lazy iteration and pre-compiled regex
+            items_iter = self.ITEM_PATTERN.finditer(response.text)
 
             articles = []
-            for item in items[:limit]:
-                title = re.search(r"<title>(.*?)</title>", item)
-                link = re.search(r"<link>(.*?)</link>", item)
-                pub_date = re.search(r"<pubDate>(.*?)</pubDate>", item)
+            for match in itertools.islice(items_iter, limit):
+                item = match.group(1)
+                title = self.TITLE_PATTERN.search(item)
+                link = self.LINK_PATTERN.search(item)
+                pub_date = self.PUBDATE_PATTERN.search(item)
 
                 articles.append(
                     {
