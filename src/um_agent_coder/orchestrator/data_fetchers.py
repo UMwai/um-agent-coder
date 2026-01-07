@@ -352,8 +352,12 @@ class YahooFinanceFetcher(DataFetcher):
         """Fetch data for multiple tickers."""
         results = {}
         for ticker in tickers:
-            results[ticker] = self.fetch(ticker)
-            time.sleep(0.5)  # Rate limiting
+            result = self.fetch(ticker)
+            results[ticker] = result
+
+            # Only sleep if we actually hit the API (not cached)
+            if not result.cached:
+                time.sleep(0.5)  # Rate limiting
         return results
 
 
