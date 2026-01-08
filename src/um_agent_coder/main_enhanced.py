@@ -12,27 +12,62 @@ from um_agent_coder.models import ModelCategory, ModelRegistry
 from um_agent_coder.utils.colors import ANSI
 
 
+def format_number(n):
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.0f}k"
+    return str(n)
+
+
+def get_score_color(score):
+    if score >= 90:
+        return ANSI.GREEN
+    if score >= 80:
+        return ANSI.WARNING
+    return ANSI.FAIL
+
+
 def list_available_models():
     """List all available models organized by category."""
     registry = ModelRegistry()
 
     print("\n" + ANSI.style("=" * 80, ANSI.BLUE))
-    print(ANSI.style("AVAILABLE MODELS", ANSI.BOLD))
+    print(ANSI.style(" AVAILABLE MODELS", ANSI.BOLD))
     print(ANSI.style("=" * 80, ANSI.BLUE))
 
     for category in ModelCategory:
-        print(f"\n{ANSI.style(category.value.upper().replace('_', ' '), ANSI.CYAN)} MODELS:")
-        print("-" * 50)
+        print(f"\n{ANSI.style(category.value.upper().replace('_', ' '), ANSI.CYAN)}")
+        print(ANSI.style("-" * 80, ANSI.BLUE))
 
         models = registry.get_by_category(category)
-        for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
-            print(f"\n{model.name} ({model.provider})")
-            print(f"  Performance: {model.performance_score}/100")
-            print(f"  Context: {model.context_window:,} tokens")
-            print(
-                f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)"
-            )
-            print(f"  {model.description}")
+        sorted_models = sorted(models, key=lambda x: x.performance_score, reverse=True)
+
+        for model in sorted_models:
+            score_color = get_score_color(model.performance_score)
+
+            # Header line: Name (Provider) ...... Score
+            name_part = f"{ANSI.style(model.name, ANSI.BOLD)} ({model.provider})"
+            score_part = f"{ANSI.style(str(model.performance_score), score_color + ANSI.BOLD)}/100"
+
+            # Calculate padding
+            # Length of visible text is approx len(model.name) + len(model.provider) + 3
+            visible_len = len(model.name) + len(model.provider) + 3
+            dots = "." * (60 - visible_len) if 60 > visible_len else " "
+
+            print(f" {name_part} {ANSI.style(dots, ANSI.BLUE)} {score_part}")
+
+            # Details line
+            ctx = format_number(model.context_window)
+            cost_in = f"${model.cost_per_1k_input:.4f}"
+            cost_out = f"${model.cost_per_1k_output:.4f}"
+
+            details = f"   Context: {ctx:<6} | Cost: {cost_in}/{cost_out} per 1k"
+            print(ANSI.style(details, ANSI.HEADER))  # Purpleish/Header color for metadata
+
+            # Description
+            print(f"   {model.description}")
+            print()  # Empty line between models
 
 
 def main():
