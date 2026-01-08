@@ -75,6 +75,8 @@ class DataFetcher(ABC):
             result = self._memory_cache[cache_key]
             fetched_at = datetime.fromisoformat(result.fetched_at)
             if datetime.now() - fetched_at < self.cache_ttl:
+                # Ensure the result is marked as cached
+                result.cached = True
                 return result
             else:
                 del self._memory_cache[cache_key]
@@ -353,7 +355,9 @@ class YahooFinanceFetcher(DataFetcher):
         results = {}
         for ticker in tickers:
             results[ticker] = self.fetch(ticker)
-            time.sleep(0.5)  # Rate limiting
+            # Only sleep if we actually made a network request
+            if not results[ticker].cached:
+                time.sleep(0.5)  # Rate limiting
         return results
 
 
