@@ -26,12 +26,27 @@ def list_available_models():
 
         models = registry.get_by_category(category)
         for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
-            print(f"\n{model.name} ({model.provider})")
-            print(f"  Performance: {model.performance_score}/100")
+            # Model Name with Bold and Icon
+            icon = "✨ " if category == ModelCategory.HIGH_PERFORMANCE else ""
+            print(f"\n{icon}{ANSI.style(model.name, ANSI.BOLD)} ({model.provider})")
+
+            # Color-coded Performance Score
+            score = model.performance_score
+            if score >= 90:
+                score_str = ANSI.style(f"{score}/100", ANSI.GREEN)
+            elif score >= 80:
+                score_str = ANSI.style(f"{score}/100", ANSI.WARNING)
+            else:
+                score_str = ANSI.style(f"{score}/100", ANSI.FAIL)
+            print(f"  Performance: {score_str}")
+
             print(f"  Context: {model.context_window:,} tokens")
-            print(
-                f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)"
-            )
+
+            # Highlighted Cost
+            cost_in = ANSI.style(f"${model.cost_per_1k_input:.4f}", ANSI.CYAN)
+            cost_out = ANSI.style(f"${model.cost_per_1k_output:.4f}", ANSI.CYAN)
+            print(f"  Cost: {cost_in}/{cost_out} per 1K tokens (in/out)")
+
             print(f"  {model.description}")
 
 
