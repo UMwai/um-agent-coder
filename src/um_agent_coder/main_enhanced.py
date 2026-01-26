@@ -10,6 +10,7 @@ from um_agent_coder.config import Config
 from um_agent_coder.llm.factory import LLMFactory
 from um_agent_coder.models import ModelCategory, ModelRegistry
 from um_agent_coder.utils.colors import ANSI
+from um_agent_coder.utils.formatting import format_compact_number
 
 
 def list_available_models():
@@ -26,13 +27,22 @@ def list_available_models():
 
         models = registry.get_by_category(category)
         for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
-            print(f"\n{model.name} ({model.provider})")
-            print(f"  Performance: {model.performance_score}/100")
-            print(f"  Context: {model.context_window:,} tokens")
+            print(f"\n{ANSI.style(model.name, ANSI.BOLD)} ({model.provider})")
+
+            # Color code performance
+            score = model.performance_score
+            score_color = ANSI.GREEN if score >= 90 else ANSI.WARNING if score >= 80 else ANSI.FAIL
+            print(f"  Performance .... {ANSI.style(f'{score}/100', score_color)}")
+
+            # Format context
+            context = format_compact_number(model.context_window)
+            print(f"  Context ........ {context} tokens")
+
+            # Format cost
             print(
-                f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)"
+                f"  Cost ........... ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens"
             )
-            print(f"  {model.description}")
+            print(f"  {ANSI.style(model.description, ANSI.CYAN)}")
 
 
 def main():
