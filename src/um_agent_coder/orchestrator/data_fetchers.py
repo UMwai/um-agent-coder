@@ -14,7 +14,7 @@ import json
 import os
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -75,7 +75,9 @@ class DataFetcher(ABC):
             result = self._memory_cache[cache_key]
             fetched_at = datetime.fromisoformat(result.fetched_at)
             if datetime.now() - fetched_at < self.cache_ttl:
-                return result
+                # Return a copy with cached=True to avoid mutating the stored object
+                # and to ensure the caller knows it came from cache
+                return replace(result, cached=True)
             else:
                 del self._memory_cache[cache_key]
 
@@ -351,9 +353,14 @@ class YahooFinanceFetcher(DataFetcher):
     def fetch_multiple(self, tickers: list[str]) -> dict[str, FetchResult]:
         """Fetch data for multiple tickers."""
         results = {}
-        for ticker in tickers:
-            results[ticker] = self.fetch(ticker)
-            time.sleep(0.5)  # Rate limiting
+        for i, ticker in enumerate(tickers):
+            result = self.fetch(ticker)
+            results[ticker] = result
+
+            # Rate limiting: sleep only if we hit the API (not cached)
+            # and it's not the last item
+            if not result.cached and i < len(tickers) - 1:
+                time.sleep(0.5)
         return results
 
 
