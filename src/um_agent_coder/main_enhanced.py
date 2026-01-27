@@ -27,7 +27,17 @@ def list_available_models():
         models = registry.get_by_category(category)
         for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
             print(f"\n{model.name} ({model.provider})")
-            print(f"  Performance: {model.performance_score}/100")
+
+            # Color-code performance score
+            score = model.performance_score
+            if score >= 90:
+                score_str = ANSI.style(str(score), ANSI.GREEN)
+            elif score >= 80:
+                score_str = ANSI.style(str(score), ANSI.WARNING)
+            else:
+                score_str = ANSI.style(str(score), ANSI.FAIL)
+
+            print(f"  Performance: {score_str}/100")
             print(f"  Context: {model.context_window:,} tokens")
             print(
                 f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)"
@@ -85,7 +95,20 @@ def main():
 
     # Require prompt if not listing models
     if not args.prompt:
-        parser.error("prompt is required unless using --list-models")
+        if sys.stdin.isatty():
+            print("\n" + ANSI.style("=" * 60, ANSI.BLUE))
+            print(ANSI.style("WELCOME TO UM AGENT CODER", ANSI.BOLD))
+            print(ANSI.style("=" * 60, ANSI.BLUE))
+            print(ANSI.style("\nEnter your task below (Ctrl+C to exit):", ANSI.CYAN))
+
+            try:
+                while not args.prompt:
+                    args.prompt = input(ANSI.style("> ", ANSI.GREEN)).strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nExiting.")
+                sys.exit(0)
+        else:
+            parser.error("prompt is required unless using --list-models")
 
     # Create a dummy config file if it doesn't exist
     if not os.path.exists(args.config):
