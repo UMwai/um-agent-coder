@@ -9,6 +9,7 @@ Provides standardized interfaces for:
 - PubMed (research papers)
 """
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -75,7 +76,9 @@ class DataFetcher(ABC):
             result = self._memory_cache[cache_key]
             fetched_at = datetime.fromisoformat(result.fetched_at)
             if datetime.now() - fetched_at < self.cache_ttl:
-                return result
+                # Return a copy with cached=True to correctly indicate cache hit
+                # without mutating the stored object
+                return dataclasses.replace(result, cached=True)
             else:
                 del self._memory_cache[cache_key]
 
@@ -353,7 +356,9 @@ class YahooFinanceFetcher(DataFetcher):
         results = {}
         for ticker in tickers:
             results[ticker] = self.fetch(ticker)
-            time.sleep(0.5)  # Rate limiting
+            # Only apply rate limiting if we actually made a network request
+            if not results[ticker].cached:
+                time.sleep(0.5)  # Rate limiting
         return results
 
 
