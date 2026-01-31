@@ -83,6 +83,19 @@ def main():
         list_available_models()
         return
 
+    # Check for interactive mode if no prompt is provided
+    if not args.prompt and sys.stdin.isatty():
+        print("\n" + ANSI.style("=" * 60, ANSI.BLUE))
+        print(ANSI.style("UM AGENT CODER - Interactive Mode", ANSI.BOLD))
+        print(ANSI.style("=" * 60, ANSI.BLUE))
+        print(ANSI.style("Tip: You can also pass the prompt as an argument.", ANSI.CYAN))
+
+        try:
+            args.prompt = input(f"\n{ANSI.style('How can I help you today?', ANSI.BOLD)}\n> ")
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting...")
+            sys.exit(0)
+
     # Require prompt if not listing models
     if not args.prompt:
         parser.error("prompt is required unless using --list-models")
