@@ -10,6 +10,7 @@ from um_agent_coder.config import Config
 from um_agent_coder.llm.factory import LLMFactory
 from um_agent_coder.models import ModelCategory, ModelRegistry
 from um_agent_coder.utils.colors import ANSI
+from um_agent_coder.utils.formatting import format_compact_number
 
 
 def list_available_models():
@@ -28,7 +29,7 @@ def list_available_models():
         for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
             print(f"\n{model.name} ({model.provider})")
             print(f"  Performance: {model.performance_score}/100")
-            print(f"  Context: {model.context_window:,} tokens")
+            print(f"  Context: {format_compact_number(model.context_window)} tokens")
             print(
                 f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)"
             )
