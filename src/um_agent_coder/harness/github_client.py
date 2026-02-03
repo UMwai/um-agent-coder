@@ -30,6 +30,15 @@ class GitHubIssue:
     assignees: List[str] = field(default_factory=list)
     milestone: Optional[str] = None
 
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse ISO datetime string from GitHub API."""
+        if not value:
+            return None
+        # GitHub returns ISO format with Z suffix for UTC
+        # Convert to proper timezone-aware datetime
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
     @classmethod
     def from_json(cls, data: dict) -> "GitHubIssue":
         """Create from GitHub API JSON response."""
@@ -40,12 +49,8 @@ class GitHubIssue:
             labels=[label.get("name", "") for label in data.get("labels", [])],
             state=data.get("state", "open"),
             url=data.get("url", "") or data.get("html_url", ""),
-            created_at=datetime.fromisoformat(data["createdAt"].replace("Z", "+00:00"))
-            if data.get("createdAt")
-            else None,
-            updated_at=datetime.fromisoformat(data["updatedAt"].replace("Z", "+00:00"))
-            if data.get("updatedAt")
-            else None,
+            created_at=cls._parse_datetime(data.get("createdAt")),
+            updated_at=cls._parse_datetime(data.get("updatedAt")),
             assignees=[a.get("login", "") for a in data.get("assignees", [])],
             milestone=data.get("milestone", {}).get("title") if data.get("milestone") else None,
         )

@@ -9,7 +9,7 @@ Provides bidirectional sync between GitHub issues and harness tasks:
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -27,11 +27,7 @@ class SyncResult:
     success: bool
     tasks_imported: int = 0
     issues_closed: int = 0
-    errors: List[str] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: List[str] = field(default_factory=list)
 
 
 class IssueSyncManager:

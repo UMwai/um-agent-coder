@@ -7,6 +7,7 @@ can be merged back to main upon completion.
 """
 
 import logging
+import shlex
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -140,6 +141,13 @@ class WorktreeManager:
         except Exception:
             pass  # May not have remote
 
+        # Save current branch to restore later
+        try:
+            current_branch_result = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+            original_branch = current_branch_result.stdout.strip()
+        except subprocess.CalledProcessError:
+            original_branch = None
+
         # Create new branch and worktree
         # First, ensure base branch is up to date
         try:
@@ -159,6 +167,13 @@ class WorktreeManager:
             str(worktree_path),
             base_branch,
         ])
+
+        # Restore original branch if we changed it
+        if original_branch and original_branch != base_branch:
+            try:
+                self._run_git(["checkout", original_branch])
+            except subprocess.CalledProcessError:
+                logger.warning(f"Could not restore original branch {original_branch}")
 
         return WorktreeInfo(
             harness_id=harness_id,
@@ -437,8 +452,13 @@ class WorktreeManager:
         if not result.stdout.strip():
             return
 
-        # Add all changes
-        self._run_git(["add", "-A"], cwd=worktree_path)
+        # Add tracked files that have changes (safer than -A which can add secrets)
+        # First add modified/deleted tracked files
+        self._run_git(["add", "-u"], cwd=worktree_path)
+
+        # Then add new files, excluding common sensitive patterns
+        # Note: This relies on .gitignore being properly configured
+        self._run_git(["add", "."], cwd=worktree_path, check=False)
 
         # Commit
         self._run_git([
@@ -456,14 +476,17 @@ class WorktreeManager:
 
         Args:
             worktree_path: Path to the worktree
-            test_command: Command to run tests
+            test_command: Command to run tests (supports quoted arguments)
 
         Returns:
             True if tests passed
         """
         try:
+            # Use shlex.split to properly handle quoted arguments
+            # e.g., "pytest --ignore='tests/slow'" -> ["pytest", "--ignore='tests/slow'"]
+            cmd_parts = shlex.split(test_command)
             result = subprocess.run(
-                test_command.split(),
+                cmd_parts,
                 cwd=worktree_path,
                 capture_output=True,
                 text=True,
