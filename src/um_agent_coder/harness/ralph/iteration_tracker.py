@@ -20,6 +20,9 @@ class IterationRecord:
     output_snippet: str = ""
     promise_found: bool = False
     error: Optional[str] = None
+    # QA validation fields
+    test_passed: Optional[bool] = None  # None if tests not run, bool otherwise
+    test_summary: str = ""  # Brief test result summary
 
     @property
     def duration(self) -> Optional[timedelta]:
@@ -37,6 +40,8 @@ class IterationRecord:
             "output_snippet": self.output_snippet,
             "promise_found": self.promise_found,
             "error": self.error,
+            "test_passed": self.test_passed,
+            "test_summary": self.test_summary,
         }
 
     @classmethod
@@ -49,6 +54,8 @@ class IterationRecord:
             output_snippet=data.get("output_snippet", ""),
             promise_found=data.get("promise_found", False),
             error=data.get("error"),
+            test_passed=data.get("test_passed"),
+            test_summary=data.get("test_summary", ""),
         )
 
 

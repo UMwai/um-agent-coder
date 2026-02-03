@@ -618,6 +618,56 @@ def main():
         help="Default completion promise for ralph loop tasks (default: COMPLETE)",
     )
 
+    # Git worktree isolation arguments
+    parser.add_argument(
+        "--use-worktrees",
+        action="store_true",
+        help="Enable git worktree isolation for parallel execution",
+    )
+    parser.add_argument(
+        "--worktree-base",
+        type=str,
+        default="main",
+        help="Base branch for worktrees (default: main)",
+    )
+    parser.add_argument(
+        "--no-auto-merge",
+        action="store_false",
+        dest="auto_merge",
+        help="Disable auto-merge to main on task completion",
+    )
+
+    # QA validation arguments
+    parser.add_argument(
+        "--require-tests",
+        action="store_true",
+        help="Require tests to pass before accepting completion promise",
+    )
+    parser.add_argument(
+        "--test-path",
+        type=str,
+        default="tests",
+        help="Path to test files for QA validation (default: tests)",
+    )
+
+    # GitHub integration arguments
+    parser.add_argument(
+        "--sync-github",
+        action="store_true",
+        help="Enable GitHub issue synchronization",
+    )
+    parser.add_argument(
+        "--github-label",
+        type=str,
+        default="harness",
+        help="GitHub label to filter issues for import (default: harness)",
+    )
+    parser.add_argument(
+        "--import-issues",
+        action="store_true",
+        help="Import GitHub issues as tasks before starting",
+    )
+
     # Sub-harness mode arguments
     parser.add_argument(
         "--subprocess",

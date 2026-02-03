@@ -26,12 +26,21 @@ class RalphConfig:
     When a task has ralph config, it will be executed using the
     RalphExecutor wrapper which loops until completion promise
     is detected or max_iterations is exceeded.
+
+    QA Validation:
+        When require_tests_passing is True, tests must pass before
+        the completion promise is accepted. If tests fail, the loop
+        continues with a test failure prompt.
     """
 
     enabled: bool = True
     max_iterations: int = 30
     completion_promise: str = "COMPLETE"
     require_xml_format: bool = True
+    # QA validation fields
+    require_tests_passing: bool = False
+    test_command: str = "pytest"
+    test_path: str = "tests"
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -40,6 +49,9 @@ class RalphConfig:
             "max_iterations": self.max_iterations,
             "completion_promise": self.completion_promise,
             "require_xml_format": self.require_xml_format,
+            "require_tests_passing": self.require_tests_passing,
+            "test_command": self.test_command,
+            "test_path": self.test_path,
         }
 
     @classmethod
@@ -50,6 +62,9 @@ class RalphConfig:
             max_iterations=data.get("max_iterations", 30),
             completion_promise=data.get("completion_promise", "COMPLETE"),
             require_xml_format=data.get("require_xml_format", True),
+            require_tests_passing=data.get("require_tests_passing", False),
+            test_command=data.get("test_command", "pytest"),
+            test_path=data.get("test_path", "tests"),
         )
 
 
@@ -76,6 +91,14 @@ class Task:
     completed_at: Optional[datetime] = None
     ralph_config: Optional[RalphConfig] = None  # Ralph loop config (None = not a ralph task)
     ralph_iterations: int = 0  # Actual iterations used (for ralph tasks)
+    # Git worktree isolation fields
+    worktree_branch: str = ""  # Branch name (e.g., harness/task-001)
+    worktree_path: str = ""  # Path to worktree directory
+    auto_merge: bool = True  # Auto-merge to main on completion
+    # GitHub integration fields
+    issue_url: Optional[str] = None  # Full GitHub issue URL
+    issue_number: Optional[int] = None  # GitHub issue number
+    sync_to_github: bool = False  # Sync status back to GitHub
 
     def can_execute(self, completed_tasks: set[str]) -> bool:
         """Check if all dependencies are satisfied."""

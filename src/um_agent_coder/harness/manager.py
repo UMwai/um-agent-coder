@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .handle import HarnessHandle
 from .meta_state import MetaStateManager
 from .result import AggregatedResult, HarnessResult, HarnessStatus
+from .worktree_manager import MergeStatus, WorktreeManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,11 @@ class MetaHarnessConfig:
     retry_failed: bool = True
     max_retries: int = 2
     default_timeout_minutes: int = 60
+    # Worktree isolation settings
+    use_worktrees: bool = False
+    worktree_base_branch: str = "main"
+    auto_merge: bool = True
+    run_tests_before_merge: bool = True
 
 
 class HarnessManager:
@@ -70,6 +76,15 @@ class HarnessManager:
             db_path=str(self.harness_dir / "meta_state.db")
         )
 
+        # Initialize worktree manager if worktree isolation is enabled
+        self.worktree_manager: Optional[WorktreeManager] = None
+        if self.config.use_worktrees:
+            try:
+                self.worktree_manager = WorktreeManager()
+                logger.info("Worktree isolation enabled")
+            except ValueError as e:
+                logger.warning(f"Could not initialize worktree manager: {e}")
+
     def spawn_harness(
         self,
         harness_id: str,
@@ -79,6 +94,9 @@ class HarnessManager:
         model: str = "",
         parent_context: Optional[Dict[str, Any]] = None,
         env: Optional[Dict[str, str]] = None,
+        use_worktree: Optional[bool] = None,
+        worktree_base_branch: Optional[str] = None,
+        auto_merge: Optional[bool] = None,
     ) -> HarnessHandle:
         """
         Spawn an independent sub-harness.
@@ -91,12 +109,52 @@ class HarnessManager:
             model: Model override
             parent_context: Context passed from parent
             env: Additional environment variables
+            use_worktree: Create isolated git worktree (overrides config)
+            worktree_base_branch: Base branch for worktree (overrides config)
+            auto_merge: Auto-merge to main on completion (overrides config)
 
         Returns:
             HarnessHandle for async control
         """
         working_dir = working_dir or Path.cwd()
         working_dir = working_dir.resolve()
+
+        # Determine worktree settings
+        should_use_worktree = use_worktree if use_worktree is not None else self.config.use_worktrees
+        base_branch = worktree_base_branch or self.config.worktree_base_branch
+        should_auto_merge = auto_merge if auto_merge is not None else self.config.auto_merge
+
+        # Create worktree if enabled
+        worktree_info = None
+        if should_use_worktree and self.worktree_manager:
+            try:
+                worktree_info = self.worktree_manager.create_worktree(
+                    harness_id=harness_id,
+                    base_branch=base_branch,
+                )
+                working_dir = worktree_info.path
+                logger.info(f"Created worktree for {harness_id} at {working_dir}")
+
+                # Register worktree in meta state
+                self.meta_state.register_worktree(
+                    harness_id=harness_id,
+                    branch_name=worktree_info.branch_name,
+                    worktree_path=str(worktree_info.path),
+                    base_branch=base_branch,
+                )
+
+                # Add worktree info to parent context
+                if parent_context is None:
+                    parent_context = {}
+                parent_context["worktree"] = {
+                    "branch": worktree_info.branch_name,
+                    "path": str(worktree_info.path),
+                    "base_branch": base_branch,
+                    "auto_merge": should_auto_merge,
+                }
+            except Exception as e:
+                logger.error(f"Failed to create worktree for {harness_id}: {e}")
+                # Continue without worktree
 
         # Setup isolated state directory
         state_dir = self.harness_dir / harness_id
@@ -227,6 +285,24 @@ class HarnessManager:
                         success=result.success,
                         error=result.error,
                     )
+
+                    # Handle worktree merge on success
+                    if result.success and self.worktree_manager:
+                        worktree_record = self.meta_state.get_worktree(harness_id)
+                        if worktree_record:
+                            should_merge = self.config.auto_merge
+                            # Check if parent context has auto_merge override
+                            parent_ctx = self.meta_state.get_harness(harness_id)
+                            if parent_ctx:
+                                try:
+                                    ctx = json.loads(parent_ctx.get("parent_context", "{}"))
+                                    if "worktree" in ctx:
+                                        should_merge = ctx["worktree"].get("auto_merge", should_merge)
+                                except json.JSONDecodeError:
+                                    pass
+
+                            if should_merge:
+                                self._merge_worktree(harness_id)
 
                     if callback:
                         callback(handle)
@@ -485,6 +561,57 @@ class HarnessManager:
         with self._lock:
             return self.handles.get(harness_id)
 
+    def _merge_worktree(self, harness_id: str) -> bool:
+        """Merge a worktree back to main branch.
+
+        Args:
+            harness_id: The harness identifier
+
+        Returns:
+            True if merge was successful
+        """
+        if not self.worktree_manager:
+            return False
+
+        logger.info(f"Merging worktree for {harness_id}...")
+
+        merge_result = self.worktree_manager.merge_to_main(
+            harness_id=harness_id,
+            run_tests=self.config.run_tests_before_merge,
+        )
+
+        if merge_result.success:
+            # Update meta state with merge info
+            self.meta_state.update_worktree_merged(
+                harness_id=harness_id,
+                merge_commit=merge_result.commit_sha or "",
+            )
+            logger.info(f"Successfully merged {harness_id}: {merge_result.commit_sha}")
+            return True
+        else:
+            logger.error(
+                f"Failed to merge {harness_id}: {merge_result.status.value} - {merge_result.error}"
+            )
+            return False
+
+    def cleanup_worktree(self, harness_id: str, force: bool = False) -> bool:
+        """Cleanup a worktree after completion.
+
+        Args:
+            harness_id: The harness identifier
+            force: Force cleanup even with uncommitted changes
+
+        Returns:
+            True if cleanup was successful
+        """
+        if not self.worktree_manager:
+            return True
+
+        success = self.worktree_manager.cleanup_worktree(harness_id, force=force)
+        if success:
+            self.meta_state.delete_worktree(harness_id)
+        return success
+
     def cleanup(self) -> None:
         """Stop all harnesses and cleanup."""
         self.request_stop_all()
@@ -495,6 +622,14 @@ class HarnessManager:
             for handle in self.handles.values():
                 if not handle.is_complete():
                     handle.force_kill()
+
+        # Cleanup worktrees
+        if self.worktree_manager:
+            for worktree in self.meta_state.get_active_worktrees():
+                harness_id = worktree.get("harness_id")
+                if harness_id:
+                    logger.info(f"Cleaning up worktree for {harness_id}")
+                    self.cleanup_worktree(harness_id, force=True)
 
     def __enter__(self):
         return self

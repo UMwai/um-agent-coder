@@ -62,7 +62,13 @@ class StateManager:
                     started_at TEXT,
                     completed_at TEXT,
                     ralph_config TEXT DEFAULT '',
-                    ralph_iterations INTEGER DEFAULT 0
+                    ralph_iterations INTEGER DEFAULT 0,
+                    worktree_branch TEXT DEFAULT '',
+                    worktree_path TEXT DEFAULT '',
+                    auto_merge INTEGER DEFAULT 1,
+                    issue_url TEXT,
+                    issue_number INTEGER,
+                    sync_to_github INTEGER DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS execution_log (
@@ -205,8 +211,10 @@ class StateManager:
                     id, description, phase, depends, timeout_minutes,
                     success_criteria, cwd, cli, model, status, attempts, max_retries,
                     output, error, conversation_id, started_at, completed_at,
-                    ralph_config, ralph_iterations
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ralph_config, ralph_iterations,
+                    worktree_branch, worktree_path, auto_merge,
+                    issue_url, issue_number, sync_to_github
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     task.id,
@@ -228,6 +236,12 @@ class StateManager:
                     task.completed_at.isoformat() if task.completed_at else None,
                     ralph_config_json,
                     task.ralph_iterations,
+                    task.worktree_branch,
+                    task.worktree_path,
+                    int(task.auto_merge),
+                    task.issue_url,
+                    task.issue_number,
+                    int(task.sync_to_github),
                 ),
             )
 
@@ -271,6 +285,17 @@ class StateManager:
 
         ralph_iterations = row["ralph_iterations"] if "ralph_iterations" in row.keys() else 0
 
+        # Handle optional worktree fields (for backward compatibility)
+        row_keys = row.keys()
+        worktree_branch = row["worktree_branch"] if "worktree_branch" in row_keys else ""
+        worktree_path = row["worktree_path"] if "worktree_path" in row_keys else ""
+        auto_merge = bool(row["auto_merge"]) if "auto_merge" in row_keys else True
+
+        # Handle optional GitHub fields (for backward compatibility)
+        issue_url = row["issue_url"] if "issue_url" in row_keys else None
+        issue_number = row["issue_number"] if "issue_number" in row_keys else None
+        sync_to_github = bool(row["sync_to_github"]) if "sync_to_github" in row_keys else False
+
         return Task(
             id=row["id"],
             description=row["description"],
@@ -293,6 +318,12 @@ class StateManager:
             ),
             ralph_config=ralph_config,
             ralph_iterations=ralph_iterations,
+            worktree_branch=worktree_branch or "",
+            worktree_path=worktree_path or "",
+            auto_merge=auto_merge,
+            issue_url=issue_url,
+            issue_number=issue_number,
+            sync_to_github=sync_to_github,
         )
 
     # Execution Log Operations

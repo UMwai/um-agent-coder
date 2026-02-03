@@ -171,6 +171,8 @@ class RoadmapParser:
                     enabled=True,
                     max_iterations=props.get("max_iterations", 30),
                     completion_promise=props.get("completion_promise", "COMPLETE"),
+                    require_tests_passing=props.get("require_tests", False),
+                    test_path=props.get("test_path", "tests"),
                 )
 
             task = Task(
@@ -185,6 +187,12 @@ class RoadmapParser:
                 model=props.get("model", ""),
                 status=TaskStatus.COMPLETED if is_complete else TaskStatus.PENDING,
                 ralph_config=ralph_config,
+                # Worktree isolation fields
+                worktree_branch=f"harness/{task_id}" if props.get("worktree", False) else "",
+                auto_merge=props.get("auto_merge", True),
+                # GitHub integration fields
+                issue_number=props.get("issue"),
+                sync_to_github=props.get("sync_github", False),
             )
             tasks.append(task)
 
@@ -197,6 +205,17 @@ class RoadmapParser:
         - ralph: true/false - Enable ralph loop for this task
         - max_iterations: N - Override default max iterations
         - completion_promise: TEXT - Custom promise text
+        - require_tests: true/false - Require tests to pass for QA validation
+        - test_path: PATH - Path to test files
+
+        Supports worktree isolation fields:
+        - worktree: true/false - Enable git worktree isolation
+        - worktree_base: BRANCH - Base branch for worktree
+        - auto_merge: true/false - Auto-merge on completion
+
+        Supports GitHub integration fields:
+        - issue: #N - GitHub issue number
+        - sync_github: true/false - Sync status to GitHub
         """
         props = {
             "depends": [],
@@ -209,6 +228,15 @@ class RoadmapParser:
             "ralph": False,
             "max_iterations": 30,
             "completion_promise": "COMPLETE",
+            "require_tests": False,
+            "test_path": "tests",
+            # Worktree isolation properties
+            "worktree": False,
+            "worktree_base": "main",
+            "auto_merge": True,
+            # GitHub integration properties
+            "issue": None,
+            "sync_github": False,
         }
 
         for line in content.split("\n"):
@@ -244,6 +272,30 @@ class RoadmapParser:
                     props["max_iterations"] = int(iter_match.group(1))
             elif line.startswith("completion_promise:"):
                 props["completion_promise"] = line.split(":", 1)[1].strip()
+            elif line.startswith("require_tests:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["require_tests"] = value in ("true", "yes", "1")
+            elif line.startswith("test_path:"):
+                props["test_path"] = line.split(":", 1)[1].strip()
+            # Worktree isolation fields
+            elif line.startswith("worktree:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["worktree"] = value in ("true", "yes", "1")
+            elif line.startswith("worktree_base:"):
+                props["worktree_base"] = line.split(":", 1)[1].strip()
+            elif line.startswith("auto_merge:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["auto_merge"] = value in ("true", "yes", "1")
+            # GitHub integration fields
+            elif line.startswith("issue:"):
+                issue_str = line.split(":", 1)[1].strip()
+                # Parse #N or just N
+                issue_match = re.search(r"#?(\d+)", issue_str)
+                if issue_match:
+                    props["issue"] = int(issue_match.group(1))
+            elif line.startswith("sync_github:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["sync_github"] = value in ("true", "yes", "1")
 
         return props
 

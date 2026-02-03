@@ -47,6 +47,7 @@ class RalphPersistence:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        self._migrate_db()
 
     def _init_db(self) -> None:
         """Initialize database schema."""
@@ -72,6 +73,8 @@ class RalphPersistence:
                     output_snippet TEXT,
                     promise_found INTEGER NOT NULL DEFAULT 0,
                     error TEXT,
+                    test_passed INTEGER,
+                    test_summary TEXT,
                     FOREIGN KEY (task_id) REFERENCES ralph_trackers(task_id),
                     UNIQUE (task_id, iteration_num)
                 );
@@ -82,6 +85,23 @@ class RalphPersistence:
                     ON ralph_trackers(completed);
             """
             )
+
+    def _migrate_db(self) -> None:
+        """Run database migrations for schema changes."""
+        with self._connection() as conn:
+            # Check if test_passed column exists
+            cursor = conn.execute("PRAGMA table_info(ralph_iterations)")
+            columns = {row["name"] for row in cursor.fetchall()}
+
+            # Add test_passed column if missing
+            if "test_passed" not in columns:
+                conn.execute("ALTER TABLE ralph_iterations ADD COLUMN test_passed INTEGER")
+                logger.info("Added test_passed column to ralph_iterations")
+
+            # Add test_summary column if missing
+            if "test_summary" not in columns:
+                conn.execute("ALTER TABLE ralph_iterations ADD COLUMN test_summary TEXT")
+                logger.info("Added test_summary column to ralph_iterations")
 
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -137,13 +157,15 @@ class RalphPersistence:
                     """
                     INSERT INTO ralph_iterations (
                         task_id, iteration_num, started_at, ended_at,
-                        output_snippet, promise_found, error
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        output_snippet, promise_found, error, test_passed, test_summary
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(task_id, iteration_num) DO UPDATE SET
                         ended_at = excluded.ended_at,
                         output_snippet = excluded.output_snippet,
                         promise_found = excluded.promise_found,
-                        error = excluded.error
+                        error = excluded.error,
+                        test_passed = excluded.test_passed,
+                        test_summary = excluded.test_summary
                 """,
                     (
                         tracker.task_id,
@@ -153,6 +175,8 @@ class RalphPersistence:
                         record.output_snippet,
                         int(record.promise_found),
                         record.error,
+                        int(record.test_passed) if record.test_passed is not None else None,
+                        record.test_summary,
                     ),
                 )
 
@@ -194,6 +218,8 @@ class RalphPersistence:
                     output_snippet=ir["output_snippet"] or "",
                     promise_found=bool(ir["promise_found"]),
                     error=ir["error"],
+                    test_passed=bool(ir["test_passed"]) if ir["test_passed"] is not None else None,
+                    test_summary=ir["test_summary"] or "",
                 )
                 for ir in iter_rows
             ]
@@ -307,6 +333,8 @@ class RalphPersistence:
                     output_snippet=row["output_snippet"] or "",
                     promise_found=bool(row["promise_found"]),
                     error=row["error"],
+                    test_passed=bool(row["test_passed"]) if row["test_passed"] is not None else None,
+                    test_summary=row["test_summary"] or "",
                 )
                 for row in rows
             ]

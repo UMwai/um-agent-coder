@@ -112,12 +112,24 @@ class MetaStateManager:
                     details TEXT DEFAULT '{}'
                 );
 
+                CREATE TABLE IF NOT EXISTS worktrees (
+                    harness_id TEXT PRIMARY KEY,
+                    branch_name TEXT NOT NULL,
+                    worktree_path TEXT NOT NULL,
+                    base_branch TEXT DEFAULT 'main',
+                    created_at TEXT NOT NULL,
+                    merged_at TEXT,
+                    merge_commit TEXT
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_harnesses_status
                     ON sub_harnesses(status);
                 CREATE INDEX IF NOT EXISTS idx_progress_harness
                     ON progress_log(harness_id);
                 CREATE INDEX IF NOT EXISTS idx_events_type
                     ON coordination_events(event_type);
+                CREATE INDEX IF NOT EXISTS idx_worktrees_branch
+                    ON worktrees(branch_name);
                 """
             )
 
@@ -512,4 +524,105 @@ class MetaStateManager:
             conn.execute("DELETE FROM progress_log")
             conn.execute("DELETE FROM coordination_events")
             conn.execute("DELETE FROM meta_state")
+            conn.execute("DELETE FROM worktrees")
             logger.info("Meta-harness state reset")
+
+    # Worktree Management Methods
+
+    def register_worktree(
+        self,
+        harness_id: str,
+        branch_name: str,
+        worktree_path: str,
+        base_branch: str = "main",
+    ) -> None:
+        """Register a new worktree.
+
+        Args:
+            harness_id: Sub-harness identifier
+            branch_name: Git branch name (e.g., harness/task-001)
+            worktree_path: Path to worktree directory
+            base_branch: Base branch the worktree was created from
+        """
+        now = datetime.utcnow().isoformat()
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO worktrees
+                (harness_id, branch_name, worktree_path, base_branch, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (harness_id, branch_name, worktree_path, base_branch, now),
+            )
+            self._log_event(conn, "worktree_created", harness_id, {
+                "branch_name": branch_name,
+                "base_branch": base_branch,
+            })
+        logger.info(f"Registered worktree for {harness_id}: {branch_name}")
+
+    def update_worktree_merged(
+        self,
+        harness_id: str,
+        merge_commit: str,
+    ) -> None:
+        """Mark a worktree as merged.
+
+        Args:
+            harness_id: Sub-harness identifier
+            merge_commit: SHA of the merge commit
+        """
+        now = datetime.utcnow().isoformat()
+        with self._connection() as conn:
+            conn.execute(
+                """
+                UPDATE worktrees
+                SET merged_at = ?, merge_commit = ?
+                WHERE harness_id = ?
+                """,
+                (now, merge_commit, harness_id),
+            )
+            self._log_event(conn, "worktree_merged", harness_id, {
+                "merge_commit": merge_commit,
+            })
+        logger.info(f"Marked worktree {harness_id} as merged: {merge_commit}")
+
+    def get_worktree(self, harness_id: str) -> Optional[Dict[str, Any]]:
+        """Get worktree info by harness ID.
+
+        Args:
+            harness_id: Sub-harness identifier
+
+        Returns:
+            Worktree data dict or None
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM worktrees WHERE harness_id = ?", (harness_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+    def get_active_worktrees(self) -> List[Dict[str, Any]]:
+        """Get all worktrees that haven't been merged.
+
+        Returns:
+            List of worktree data dicts
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM worktrees WHERE merged_at IS NULL"
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_worktree(self, harness_id: str) -> None:
+        """Delete a worktree record.
+
+        Args:
+            harness_id: Sub-harness identifier
+        """
+        with self._connection() as conn:
+            conn.execute("DELETE FROM worktrees WHERE harness_id = ?", (harness_id,))
+            self._log_event(conn, "worktree_deleted", harness_id, {})
+        logger.info(f"Deleted worktree record for {harness_id}")

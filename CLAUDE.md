@@ -272,6 +272,24 @@ echo "Focus on error handling" > .harness/inbox/001-priority.txt
 
 See `docs/autonomous-loop.md` for comprehensive documentation.
 
+## Handling Ambiguous Prompts
+
+When a user prompt is ambiguous or unclear, **always use the AskUserQuestion tool** to clarify before proceeding. Examples of ambiguity:
+
+| Ambiguous Prompt | Clarification Needed |
+|------------------|---------------------|
+| "Add authentication" | OAuth vs JWT vs session-based? |
+| "Improve performance" | Which component? What metric? |
+| "Fix the bug" | Which bug? What's the expected behavior? |
+| "Add tests" | Unit, integration, or e2e? Coverage target? |
+| "Refactor this" | What's the target architecture? |
+
+Use AskUserQuestion with 2-4 clear options when:
+- Multiple valid implementation approaches exist
+- Requirements are underspecified
+- Architectural decisions need user input
+- Trade-offs require user preference (speed vs memory, etc.)
+
 ## Key Patterns
 
 - **Config dot notation**: `config.get("llm.openai.api_key")`
