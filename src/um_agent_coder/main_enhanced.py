@@ -83,10 +83,6 @@ def main():
         list_available_models()
         return
 
-    # Require prompt if not listing models
-    if not args.prompt:
-        parser.error("prompt is required unless using --list-models")
-
     # Create a dummy config file if it doesn't exist
     if not os.path.exists(args.config):
         print("\n" + ANSI.style("=" * 60, ANSI.BLUE))
@@ -125,6 +121,18 @@ def main():
         print("Option 2: Set an environment variable (e.g., OPENAI_API_KEY).")
         print(f"\n{ANSI.style('Exiting to allow setup.', ANSI.CYAN)}")
         sys.exit(0)
+
+    # Require prompt if not listing models
+    if not args.prompt:
+        if sys.stdin.isatty():
+            print(ANSI.style("Please enter your task:", ANSI.CYAN))
+            try:
+                args.prompt = input("> ")
+            except (EOFError, KeyboardInterrupt):
+                sys.exit(0)
+
+        if not args.prompt:
+            parser.error("prompt is required unless using --list-models")
 
     # Load configuration
     config = Config(args.config)
