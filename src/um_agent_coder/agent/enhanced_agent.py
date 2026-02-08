@@ -9,6 +9,7 @@ from um_agent_coder.models import ModelRegistry
 from um_agent_coder.persistence import TaskCheckpointer, TaskState, TaskStatus
 from um_agent_coder.persistence.checkpointer import StepState
 from um_agent_coder.tools import ToolRegistry
+from um_agent_coder.utils.colors import ANSI
 from um_agent_coder.utils.spinner import Spinner
 
 from .cost_tracker import CostTracker
@@ -527,25 +528,51 @@ Please provide a clear, helpful response that addresses the user's request.
 
     def _get_approval(self, task_analysis: TaskAnalysis, plan: ExecutionPlan) -> bool:
         """Get user approval for task execution."""
-        print("\n" + "=" * 50)
-        print("TASK ANALYSIS")
-        print("=" * 50)
-        print(f"Type: {task_analysis.task_type.value}")
-        print(f"Complexity: {task_analysis.complexity}/10")
-        print(f"Estimated tokens: {task_analysis.estimated_tokens}")
-        print(f"Estimated cost: ${plan.estimated_cost:.4f}")
-        print(f"Estimated time: {plan.estimated_time_minutes:.1f} minutes")
+        print("\n" + ANSI.style("=" * 60, ANSI.BLUE))
+        print(ANSI.style("TASK ANALYSIS", ANSI.BOLD))
+        print(ANSI.style("=" * 60, ANSI.BLUE))
 
+        # Task Type
+        print(
+            f"{ANSI.style('Type:', ANSI.CYAN)} {task_analysis.task_type.value.replace('_', ' ').title()}"
+        )
+
+        # Complexity with conditional formatting
+        c_color = ANSI.GREEN
+        if task_analysis.complexity > 7:
+            c_color = ANSI.FAIL
+        elif task_analysis.complexity > 4:
+            c_color = ANSI.WARNING
+        print(
+            f"{ANSI.style('Complexity:', ANSI.CYAN)} {ANSI.style(f'{task_analysis.complexity}/10', c_color)}"
+        )
+
+        # Tokens & Cost
+        print(f"{ANSI.style('Est. Tokens:', ANSI.CYAN)} {task_analysis.estimated_tokens:,}")
+
+        cost_color = ANSI.GREEN if plan.estimated_cost < 0.1 else ANSI.WARNING
+        if plan.estimated_cost > 0.5:
+            cost_color = ANSI.FAIL
+        print(
+            f"{ANSI.style('Est. Cost:', ANSI.CYAN)} {ANSI.style(f'${plan.estimated_cost:.4f}', cost_color)}"
+        )
+
+        print(f"{ANSI.style('Est. Time:', ANSI.CYAN)} {plan.estimated_time_minutes:.1f} minutes")
+
+        # Risks Section
         if task_analysis.potential_risks:
-            print("\n⚠️ Risks:")
+            print("\n" + ANSI.style("⚠ POTENTIAL RISKS", ANSI.WARNING))
+            print(ANSI.style("-" * 20, ANSI.WARNING))
             for risk in task_analysis.potential_risks:
-                print(f"  - {risk}")
+                print(f"  {ANSI.style('•', ANSI.FAIL)} {risk}")
 
-        print(f"\nExecution plan ({len(plan.steps)} steps):")
+        # Execution Plan
+        print(f"\n{ANSI.style(f'EXECUTION PLAN ({len(plan.steps)} steps)', ANSI.BOLD)}")
+        print(ANSI.style("-" * 60, ANSI.BLUE))
         for i, step in enumerate(plan.steps, 1):
-            print(f"  {i}. {step.description}")
+            print(f"  {ANSI.style(f'{i}.', ANSI.BLUE)} {step.description}")
 
-        response = input("\nProceed with execution? (y/n): ")
+        response = input(f"\n{ANSI.style('Proceed with execution? (y/n):', ANSI.GREEN)} ")
         return response.lower() == "y"
 
     def get_metrics(self) -> dict[str, Any]:
