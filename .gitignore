@@ -39,3 +39,4 @@ config/config.yaml
 # OS files
 .DS_Store
 Thumbs.db
+.data_cache/
