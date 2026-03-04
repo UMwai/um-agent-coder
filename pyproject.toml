@@ -62,6 +62,17 @@ google = [
 all = [
     "um-agent-coder[openai,anthropic,google]",
 ]
+daemon = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "aiosqlite>=0.19.0",
+    "pydantic-settings>=2.1.0",
+    "httpx>=0.26.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.6",
+    "google-generativeai>=0.8.0",
+    "google-auth>=2.27.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/UMwai/um-agent-coder"
@@ -71,6 +82,7 @@ Issues = "https://github.com/UMwai/um-agent-coder/issues"
 [project.scripts]
 um-agent = "um_agent_coder.cli:main"
 um-agent-coder = "um_agent_coder.cli:main"
+um-agent-daemon = "um_agent_coder.daemon.app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -80,7 +92,7 @@ where = ["src"]
 include = ["um_agent_coder*"]
 
 [tool.setuptools.package-data]
-um_agent_coder = ["py.typed"]
+um_agent_coder = ["py.typed", "daemon/static/*"]
 
 [tool.black]
 line-length = 100

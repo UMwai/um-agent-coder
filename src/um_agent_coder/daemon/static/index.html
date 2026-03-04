@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>um-agent-daemon</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+      --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.5;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 1rem 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 600; }
+    header h1 span { color: var(--accent); }
+    .stats {
+      display: flex; gap: 1.5rem; margin-bottom: 1.5rem;
+    }
+    .stat {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.5rem; min-width: 140px;
+    }
+    .stat-value { font-size: 2rem; font-weight: 700; }
+    .stat-label { color: var(--muted); font-size: 0.85rem; }
+    .stat-pending .stat-value { color: var(--yellow); }
+    .stat-running .stat-value { color: var(--accent); }
+    .stat-completed .stat-value { color: var(--green); }
+    .stat-failed .stat-value { color: var(--red); }
+    .toolbar {
+      display: flex; gap: 0.75rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;
+    }
+    .btn {
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+      padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.875rem;
+      transition: border-color 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn-primary { background: #238636; border-color: #2ea043; }
+    .btn-primary:hover { background: #2ea043; }
+    .filter-active { border-color: var(--accent); color: var(--accent); }
+    input[type="text"], textarea {
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+      padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.875rem; width: 100%;
+      font-family: inherit;
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left; padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+    tr:hover { background: var(--surface); }
+    .badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .badge-pending { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge-running { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .badge-completed { background: rgba(63,185,80,0.15); color: var(--green); }
+    .badge-failed { background: rgba(248,81,73,0.15); color: var(--red); }
+    .badge-cancelled { background: rgba(139,148,158,0.15); color: var(--muted); }
+    .prompt-cell { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .source-cell { color: var(--purple); }
+    .time-cell { color: var(--muted); font-size: 0.85rem; }
+    .modal-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 600px;
+    }
+    .modal h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+    .modal .form-group { margin-bottom: 1rem; }
+    .modal label { display: block; color: var(--muted); margin-bottom: 0.25rem; font-size: 0.85rem; }
+    .modal .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+    .empty { text-align: center; padding: 3rem; color: var(--muted); }
+    .htmx-indicator { opacity: 0; transition: opacity 0.2s; }
+    .htmx-request .htmx-indicator { opacity: 1; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><span>um-agent</span>-daemon</h1>
+      <div>
+        <span class="htmx-indicator"><span class="spinner"></span></span>
+        <button class="btn" onclick="refreshAll()">Refresh</button>
+      </div>
+    </header>
+
+    <div class="stats" id="stats" hx-get="/ui/partials/stats" hx-trigger="load, every 10s" hx-swap="innerHTML">
+      <div class="stat"><div class="stat-value">...</div><div class="stat-label">Loading</div></div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn filter-btn filter-active" data-status="" onclick="filterTasks(this, '')">All</button>
+      <button class="btn filter-btn" data-status="pending" onclick="filterTasks(this, 'pending')">Pending</button>
+      <button class="btn filter-btn" data-status="running" onclick="filterTasks(this, 'running')">Running</button>
+      <button class="btn filter-btn" data-status="completed" onclick="filterTasks(this, 'completed')">Completed</button>
+      <button class="btn filter-btn" data-status="failed" onclick="filterTasks(this, 'failed')">Failed</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" onclick="openNewTask()">+ New Task</button>
+    </div>
+
+    <div id="task-list" hx-get="/ui/partials/tasks" hx-trigger="load, every 10s" hx-swap="innerHTML">
+      <div class="empty">Loading tasks...</div>
+    </div>
+  </div>
+
+  <!-- New Task Modal -->
+  <div class="modal-overlay" id="new-task-modal">
+    <div class="modal">
+      <h2>Create New Task</h2>
+      <form hx-post="/api/tasks" hx-target="#task-list" hx-swap="innerHTML"
+            hx-on::after-request="closeModal(); refreshAll();"
+            hx-headers='{"Content-Type": "application/json"}'
+            hx-ext="json-enc">
+        <div class="form-group">
+          <label for="prompt">Prompt</label>
+          <textarea id="prompt" name="prompt" placeholder="Describe the task..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="source">Source</label>
+          <input type="text" id="source" name="source" value="dashboard" />
+        </div>
+        <div class="actions">
+          <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/htmx-ext-json-enc@2.0.4/json-enc.js"></script>
+  <script>
+    let currentFilter = '';
+
+    function filterTasks(el, status) {
+      currentFilter = status;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('filter-active'));
+      el.classList.add('filter-active');
+      const url = status ? `/ui/partials/tasks?status=${status}` : '/ui/partials/tasks';
+      htmx.ajax('GET', url, '#task-list');
+    }
+
+    function refreshAll() {
+      htmx.ajax('GET', '/ui/partials/stats', '#stats');
+      const url = currentFilter ? `/ui/partials/tasks?status=${currentFilter}` : '/ui/partials/tasks';
+      htmx.ajax('GET', url, '#task-list');
+    }
+
+    function openNewTask() {
+      document.getElementById('new-task-modal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('new-task-modal').classList.remove('active');
+      document.getElementById('prompt').value = '';
+    }
+
+    // Close modal on overlay click
+    document.getElementById('new-task-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+  </script>
+</body>
+</html>
