@@ -36,6 +36,9 @@ htmlcov/
 # Local config (keep example)
 config/config.yaml
 
+# Secrets (OAuth credentials for CLI proxy)
+secrets/
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -1,0 +1,18 @@
+services:
+  daemon:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./secrets/codex:/home/appuser/.codex:ro
+      - ./secrets/gemini:/home/appuser/.gemini:ro
+      - daemon-data:/app/data
+    environment:
+      - UM_DAEMON_HOST=0.0.0.0
+      - UM_DAEMON_PORT=8080
+      - UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db
+      - UM_DAEMON_API_KEY=${UM_DAEMON_API_KEY:-}
+    restart: unless-stopped
+
+volumes:
+  daemon-data:

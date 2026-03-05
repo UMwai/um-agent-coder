@@ -18,7 +18,11 @@ gcloud run deploy "${SERVICE_NAME}" \
   --cpu 2 \
   --timeout 3600 \
   --no-cpu-throttling \
-  --set-env-vars "UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db"
+  --set-env-vars "UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db" \
+  --update-secrets="/home/appuser/.codex/auth.json=codex-auth:latest" \
+  --update-secrets="/home/appuser/.codex/config.toml=codex-config:latest" \
+  --update-secrets="/home/appuser/.gemini/oauth_creds.json=gemini-oauth-creds:latest" \
+  --update-secrets="/home/appuser/.gemini/settings.json=gemini-settings:latest"
 
 echo ""
 echo "Deployed! Service URL:"

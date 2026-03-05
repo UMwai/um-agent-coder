@@ -103,12 +103,14 @@ def create_app() -> FastAPI:
     from um_agent_coder.daemon.routes.slack import router as slack_router
     from um_agent_coder.daemon.routes.discord import router as discord_router
     from um_agent_coder.daemon.routes.ui import router as ui_router
+    from um_agent_coder.daemon.routes.query import router as query_router
 
     app.include_router(tasks_router)
     app.include_router(github_router)
     app.include_router(slack_router)
     app.include_router(discord_router)
     app.include_router(ui_router)
+    app.include_router(query_router)
 
     # Serve static files
     import importlib.resources as pkg_resources

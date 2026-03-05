@@ -44,6 +44,11 @@ class DaemonSettings(BaseSettings):
     default_slack_webhook: Optional[str] = None
     default_discord_webhook: Optional[str] = None
 
+    # Query proxy
+    codex_model: str = "gpt-5.2"
+    gemini_model: str = "gemini-2.5-pro"
+    query_rate_limit: int = 60  # requests/min/provider
+
     # Worker
     max_concurrent_tasks: int = 2
     task_timeout_seconds: int = 3600
