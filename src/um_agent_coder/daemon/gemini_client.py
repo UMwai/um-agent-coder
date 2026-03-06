@@ -199,7 +199,8 @@ class GeminiCodeAssistClient:
         resp.raise_for_status()
         data = resp.json()
         self._project = data.get("cloudaicompanionProject", "")
-        self._tier = data.get("currentTier", "unknown")
+        tier_data = data.get("currentTier", {})
+        self._tier = tier_data.get("id", "unknown") if isinstance(tier_data, dict) else str(tier_data)
         logger.info("Loaded Code Assist project=%s tier=%s", self._project, self._tier)
         return self._project
 
