@@ -158,6 +158,38 @@ gcloud run services update um-agent-daemon \
 | `UM_DAEMON_QUERY_RATE_LIMIT` | 60 | Max requests/min |
 | `UM_DAEMON_API_KEY` | — | API key (disabled if unset) |
 
+## Re-Authentication
+
+If your Gemini refresh token gets revoked (password change, manual revocation), queries will fail with auth errors. To re-authenticate:
+
+### Via Web UI
+
+1. Visit `https://<your-daemon-url>/api/auth/gemini` in your browser
+2. Follow the on-screen instructions to run `npx @google/gemini-cli auth` locally
+3. Extract your refresh token and paste it into the form
+4. The daemon updates the GCP secret and hot-reloads the client automatically
+
+### Via API
+
+```bash
+# Check auth health
+curl https://<your-daemon-url>/api/auth/gemini/status
+
+# Submit new token
+curl -X POST https://<your-daemon-url>/api/auth/gemini \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -d '{"refresh_token": "1//0abc..."}'
+```
+
+### Configuration
+
+| Env Variable | Default | Description |
+|---|---|---|
+| `UM_DAEMON_GCP_PROJECT_ID` | — | GCP project for Secret Manager updates |
+
+When `UM_DAEMON_GCP_PROJECT_ID` is set, submitting a new token also creates a new version of the `gemini-oauth-creds` secret in GCP Secret Manager. This ensures the token persists across Cloud Run deployments.
+
 ## Troubleshooting
 
 **`"authenticated": false` in /api/query/models**

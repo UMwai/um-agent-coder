@@ -44,6 +44,9 @@ class DaemonSettings(BaseSettings):
     default_slack_webhook: Optional[str] = None
     default_discord_webhook: Optional[str] = None
 
+    # GCP
+    gcp_project_id: Optional[str] = None
+
     # Query proxy
     codex_model: str = "gpt-5.2"
     gemini_model: str = "gemini-3-flash-preview"
