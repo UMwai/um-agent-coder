@@ -1,11 +1,9 @@
-"""Query API endpoints - proxy queries through CLI subscriptions (Codex/Gemini)."""
+"""Query API endpoints — direct Code Assist API proxy (Gemini 3 models)."""
 
 from __future__ import annotations
 
-import asyncio
-import json
+import itertools
 import logging
-import shutil
 import time
 import uuid
 from enum import Enum
@@ -21,192 +19,156 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/query", tags=["query"])
 
 
-class Provider(str, Enum):
-    codex = "codex"
-    gemini = "gemini"
+# --- Models ---
+
+GEMINI_MODELS = {
+    "flash": "gemini-3-flash-preview",
+    "pro": "gemini-3-pro-preview",
+    "pro-3.1": "gemini-3.1-pro-preview",
+}
+
+
+class GeminiModel(str, Enum):
+    flash = "flash"
+    pro = "pro"
+    pro_3_1 = "pro-3.1"
+    auto = "auto"
 
 
 class QueryRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=100_000)
-    provider: Provider
-    model: Optional[str] = None
+    model: GeminiModel = GeminiModel.auto
+    system_prompt: Optional[str] = Field(default=None, max_length=50_000)
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=8192, ge=1, le=65536)
     timeout: int = Field(default=300, ge=10, le=1800)
+
+
+class UsageInfo(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 class QueryResponse(BaseModel):
     id: str
-    provider: str
     model: str
     response: str
     duration_ms: int
+    usage: UsageInfo = UsageInfo()
 
 
-class ProviderStatus(BaseModel):
+class ModelStatus(BaseModel):
     name: str
+    model_id: str
     available: bool
-    default_model: str
+
+
+class ModelsResponse(BaseModel):
     authenticated: bool
+    tier: Optional[str] = None
+    models: list[ModelStatus]
 
 
-class ProvidersResponse(BaseModel):
-    providers: list[ProviderStatus]
+# --- Round-robin model selector ---
+
+_round_robin: Optional[itertools.cycle] = None
 
 
-def get_settings():
-    from um_agent_coder.daemon.app import get_settings as _get
-    return _get()
+def _get_round_robin_models() -> list[str]:
+    """Get the auto model list from settings."""
+    from um_agent_coder.daemon.app import get_settings
+    settings = get_settings()
+    return [m.strip() for m in settings.gemini_auto_models.split(",") if m.strip()]
 
 
-def _check_cli_available(cli_name: str) -> bool:
-    return shutil.which(cli_name) is not None
+def _next_auto_model() -> str:
+    """Return the next model in round-robin order."""
+    global _round_robin
+    if _round_robin is None:
+        models = _get_round_robin_models()
+        _round_robin = itertools.cycle(models)
+    return next(_round_robin)
 
 
-def _check_codex_auth() -> bool:
-    """Check if codex has valid credentials."""
-    from pathlib import Path
-    auth_file = Path.home() / ".codex" / "auth.json"
-    if not auth_file.exists():
-        return False
-    try:
-        data = json.loads(auth_file.read_text())
-        return bool(data.get("tokens", {}).get("refresh_token"))
-    except (json.JSONDecodeError, OSError):
-        return False
+def _resolve_model(model: GeminiModel) -> str:
+    """Resolve a model enum to the actual model name string."""
+    if model == GeminiModel.auto:
+        return _next_auto_model()
+    return GEMINI_MODELS[model.value]
 
 
-def _check_gemini_auth() -> bool:
-    """Check if gemini has valid credentials."""
-    from pathlib import Path
-    creds_file = Path.home() / ".gemini" / "oauth_creds.json"
-    if not creds_file.exists():
-        return False
-    try:
-        data = json.loads(creds_file.read_text())
-        return bool(data.get("refresh_token"))
-    except (json.JSONDecodeError, OSError):
-        return False
+# --- Client accessor ---
+
+def _get_client():
+    from um_agent_coder.daemon.app import get_gemini_client
+    return get_gemini_client()
 
 
-async def _run_codex(prompt: str, model: str, timeout: int) -> str:
-    """Execute query via codex CLI."""
-    cmd = ["codex", "exec", "--json"]
-    cmd.extend(["--model", model])
-    cmd.extend(["--sandbox", "read-only"])
-    cmd.append(prompt)
-
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.communicate()
-        raise HTTPException(status_code=504, detail="Codex request timed out")
-
-    if proc.returncode != 0:
-        err = stderr.decode().strip()
-        logger.error("Codex failed (rc=%d): %s", proc.returncode, err)
-        raise HTTPException(status_code=502, detail=f"Codex error: {err}")
-
-    output = stdout.decode().strip()
-    # Parse JSONL output - last message has the response
-    for line in reversed(output.split("\n")):
-        try:
-            data = json.loads(line)
-            if data.get("type") == "message" and data.get("content"):
-                return data["content"]
-            if data.get("response"):
-                return data["response"]
-        except json.JSONDecodeError:
-            continue
-
-    return output or "Codex completed with no output"
-
-
-async def _run_gemini(prompt: str, model: str, timeout: int) -> str:
-    """Execute query via gemini CLI."""
-    cmd = ["gemini", prompt, "-m", model]
-
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.communicate()
-        raise HTTPException(status_code=504, detail="Gemini request timed out")
-
-    if proc.returncode != 0:
-        err = stderr.decode().strip()
-        logger.error("Gemini failed (rc=%d): %s", proc.returncode, err)
-        raise HTTPException(status_code=502, detail=f"Gemini error: {err}")
-
-    return stdout.decode().strip() or "Gemini completed with no output"
-
+# --- Endpoints ---
 
 @router.post("", response_model=QueryResponse)
 async def query(
     req: QueryRequest,
     _key: Optional[str] = Depends(verify_api_key),
 ):
-    """Submit a query to be processed via CLI subscription billing."""
-    settings = get_settings()
+    """Submit a query to Gemini via the Code Assist API."""
+    client = _get_client()
+    model_name = _resolve_model(req.model)
     query_id = f"q-{uuid.uuid4().hex[:8]}"
 
-    if req.provider == Provider.codex:
-        model = req.model or settings.codex_model
-        if not _check_cli_available("codex"):
-            raise HTTPException(status_code=503, detail="Codex CLI not installed")
-        start = time.monotonic()
-        response = await _run_codex(req.prompt, model, req.timeout)
-        duration_ms = int((time.monotonic() - start) * 1000)
+    start = time.monotonic()
+    try:
+        result = await client.generate(
+            prompt=req.prompt,
+            model=model_name,
+            system_prompt=req.system_prompt,
+            temperature=req.temperature,
+            max_tokens=req.max_tokens,
+            timeout=float(req.timeout),
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        from um_agent_coder.daemon.gemini_client import RateLimitError
+        if isinstance(e, RateLimitError):
+            raise HTTPException(status_code=429, detail=str(e))
+        logger.error("Gemini API error: %s", e)
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {e}")
 
-    elif req.provider == Provider.gemini:
-        model = req.model or settings.gemini_model
-        if not _check_cli_available("gemini"):
-            raise HTTPException(status_code=503, detail="Gemini CLI not installed")
-        start = time.monotonic()
-        response = await _run_gemini(req.prompt, model, req.timeout)
-        duration_ms = int((time.monotonic() - start) * 1000)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    logger.info("Query %s completed via %s in %dms", query_id, model_name, duration_ms)
 
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown provider: {req.provider}")
-
-    logger.info("Query %s completed via %s/%s in %dms", query_id, req.provider, model, duration_ms)
-
+    usage = result.get("usage", {})
     return QueryResponse(
         id=query_id,
-        provider=req.provider.value,
-        model=model,
-        response=response,
+        model=result.get("model", model_name),
+        response=result.get("text", ""),
         duration_ms=duration_ms,
+        usage=UsageInfo(**usage) if usage else UsageInfo(),
     )
 
 
-@router.get("/providers", response_model=ProvidersResponse)
-async def list_providers(
+@router.get("/models", response_model=ModelsResponse)
+async def list_models(
     _key: Optional[str] = Depends(verify_api_key),
 ):
-    """List available query providers and their status."""
-    settings = get_settings()
-    providers = [
-        ProviderStatus(
-            name="codex",
-            available=_check_cli_available("codex"),
-            default_model=settings.codex_model,
-            authenticated=_check_codex_auth(),
-        ),
-        ProviderStatus(
-            name="gemini",
-            available=_check_cli_available("gemini"),
-            default_model=settings.gemini_model,
-            authenticated=_check_gemini_auth(),
-        ),
-    ]
-    return ProvidersResponse(providers=providers)
+    """List available Gemini models and auth status."""
+    client = _get_client()
+    auto_models = _get_round_robin_models()
+
+    models = []
+    for short_name, model_id in GEMINI_MODELS.items():
+        models.append(
+            ModelStatus(
+                name=short_name,
+                model_id=model_id,
+                available=model_id in auto_models,
+            )
+        )
+
+    return ModelsResponse(
+        authenticated=client.authenticated,
+        tier=client.tier,
+        models=models,
+    )

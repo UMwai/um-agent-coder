@@ -46,7 +46,10 @@ class DaemonSettings(BaseSettings):
 
     # Query proxy
     codex_model: str = "gpt-5.2"
-    gemini_model: str = "gemini-2.5-pro"
+    gemini_model: str = "gemini-3-flash-preview"
+    gemini_auto_models: str = (
+        "gemini-3-flash-preview,gemini-3-pro-preview,gemini-3.1-pro-preview"
+    )
     query_rate_limit: int = 60  # requests/min/provider
 
     # Worker

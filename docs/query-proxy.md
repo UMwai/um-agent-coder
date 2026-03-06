@@ -1,27 +1,38 @@
 # Query Proxy Setup Guide
 
-Route AI queries through your existing Codex and Gemini CLI subscriptions instead of paying per-token API charges. The proxy runs both CLIs inside a Docker container with your OAuth credentials mounted in.
+Route AI queries through the Google Code Assist API using your Google One AI Ultra subscription. The proxy calls the API directly from Python — no CLI subprocess or Node.js required.
 
 ## How It Works
 
 ```
-Client → POST /api/query → FastAPI → subprocess(codex/gemini CLI) → Response
+Client → POST /api/query → FastAPI → Code Assist API (cloudcode-pa) → Response
                                           ↑
-                              OAuth creds mounted from host
-                              CLIs handle token refresh automatically
+                              OAuth creds loaded from ~/.gemini/oauth_creds.json
+                              Auto token refresh via Google OAuth2
+                              Round-robin across Gemini 3 models
 ```
 
-The CLIs authenticate using OAuth refresh tokens and bill queries through your subscription. You don't need API keys — the CLIs manage token refresh internally.
+The client uses the Gemini CLI's OAuth refresh token to obtain access tokens, then calls Google's Code Assist API directly. Queries are billed through your Google One AI Ultra subscription — no per-token API charges.
+
+## Supported Models
+
+| Short Name | Model ID | Sustained req/min | Avg Latency |
+|------------|----------|-------------------|-------------|
+| `flash` | `gemini-3-flash-preview` | ~30 | ~1.8s |
+| `pro` | `gemini-3-pro-preview` | ~18 | ~3.3s |
+| `pro-3.1` | `gemini-3.1-pro-preview` | ~18 | ~3.3s |
+| **`auto`** | **Round-robin all three** | **~66** | — |
+
+Per-model rate limits are independent — `auto` mode round-robins across all models to maximize throughput.
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- Active subscriptions:
-  - **OpenAI**: ChatGPT Plus/Pro/Team with Codex access
-  - **Google**: Gemini Advanced or Google One AI Premium
-- CLIs authenticated on your local machine:
-  - `npx @openai/codex auth` (creates `~/.codex/auth.json`)
-  - `npx @google/gemini-cli auth` (creates `~/.gemini/oauth_creds.json`)
+- **Google One AI Ultra** subscription (or Gemini Advanced)
+- Gemini CLI authenticated on your local machine:
+  ```bash
+  npx @google/gemini-cli auth    # creates ~/.gemini/oauth_creds.json
+  ```
 
 ## Setup
 
@@ -31,16 +42,13 @@ The CLIs authenticate using OAuth refresh tokens and bill queries through your s
 ./scripts/extract-oauth-creds.sh
 ```
 
-This copies your local OAuth tokens into `secrets/` (gitignored):
+This copies your OAuth tokens into `secrets/` (gitignored):
 
 ```
 secrets/
-├── codex/
-│   ├── auth.json        # OAuth tokens (access + refresh)
-│   └── config.toml      # Model settings
 └── gemini/
-    ├── oauth_creds.json  # OAuth tokens
-    └── settings.json     # Model settings
+    ├── oauth_creds.json  # OAuth tokens (refresh_token required)
+    └── settings.json     # Optional settings
 ```
 
 ### 2. Build and run
@@ -49,18 +57,21 @@ secrets/
 docker compose up --build
 ```
 
-### 3. Verify providers
+### 3. Verify models
 
 ```bash
-curl http://localhost:8080/api/query/providers
+curl http://localhost:8080/api/query/models
 ```
 
 Expected output:
 ```json
 {
-  "providers": [
-    {"name": "codex", "available": true, "default_model": "gpt-5.2", "authenticated": true},
-    {"name": "gemini", "available": true, "default_model": "gemini-2.5-pro", "authenticated": true}
+  "authenticated": true,
+  "tier": "g1-ultra-tier",
+  "models": [
+    {"name": "flash", "model_id": "gemini-3-flash-preview", "available": true},
+    {"name": "pro", "model_id": "gemini-3-pro-preview", "available": true},
+    {"name": "pro-3.1", "model_id": "gemini-3.1-pro-preview", "available": true}
   ]
 }
 ```
@@ -68,20 +79,35 @@ Expected output:
 ### 4. Send queries
 
 ```bash
-# Gemini query
+# Default (auto round-robin)
 curl -X POST http://localhost:8080/api/query \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Explain TCP/IP in one paragraph", "provider": "gemini"}'
+  -d '{"prompt": "Explain TCP/IP in one paragraph"}'
 
-# Codex query
+# Specific model
 curl -X POST http://localhost:8080/api/query \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Write a Python fibonacci function", "provider": "codex"}'
+  -d '{"prompt": "Write a Python fibonacci function", "model": "pro"}'
 
-# With model override
+# With system prompt and temperature
 curl -X POST http://localhost:8080/api/query \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello", "provider": "gemini", "model": "gemini-2.5-flash"}'
+  -d '{"prompt": "Hello", "model": "flash", "system_prompt": "Reply in French", "temperature": 0.3}'
+```
+
+Response:
+```json
+{
+  "id": "q-a1b2c3d4",
+  "model": "gemini-3-flash-preview",
+  "response": "...",
+  "duration_ms": 1823,
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 156,
+    "total_tokens": 168
+  }
+}
 ```
 
 ## API Authentication
@@ -97,7 +123,7 @@ UM_DAEMON_API_KEY=my-secret-key
 curl -X POST http://localhost:8080/api/query \
   -H "Content-Type: application/json" \
   -H "X-API-Key: my-secret-key" \
-  -d '{"prompt": "Hello", "provider": "gemini"}'
+  -d '{"prompt": "Hello", "model": "flash"}'
 ```
 
 ## Cloud Run Deployment
@@ -105,10 +131,7 @@ curl -X POST http://localhost:8080/api/query \
 ### 1. Store credentials as GCP secrets
 
 ```bash
-gcloud secrets create codex-auth --data-file=secrets/codex/auth.json
-gcloud secrets create codex-config --data-file=secrets/codex/config.toml
 gcloud secrets create gemini-oauth-creds --data-file=secrets/gemini/oauth_creds.json
-gcloud secrets create gemini-settings --data-file=secrets/gemini/settings.json
 ```
 
 ### 2. Deploy
@@ -117,7 +140,7 @@ gcloud secrets create gemini-settings --data-file=secrets/gemini/settings.json
 GCP_PROJECT_ID=your-project ./deploy/deploy.sh
 ```
 
-The deploy script mounts secrets as files at the paths the CLIs expect (`/home/appuser/.codex/`, `/home/appuser/.gemini/`).
+The deploy script mounts secrets as files at `/home/appuser/.gemini/`.
 
 ### 3. Set API key
 
@@ -126,48 +149,35 @@ gcloud run services update um-agent-daemon \
   --set-env-vars "UM_DAEMON_API_KEY=your-production-key"
 ```
 
-## Token Refresh
-
-The CLIs handle OAuth token refresh automatically:
-- **Codex**: Refreshes when `auth.json` access_token expires, writes updated tokens back
-- **Gemini**: Refreshes when `oauth_creds.json` access_token expires
-
-The credential files are mounted read-only in Docker. If a CLI needs to write refreshed tokens, mount read-write instead:
-
-```yaml
-# docker-compose.override.yml
-services:
-  daemon:
-    volumes:
-      - ./secrets/codex:/home/appuser/.codex    # Remove :ro
-      - ./secrets/gemini:/home/appuser/.gemini  # Remove :ro
-```
-
-On Cloud Run, the CLI will use the initial token and refresh via the OAuth provider's token endpoint directly in memory — the secret file itself isn't rewritten.
-
 ## Configuration Reference
 
 | Env Variable | Default | Description |
 |--------------|---------|-------------|
-| `UM_DAEMON_CODEX_MODEL` | gpt-5.2 | Default model for Codex queries |
-| `UM_DAEMON_GEMINI_MODEL` | gemini-2.5-pro | Default model for Gemini queries |
-| `UM_DAEMON_QUERY_RATE_LIMIT` | 60 | Max requests/min per provider |
+| `UM_DAEMON_GEMINI_MODEL` | `gemini-3-flash-preview` | Default model for queries |
+| `UM_DAEMON_GEMINI_AUTO_MODELS` | `gemini-3-flash-preview,gemini-3-pro-preview,gemini-3.1-pro-preview` | Models for auto round-robin |
+| `UM_DAEMON_QUERY_RATE_LIMIT` | 60 | Max requests/min |
 | `UM_DAEMON_API_KEY` | — | API key (disabled if unset) |
 
 ## Troubleshooting
 
-**Provider shows `"authenticated": false`**
+**`"authenticated": false` in /api/query/models**
 - Re-run `./scripts/extract-oauth-creds.sh` to refresh credentials
-- Verify the credential files contain `refresh_token`
+- Verify `secrets/gemini/oauth_creds.json` contains a `refresh_token`
 
-**502 error from CLI**
+**502 "Gemini API error"**
 - Check container logs: `docker compose logs daemon`
-- The CLI may need a read-write mount to refresh tokens (see Token Refresh section)
+- Verify your Google One AI Ultra subscription is active
+- Try refreshing credentials: re-authenticate with `npx @google/gemini-cli auth`
 
-**503 "CLI not installed"**
-- Rebuild the image: `docker compose build --no-cache`
-- Verify CLIs are installed: `docker compose exec daemon which codex gemini`
+**429 rate limit**
+- Use `model: "auto"` to spread load across all models
+- Reduce request frequency (sustained ~30 req/min per model)
+- Rate limits reset every ~30 seconds
+
+**503 "credentials not found"**
+- Ensure `secrets/gemini/oauth_creds.json` is mounted in Docker
+- For local dev: run `npx @google/gemini-cli auth` to create `~/.gemini/oauth_creds.json`
 
 **504 timeout**
 - Increase timeout in the request body: `"timeout": 600`
-- Complex queries may take longer on first run (model cold start)
+- Complex queries may take longer on first run

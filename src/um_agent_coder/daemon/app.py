@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _settings: Optional[DaemonSettings] = None
 _db: Optional[Database] = None
 _worker = None  # type: Optional[um_agent_coder.daemon.worker.TaskWorker]
+_gemini_client = None  # type: Optional[um_agent_coder.daemon.gemini_client.GeminiCodeAssistClient]
 
 
 def get_settings() -> DaemonSettings:
@@ -38,10 +39,19 @@ def get_worker():
     return _worker
 
 
+def get_gemini_client():
+    from um_agent_coder.daemon.gemini_client import GeminiCodeAssistClient
+
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = GeminiCodeAssistClient()
+    return _gemini_client
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle manager."""
-    global _settings, _db, _worker
+    global _settings, _db, _worker, _gemini_client
 
     _settings = DaemonSettings()
     logger.info("Starting daemon with settings: port=%s, db=%s", _settings.port, _settings.db_path)
@@ -50,6 +60,17 @@ async def lifespan(app: FastAPI):
     _db = Database(_settings.db_path)
     await _db.connect()
     logger.info("Database connected: %s", _settings.db_path)
+
+    # Gemini Code Assist client
+    from um_agent_coder.daemon.gemini_client import GeminiCodeAssistClient
+
+    try:
+        _gemini_client = GeminiCodeAssistClient()
+        await _gemini_client.load_project()
+        logger.info("Gemini client initialized (tier=%s)", _gemini_client.tier)
+    except Exception as e:
+        logger.warning("Gemini client init failed (queries will retry on demand): %s", e)
+        _gemini_client = None
 
     # Worker
     from um_agent_coder.daemon.worker import TaskWorker
@@ -63,6 +84,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down daemon...")
     await _worker.stop()
+    if _gemini_client:
+        await _gemini_client.close()
     await _db.close()
     logger.info("Daemon stopped.")
 
