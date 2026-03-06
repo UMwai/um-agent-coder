@@ -59,6 +59,26 @@ class DaemonSettings(BaseSettings):
     max_concurrent_tasks: int = 2
     task_timeout_seconds: int = 3600
 
+    # Gemini Intelligence Layer
+    gemini_enhance_enabled: bool = True
+    gemini_self_eval_enabled: bool = True
+    gemini_self_eval_threshold: float = 0.6
+    gemini_self_eval_model: str = "auto"  # "auto" = match generation model, or explicit model name
+    gemini_max_retries: int = 2
+    gemini_session_max_tokens: int = 500_000
+    gemini_session_ttl_hours: int = 24
+    gemini_batch_max_concurrent: int = 5
+    gemini_agent_max_steps: int = 10
+    gemini_complexity_threshold: int = 50
+
+    # Iteration runner
+    gemini_iterate_max_iterations: int = 5
+    gemini_iterate_score_threshold: float = 0.85
+    gemini_iterate_eval_models: str = "gemini-3.1-pro-preview"  # comma-separated
+    gemini_iterate_generation_model: str = "gemini-3.1-pro-preview"
+    gemini_iterate_temperature: float = 0.7
+    gemini_iterate_max_tokens: int = 65536
+
     # Orchestrator
     checkpoint_dir: str = ".pipeline_checkpoints"
     verbose: bool = True

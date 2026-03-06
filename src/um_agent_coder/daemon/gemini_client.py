@@ -85,13 +85,16 @@ def _parse_sse_text(line: str) -> tuple[str, dict]:
 
 
 def _extract_usage(data: dict) -> dict:
-    """Extract token usage from the last SSE chunk."""
+    """Extract token usage and finish reason from the last SSE chunk."""
     resp = data.get("response", data)
     meta = resp.get("usageMetadata", {})
+    candidates = resp.get("candidates", [])
+    finish_reason = candidates[0].get("finishReason", "") if candidates else ""
     return {
         "prompt_tokens": meta.get("promptTokenCount", 0),
         "completion_tokens": meta.get("candidatesTokenCount", 0),
         "total_tokens": meta.get("totalTokenCount", 0),
+        "finish_reason": finish_reason,
     }
 
 
@@ -120,13 +123,18 @@ class GeminiCodeAssistClient:
             self._refresh_token = refresh_token
         else:
             path = creds_path or DEFAULT_CREDS_PATH
-            if not path.exists():
+            env_creds = os.environ.get("GEMINI_OAUTH_CREDS")
+            if path.exists():
+                creds = json.loads(path.read_text())
+                self._refresh_token = creds["refresh_token"]
+            elif env_creds:
+                creds = json.loads(env_creds)
+                self._refresh_token = creds["refresh_token"]
+            else:
                 raise FileNotFoundError(
                     f"Gemini OAuth credentials not found at {path}. "
-                    "Run `npx @google/gemini-cli auth` first."
+                    "Set GEMINI_OAUTH_CREDS env var or run `npx @google/gemini-cli auth` first."
                 )
-            creds = json.loads(path.read_text())
-            self._refresh_token = creds["refresh_token"]
 
         # Token state
         self._access_token: Optional[str] = None
@@ -331,6 +339,69 @@ class GeminiCodeAssistClient:
                 text, _ = _parse_sse_text(line)
                 if text:
                     yield text
+
+
+    async def generate_multi_turn(
+        self,
+        contents: list[dict],
+        model: str = "gemini-3-flash-preview",
+        *,
+        temperature: float = 0.7,
+        max_tokens: int = 8192,
+        timeout: float = 300.0,
+    ) -> dict:
+        """Generate a response from a pre-built contents list (multi-turn).
+
+        Args:
+            contents: List of {"role": "user"|"model", "parts": [{"text": ...}]}
+                      dicts representing the full conversation history.
+
+        Returns:
+            {"text": str, "usage": {"prompt_tokens": int, ...}, "model": str}
+        """
+        project = await self.load_project()
+        headers = await self._auth_headers(model)
+
+        payload = {
+            "model": model,
+            "project": project,
+            "user_prompt_id": str(uuid.uuid4()),
+            "request": {
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": max_tokens,
+                },
+            },
+        }
+
+        http = await self._get_http()
+        full_text = ""
+        usage = {}
+        last_data = {}
+
+        async with http.stream(
+            "POST",
+            f"{CODE_ASSIST_ENDPOINT}:streamGenerateContent",
+            headers=headers,
+            json=payload,
+            params={"alt": "sse"},
+            timeout=timeout,
+        ) as resp:
+            if resp.status_code == 429:
+                raise RateLimitError(f"Rate limited on model {model}")
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                text, data = _parse_sse_text(line)
+                if text:
+                    full_text += text
+                if data:
+                    last_data = data
+
+        if last_data:
+            usage = _extract_usage(last_data)
+
+        return {"text": full_text, "usage": usage, "model": model}
 
 
 class RateLimitError(Exception):

@@ -153,6 +153,7 @@ def create_app() -> FastAPI:
     from um_agent_coder.daemon.routes.ui import router as ui_router
     from um_agent_coder.daemon.routes.query import router as query_router
     from um_agent_coder.daemon.routes.auth_gemini import router as auth_gemini_router
+    from um_agent_coder.daemon.routes.gemini import router as gemini_router
 
     app.include_router(tasks_router)
     app.include_router(github_router)
@@ -161,6 +162,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_router)
     app.include_router(query_router)
     app.include_router(auth_gemini_router)
+    app.include_router(gemini_router)
 
     # Serve static files
     import importlib.resources as pkg_resources
