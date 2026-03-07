@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-from ._evaluator import AccuracyCheck, EvalResult
+from ._evaluator import AccuracyCheck, EvalResult, FulfillmentCheck
 
 
 @dataclass
@@ -161,6 +161,65 @@ def _actionability_fix() -> FixStrategy:
     )
 
 
+def _fulfillment_with_checklist(
+    checks: List[FulfillmentCheck],
+) -> FixStrategy:
+    """Build fulfillment fix with specific unfulfilled requirements."""
+    breaking = [c for c in checks if c.status == "fail" and c.severity == "breaking"]
+    foreign = [c for c in checks if c.status == "fail" and c.severity == "foreign"]
+    style = [c for c in checks if c.status == "fail" and c.severity == "style"]
+
+    failures_text = ""
+    if breaking:
+        failures_text += "\n\n🚨 MISSING REQUIREMENTS (must add — these were explicitly requested):\n"
+        for c in breaking:
+            failures_text += f"- {c.check}: {c.detail}\n"
+    if foreign:
+        failures_text += "\n\n⚠️ PARTIAL REQUIREMENTS (must complete — implementation is incomplete):\n"
+        for c in foreign:
+            failures_text += f"- {c.check}: {c.detail}\n"
+    if style:
+        failures_text += "\n\n📋 MINOR GAPS (should address):\n"
+        for c in style:
+            failures_text += f"- {c.check}: {c.detail}\n"
+
+    return FixStrategy(
+        name="fulfillment_checklist_fix",
+        dimension="fulfillment",
+        prompt_addendum=(
+            "\n\n[FULFILLMENT FIX — REQUIREMENTS CHECKLIST]\n"
+            "An automated audit compared your response against the original task "
+            "requirements and found the following gaps:\n"
+            f"{failures_text}\n"
+            "Go back to the original task description. Re-read every requirement. "
+            "Ensure your response addresses ALL of them — especially the missing ones above."
+        ),
+        system_addendum=(
+            "You are fixing specific requirements that were not fulfilled in the "
+            "previous response. The user's task description is the source of truth. "
+            "Every explicit ask must be addressed. Pay special attention to quantitative "
+            "requirements (file counts, feature lists) and negative requirements "
+            "(no TODOs, no stubs, no placeholders)."
+        ),
+    )
+
+
+def _fulfillment_fix() -> FixStrategy:
+    return FixStrategy(
+        name="fulfillment_fix",
+        dimension="fulfillment",
+        prompt_addendum=(
+            "\n\n[FULFILLMENT FIX]\n"
+            "Your previous response did not fully address the task requirements. "
+            "Re-read the original task carefully and ensure:\n"
+            "1. Every requested file/component is present\n"
+            "2. Every requested feature is fully implemented\n"
+            "3. All constraints are respected (no stubs, no TODOs, etc.)\n"
+            "4. Quantitative requirements are met (file counts, endpoint counts)"
+        ),
+    )
+
+
 def select_strategies(
     eval_result: EvalResult,
     eval_context: Optional[str] = None,
@@ -195,6 +254,12 @@ def select_strategies(
 
     if eval_result.actionability < threshold:
         strategies.append(_actionability_fix())
+
+    if eval_result.fulfillment < threshold:
+        if eval_result.fulfillment_checks:
+            strategies.append(_fulfillment_with_checklist(eval_result.fulfillment_checks))
+        else:
+            strategies.append(_fulfillment_fix())
 
     return strategies
 

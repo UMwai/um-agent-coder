@@ -73,15 +73,24 @@ class AccuracyCheckInfo(BaseModel):
     detail: str = ""
 
 
+class FulfillmentCheckInfo(BaseModel):
+    check: str = ""
+    status: str = ""  # "pass" or "fail"
+    severity: str = ""  # "breaking", "foreign", "style"
+    detail: str = ""
+
+
 class EvalInfo(BaseModel):
     score: float = 0.0
     accuracy: float = 0.0
     completeness: float = 0.0
     clarity: float = 0.0
     actionability: float = 0.0
+    fulfillment: float = 0.0
     issues: List[str] = []
     retry_count: int = 0
     accuracy_checks: List[AccuracyCheckInfo] = []
+    fulfillment_checks: List[FulfillmentCheckInfo] = []
 
 
 # --- Evaluate endpoint ---

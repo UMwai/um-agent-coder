@@ -1,12 +1,14 @@
 """OutputEvaluator — rates response quality and suggests improvements.
 
-Supports two evaluation modes:
+Supports three evaluation modes:
 1. General eval: Scores accuracy, completeness, clarity, actionability (1–10).
 2. Accuracy-first cascade: Runs a specialized accuracy pass with pass/fail
    checklist against eval_context. If accuracy < threshold, skips full eval
    and returns immediately for targeted retry.
+3. Fulfillment eval: Checks whether the response actually addresses every
+   requirement stated in the original prompt. Pass/fail checklist.
 
-Accuracy checks use tiered penalties:
+Accuracy/fulfillment checks use tiered penalties:
 - BREAKING (0 pts): Wrong signatures, missing params, runtime errors
 - FOREIGN (0.5 pts): External dependencies not in the project
 - STYLE (0.75 pts): Pattern deviations, missing __init__.py, file structure
@@ -86,6 +88,41 @@ Output EXACTLY this JSON format and NOTHING else:
 Be thorough. Check EVERY function call against the reference material. Check EVERY import path. Check EVERY file path. Missing checks are worse than false positives."""
 
 
+FULFILLMENT_SYSTEM_PROMPT = """You are a strict requirements fulfillment auditor. You will receive:
+1. A task description (the original prompt with specific requirements)
+2. A code response to audit
+
+Your job is to extract EVERY specific requirement from the task description and check whether the response actually fulfills it. This is NOT about code correctness (that's a separate check) — this is about whether the response DOES what was ASKED.
+
+CHECK CATEGORIES:
+
+**Deliverable Presence** — For each file, feature, or component explicitly requested:
+- Is the deliverable present in the response?
+- Is it complete or just a stub/placeholder?
+- Does it match what was described (e.g., "Full CRUD" means create + read + update + delete)?
+
+**Feature Completeness** — For each functional requirement:
+- Is the feature actually implemented, not just mentioned?
+- Does it cover the full scope described (all sub-requirements)?
+- Are edge cases addressed if the prompt specifies them?
+
+**Negative Requirements** — For constraints and prohibitions:
+- "No TODOs" — are there any TODO comments?
+- "No stubs" — are all functions fully implemented?
+- "No placeholders" — are there pass statements, "...", or "not yet implemented" messages?
+- "Must be async" — is everything actually async?
+
+SEVERITY LEVELS:
+- "breaking": A core required deliverable is completely missing or a critical requirement is violated. Score: 0 points.
+- "foreign": A requirement is only partially fulfilled or the implementation doesn't match what was asked. Score: 0.5 points.
+- "style": A minor or implied requirement is not fully met. Score: 0.75 points.
+
+Output EXACTLY this JSON format and NOTHING else:
+{"checks": [{"check": "requirement description", "status": "pass"|"fail", "severity": "breaking"|"foreign"|"style", "detail": "explanation"}]}
+
+Be thorough. Extract EVERY requirement — explicit and clearly implied. Check quantitative claims (e.g., "11 files" — count them). Check qualitative claims (e.g., "complete implementations" — verify no stubs)."""
+
+
 @dataclass
 class AccuracyCheck:
     """A single pass/fail accuracy check."""
@@ -95,6 +132,10 @@ class AccuracyCheck:
     detail: str = ""
 
 
+# FulfillmentCheck reuses AccuracyCheck structure (same fields, same scoring)
+FulfillmentCheck = AccuracyCheck
+
+
 @dataclass
 class EvalResult:
     score: float = 0.0
@@ -102,9 +143,11 @@ class EvalResult:
     completeness: float = 0.0
     clarity: float = 0.0
     actionability: float = 0.0
+    fulfillment: float = 0.0
     issues: List[str] = field(default_factory=list)
     retry_count: int = 0
     accuracy_checks: List[AccuracyCheck] = field(default_factory=list)
+    fulfillment_checks: List[FulfillmentCheck] = field(default_factory=list)
     parse_failed: bool = False
 
 
@@ -329,6 +372,126 @@ async def evaluate_accuracy(
     except Exception as e:
         logger.warning("Accuracy eval failed: %s", e)
         return EvalResult(score=0.5, accuracy=0.5, parse_failed=True)
+
+
+async def evaluate_fulfillment(
+    client,
+    prompt: str,
+    response: str,
+    *,
+    model: Optional[str] = None,
+) -> EvalResult:
+    """Run fulfillment evaluation — checks response against prompt requirements.
+
+    Uses a specialized system prompt that extracts requirements from the prompt
+    and checks each one against the response with pass/fail checklist.
+
+    Args:
+        client: GeminiCodeAssistClient instance.
+        prompt: The original user prompt (requirements source).
+        response: The model's response to evaluate.
+        model: Model for eval. Defaults to ACCURACY_EVAL_MODEL (Pro 3.1).
+
+    Returns:
+        EvalResult with fulfillment score from checklist and fulfillment_checks populated.
+        Other dimensions are zeroed — caller merges with other eval results.
+    """
+    eval_model = model or ACCURACY_EVAL_MODEL
+
+    # Truncate for eval
+    MAX_PROMPT_CHARS = 12_000  # Keep more prompt — it's the requirements source
+    MAX_RESPONSE_CHARS = 60_000
+    truncated_prompt = prompt[:MAX_PROMPT_CHARS] + ("..." if len(prompt) > MAX_PROMPT_CHARS else "")
+    if len(response) > MAX_RESPONSE_CHARS:
+        half = MAX_RESPONSE_CHARS // 2
+        truncated_response = (
+            response[:half]
+            + f"\n\n[... {len(response) - MAX_RESPONSE_CHARS} chars omitted ...]\n\n"
+            + response[-half:]
+        )
+    else:
+        truncated_response = response
+
+    eval_prompt = (
+        "=== TASK DESCRIPTION (extract ALL requirements from this) ===\n"
+        f"{truncated_prompt}\n"
+        "=== END TASK DESCRIPTION ===\n\n"
+        "=== RESPONSE TO AUDIT ===\n"
+        f"{truncated_response}\n"
+        "=== END RESPONSE ===\n\n"
+        "Now extract every requirement from the task description and check whether "
+        "the response fulfills it. Check file counts, feature completeness, "
+        "negative requirements (no stubs, no TODOs), and all explicit asks.\n"
+        "Output your checklist as JSON:\n"
+        '{"checks": [{"check": "...", "status": "pass"|"fail", '
+        '"severity": "breaking"|"foreign"|"style", "detail": "..."}]}'
+    )
+
+    try:
+        result = await client.generate(
+            prompt=eval_prompt,
+            model=eval_model,
+            system_prompt=FULFILLMENT_SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=16384,
+            timeout=180.0,
+        )
+
+        eval_text = result.get("text", "")
+        finish = result.get("usage", {}).get("finish_reason", "unknown")
+        logger.info(
+            "Fulfillment eval raw (%d chars, finish=%s): %s",
+            len(eval_text), finish, eval_text[:500],
+        )
+
+        # Handle truncated JSON
+        cleaned = eval_text.strip()
+        if cleaned.startswith("{") and not cleaned.endswith("}"):
+            logger.warning("Fulfillment eval JSON truncated, attempting repair")
+            last_brace = cleaned.rfind("}")
+            if last_brace > 0:
+                cleaned = cleaned[:last_brace + 1] + "]}"
+            eval_text = cleaned
+
+        parsed = _parse_accuracy_checks(eval_text)  # Same JSON format
+        if not parsed or "checks" not in parsed:
+            logger.warning("Failed to parse fulfillment checks, returning default")
+            return EvalResult(score=0.5, fulfillment=0.5, parse_failed=True)
+
+        checks: List[FulfillmentCheck] = []
+        for raw in parsed["checks"]:
+            checks.append(FulfillmentCheck(
+                check=raw.get("check", "unknown"),
+                status=raw.get("status", "fail"),
+                severity=raw.get("severity", "breaking"),
+                detail=raw.get("detail", ""),
+            ))
+
+        fulfillment_score = _score_accuracy_checks(checks)  # Same scoring logic
+
+        issues = [
+            f"[FULFILLMENT:{c.severity.upper()}] {c.check}: {c.detail}"
+            for c in checks if c.status == "fail"
+        ]
+
+        logger.info(
+            "Fulfillment eval: %d checks, %d passed, %d failed, score=%.3f",
+            len(checks),
+            sum(1 for c in checks if c.status == "pass"),
+            sum(1 for c in checks if c.status == "fail"),
+            fulfillment_score,
+        )
+
+        return EvalResult(
+            score=fulfillment_score,
+            fulfillment=fulfillment_score,
+            issues=issues,
+            fulfillment_checks=checks,
+        )
+
+    except Exception as e:
+        logger.warning("Fulfillment eval failed: %s", e)
+        return EvalResult(score=0.5, fulfillment=0.5, parse_failed=True)
 
 
 async def evaluate_response(

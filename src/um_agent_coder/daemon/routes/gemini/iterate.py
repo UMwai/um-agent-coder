@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from um_agent_coder.daemon.auth import verify_api_key
 
-from ._evaluator import EvalResult, evaluate_accuracy, evaluate_response
+from ._evaluator import EvalResult, evaluate_accuracy, evaluate_fulfillment, evaluate_response
 from ._pipeline import enhance_prompt
 from ._router import select_model
 from ._strategies import FixStrategy, build_strategic_retry_prompt, select_strategies
@@ -27,6 +27,7 @@ from .models import (
     GEMINI_MODEL_MAP,
     AccuracyCheckInfo,
     EvalInfo,
+    FulfillmentCheckInfo,
     GeminiModelTier,
     IterateRequest,
     IterateResponse,
@@ -71,6 +72,7 @@ def _eval_result_to_info(er: EvalResult) -> EvalInfo:
         completeness=er.completeness,
         clarity=er.clarity,
         actionability=er.actionability,
+        fulfillment=er.fulfillment,
         issues=er.issues,
         retry_count=er.retry_count,
         accuracy_checks=[
@@ -79,6 +81,13 @@ def _eval_result_to_info(er: EvalResult) -> EvalInfo:
                 severity=c.severity, detail=c.detail,
             )
             for c in er.accuracy_checks
+        ],
+        fulfillment_checks=[
+            FulfillmentCheckInfo(
+                check=c.check, status=c.status,
+                severity=c.severity, detail=c.detail,
+            )
+            for c in er.fulfillment_checks
         ],
     )
 
@@ -218,7 +227,7 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
             finish_reason = usage.get("finish_reason", "")
             total_tokens += gen_tokens
 
-            # --- Evaluate (accuracy-first cascade) ---
+            # --- Evaluate (accuracy-first cascade + fulfillment) ---
             eval_start = time.monotonic()
             accuracy_passed = True
 
@@ -241,29 +250,70 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                         sum(1 for c in accuracy_result.accuracy_checks if c.status == "fail"),
                     )
                 else:
-                    # Accuracy passed — run full eval for other dimensions
-                    full_result = await _multi_model_evaluate(
+                    # Accuracy passed — run full eval + fulfillment in parallel
+                    full_task = _multi_model_evaluate(
                         client, req.prompt, response_text,
                         eval_models=eval_models,
                         eval_context=req.eval_context,
                     )
-                    # Merge: use accuracy from checklist, other dims from full eval
+                    fulfill_task = evaluate_fulfillment(
+                        client, req.prompt, response_text,
+                    )
+                    full_result, fulfill_result = await asyncio.gather(
+                        full_task, fulfill_task,
+                    )
+
+                    # Merge: accuracy from checklist, fulfillment from fulfillment eval,
+                    # other dims from full eval. 5 dimensions total.
+                    dims = [
+                        accuracy_result.accuracy,
+                        full_result.completeness,
+                        full_result.clarity,
+                        full_result.actionability,
+                        fulfill_result.fulfillment,
+                    ]
                     eval_result = EvalResult(
-                        score=(accuracy_result.accuracy + full_result.completeness
-                               + full_result.clarity + full_result.actionability) / 4,
+                        score=sum(dims) / len(dims),
                         accuracy=accuracy_result.accuracy,
                         completeness=full_result.completeness,
                         clarity=full_result.clarity,
                         actionability=full_result.actionability,
-                        issues=accuracy_result.issues + full_result.issues,
+                        fulfillment=fulfill_result.fulfillment,
+                        issues=(accuracy_result.issues + full_result.issues
+                                + fulfill_result.issues),
                         accuracy_checks=accuracy_result.accuracy_checks,
+                        fulfillment_checks=fulfill_result.fulfillment_checks,
                     )
             else:
-                # No eval_context — use standard multi-model eval
-                eval_result = await _multi_model_evaluate(
+                # No eval_context — run standard multi-model eval + fulfillment
+                full_task = _multi_model_evaluate(
                     client, req.prompt, response_text,
                     eval_models=eval_models,
                     eval_context=None,
+                )
+                fulfill_task = evaluate_fulfillment(
+                    client, req.prompt, response_text,
+                )
+                full_result, fulfill_result = await asyncio.gather(
+                    full_task, fulfill_task,
+                )
+
+                dims = [
+                    full_result.accuracy,
+                    full_result.completeness,
+                    full_result.clarity,
+                    full_result.actionability,
+                    fulfill_result.fulfillment,
+                ]
+                eval_result = EvalResult(
+                    score=sum(dims) / len(dims),
+                    accuracy=full_result.accuracy,
+                    completeness=full_result.completeness,
+                    clarity=full_result.clarity,
+                    actionability=full_result.actionability,
+                    fulfillment=fulfill_result.fulfillment,
+                    issues=full_result.issues + fulfill_result.issues,
+                    fulfillment_checks=fulfill_result.fulfillment_checks,
                 )
 
             eval_duration_ms = int((time.monotonic() - eval_start) * 1000)
@@ -289,11 +339,17 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 "completeness": eval_result.completeness,
                 "clarity": eval_result.clarity,
                 "actionability": eval_result.actionability,
+                "fulfillment": eval_result.fulfillment,
                 "issues": eval_result.issues,
                 "accuracy_checks": [
                     {"check": c.check, "status": c.status,
                      "severity": c.severity, "detail": c.detail}
                     for c in eval_result.accuracy_checks
+                ],
+                "fulfillment_checks": [
+                    {"check": c.check, "status": c.status,
+                     "severity": c.severity, "detail": c.detail}
+                    for c in eval_result.fulfillment_checks
                 ],
                 "accuracy_passed": accuracy_passed,
             }
@@ -437,7 +493,16 @@ async def _build_iterate_response(iteration_id: str) -> IterateResponse:
             completeness=eval_scores.get("completeness", 0.0),
             clarity=eval_scores.get("clarity", 0.0),
             actionability=eval_scores.get("actionability", 0.0),
+            fulfillment=eval_scores.get("fulfillment", 0.0),
             issues=eval_scores.get("issues", []),
+            accuracy_checks=[
+                AccuracyCheckInfo(**c)
+                for c in eval_scores.get("accuracy_checks", [])
+            ],
+            fulfillment_checks=[
+                FulfillmentCheckInfo(**c)
+                for c in eval_scores.get("fulfillment_checks", [])
+            ],
         ) if eval_scores else None
 
         steps.append(IterationStepInfo(
