@@ -13,17 +13,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from um_agent_coder.daemon.auth import verify_api_key
 
+from ._pipeline import enhance_prompt
+from ._router import select_model
 from .models import (
+    GEMINI_MODEL_MAP,
     BatchRequest,
     BatchResponse,
     BatchResultItem,
-    BatchStatus,
     GeminiModelTier,
-    GEMINI_MODEL_MAP,
     UsageInfo,
 )
-from ._pipeline import enhance_prompt
-from ._router import select_model
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +34,19 @@ _batch_tasks: dict[str, asyncio.Task] = {}
 
 def _get_db():
     from um_agent_coder.daemon.app import get_db
+
     return get_db()
 
 
 def _get_client():
     from um_agent_coder.daemon.app import get_gemini_client
+
     return get_gemini_client()
 
 
 def _get_settings():
     from um_agent_coder.daemon.app import get_settings
+
     return get_settings()
 
 
@@ -160,10 +162,7 @@ async def _process_batch(batch_id: str, req: BatchRequest):
             )
 
     # Run all queries concurrently (bounded by semaphore)
-    tasks = [
-        asyncio.create_task(process_one(i, q))
-        for i, q in enumerate(req.queries)
-    ]
+    tasks = [asyncio.create_task(process_one(i, q)) for i, q in enumerate(req.queries)]
 
     try:
         await asyncio.gather(*tasks)
@@ -175,7 +174,9 @@ async def _process_batch(batch_id: str, req: BatchRequest):
         return
 
     # Serialize results
-    result_dicts = [r.model_dump() if r else {"index": i, "error": "skipped"} for i, r in enumerate(results)]
+    result_dicts = [
+        r.model_dump() if r else {"index": i, "error": "skipped"} for i, r in enumerate(results)
+    ]
 
     now = datetime.now(timezone.utc).isoformat()
     final_status = "completed" if failed == 0 else ("failed" if completed == 0 else "completed")
@@ -191,6 +192,7 @@ async def _process_batch(batch_id: str, req: BatchRequest):
 
 
 # --- Endpoints ---
+
 
 @router.post("/batch", response_model=BatchResponse)
 async def submit_batch(
@@ -220,6 +222,7 @@ async def submit_batch(
     # Clean up reference when done
     def _cleanup(t):
         _batch_tasks.pop(batch_id, None)
+
     task.add_done_callback(_cleanup)
 
     return _batch_to_response(batch)
@@ -271,7 +274,9 @@ async def cancel_batch(
         raise HTTPException(status_code=404, detail="Batch job not found")
 
     if batch["status"] not in ("pending", "running"):
-        raise HTTPException(status_code=400, detail=f"Cannot cancel batch in '{batch['status']}' state")
+        raise HTTPException(
+            status_code=400, detail=f"Cannot cancel batch in '{batch['status']}' state"
+        )
 
     # Cancel the background task
     task = _batch_tasks.get(batch_id)

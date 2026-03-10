@@ -18,7 +18,7 @@ class GoogleLLM(LLM):
         api_key: str,
         model: str = "gemini-2.0-flash",
         temperature: float = 0.7,
-        max_tokens: int = 4096,
+        max_tokens: int = 65536,
     ):
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self.model = model

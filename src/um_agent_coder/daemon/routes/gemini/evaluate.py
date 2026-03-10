@@ -7,19 +7,18 @@ import time
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from um_agent_coder.daemon.auth import verify_api_key
 
+from ._evaluator import evaluate_response
 from .models import (
+    GEMINI_MODEL_MAP,
+    EvalInfo,
     EvaluateRequest,
     EvaluateResponse,
-    EvalInfo,
     GeminiModelTier,
-    GEMINI_MODEL_MAP,
-    UsageInfo,
 )
-from ._evaluator import evaluate_response
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +27,7 @@ router = APIRouter()
 
 def _get_client():
     from um_agent_coder.daemon.app import get_gemini_client
+
     return get_gemini_client()
 
 
@@ -49,13 +49,19 @@ async def evaluate_text(
 
     logger.info(
         "Evaluate %s: prompt=%d chars, response=%d chars, context=%d chars, model=%s",
-        query_id, len(req.prompt), len(req.response),
-        len(req.eval_context) if req.eval_context else 0, eval_model,
+        query_id,
+        len(req.prompt),
+        len(req.response),
+        len(req.eval_context) if req.eval_context else 0,
+        eval_model,
     )
 
     eval_result = await evaluate_response(
-        client, req.prompt, req.response,
-        model=eval_model, eval_context=req.eval_context,
+        client,
+        req.prompt,
+        req.response,
+        model=eval_model,
+        eval_context=req.eval_context,
     )
 
     duration_ms = int((time.monotonic() - start) * 1000)

@@ -33,22 +33,21 @@ from ._evaluator import (
     score_pre_gen_checklist,
 )
 from ._file_extractor import extract_files
+from ._firestore import (
+    list_iterations_from_firestore,
+    persist_iteration_to_firestore,
+)
 from ._mistake_library import (
     build_mistake_preamble,
     get_relevant_mistakes,
     record_failures,
 )
 from ._notifier import send_iteration_webhook, should_notify
-from .context_extractor import generate_eval_context
 from ._pipeline import enhance_prompt
 from ._router import select_model
+from ._strategies import build_strategic_retry_prompt, select_strategies
 from ._syntax_validator import validate_code_blocks
-from ._strategies import FixStrategy, build_strategic_retry_prompt, select_strategies
-from ._firestore import (
-    get_iteration_from_firestore,
-    list_iterations_from_firestore,
-    persist_iteration_to_firestore,
-)
+from .context_extractor import generate_eval_context
 from .models import (
     AccuracyCheckInfo,
     ActionabilityCheckInfo,
@@ -56,7 +55,6 @@ from .models import (
     BatchIterateItemStatus,
     BatchIterateRequest,
     BatchIterateResponse,
-    BatchStatus,
     ClarityCheckInfo,
     CompletenessCheckInfo,
     EvalInfo,
@@ -80,21 +78,25 @@ _iteration_tasks: dict[str, asyncio.Task] = {}
 
 def _get_db():
     from um_agent_coder.daemon.app import get_db
+
     return get_db()
 
 
 def _get_client():
     from um_agent_coder.daemon.app import get_gemini_client
+
     return get_gemini_client()
 
 
 def _get_settings():
     from um_agent_coder.daemon.app import get_settings
+
     return get_settings()
 
 
 def _resolve_model(model: GeminiModelTier, prompt: str, settings) -> str:
     from .models import get_model_map
+
     if model == GeminiModelTier.auto:
         return select_model(prompt, threshold=settings.gemini_complexity_threshold)
     return get_model_map()[model.value]
@@ -107,14 +109,16 @@ def _eval_result_to_info(
     pre_gen_checks = []
     if pre_gen_checklist:
         for c in pre_gen_checklist.checks:
-            pre_gen_checks.append(PreGenCheckInfo(
-                dimension=c.dimension,
-                check=c.check,
-                status="",  # filled per-step, but this shows the original checklist
-                severity=c.severity,
-                detail=c.detail,
-                source=c.source,
-            ))
+            pre_gen_checks.append(
+                PreGenCheckInfo(
+                    dimension=c.dimension,
+                    check=c.check,
+                    status="",  # filled per-step, but this shows the original checklist
+                    severity=c.severity,
+                    detail=c.detail,
+                    source=c.source,
+                )
+            )
     return EvalInfo(
         score=er.score,
         accuracy=er.accuracy,
@@ -126,36 +130,46 @@ def _eval_result_to_info(
         retry_count=er.retry_count,
         accuracy_checks=[
             AccuracyCheckInfo(
-                check=c.check, status=c.status,
-                severity=c.severity, detail=c.detail,
+                check=c.check,
+                status=c.status,
+                severity=c.severity,
+                detail=c.detail,
             )
             for c in er.accuracy_checks
         ],
         fulfillment_checks=[
             FulfillmentCheckInfo(
-                check=c.check, status=c.status,
-                severity=c.severity, detail=c.detail,
+                check=c.check,
+                status=c.status,
+                severity=c.severity,
+                detail=c.detail,
             )
             for c in er.fulfillment_checks
         ],
         completeness_checks=[
             CompletenessCheckInfo(
-                check=c.check, status=c.status,
-                severity=c.severity, detail=c.detail,
+                check=c.check,
+                status=c.status,
+                severity=c.severity,
+                detail=c.detail,
             )
             for c in er.completeness_checks
         ],
         clarity_checks=[
             ClarityCheckInfo(
-                check=c.check, status=c.status,
-                severity=c.severity, detail=c.detail,
+                check=c.check,
+                status=c.status,
+                severity=c.severity,
+                detail=c.detail,
             )
             for c in er.clarity_checks
         ],
         actionability_checks=[
             ActionabilityCheckInfo(
-                check=c.check, status=c.status,
-                severity=c.severity, detail=c.detail,
+                check=c.check,
+                status=c.status,
+                severity=c.severity,
+                detail=c.detail,
             )
             for c in er.actionability_checks
         ],
@@ -177,15 +191,21 @@ async def _multi_model_evaluate(
     """
     if len(eval_models) == 1:
         return await evaluate_response(
-            client, prompt, response,
-            model=eval_models[0], eval_context=eval_context,
+            client,
+            prompt,
+            response,
+            model=eval_models[0],
+            eval_context=eval_context,
         )
 
     # Run all evals concurrently
     tasks = [
         evaluate_response(
-            client, prompt, response,
-            model=model, eval_context=eval_context,
+            client,
+            prompt,
+            response,
+            model=model,
+            eval_context=eval_context,
         )
         for model in eval_models
     ]
@@ -236,7 +256,9 @@ async def _persist_to_firestore_if_enabled(iteration_id: str):
             return
         steps = await db.get_gemini_iteration_steps(iteration_id)
         await persist_iteration_to_firestore(
-            iteration_id, iteration, steps,
+            iteration_id,
+            iteration,
+            steps,
             collection=settings.gemini_firestore_collection,
         )
     except Exception as e:
@@ -258,9 +280,7 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
         eval_models = req.eval_models
     else:
         eval_models = [
-            m.strip()
-            for m in settings.gemini_iterate_eval_models.split(",")
-            if m.strip()
+            m.strip() for m in settings.gemini_iterate_eval_models.split(",") if m.strip()
         ]
 
     best_response: Optional[str] = None
@@ -273,19 +293,16 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
 
     try:
         # --- Auto eval_context generation from source_files ---
-        if (
-            settings.gemini_auto_eval_context_enabled
-            and req.source_files
-            and not req.eval_context
-        ):
+        if settings.gemini_auto_eval_context_enabled and req.source_files and not req.eval_context:
             try:
                 limited_files = dict(
-                    list(req.source_files.items())[:settings.gemini_auto_eval_context_max_files]
+                    list(req.source_files.items())[: settings.gemini_auto_eval_context_max_files]
                 )
                 req.eval_context = generate_eval_context(limited_files)
                 logger.info(
                     "Iteration %s: auto-generated eval_context from %d source files",
-                    iteration_id, len(limited_files),
+                    iteration_id,
+                    len(limited_files),
                 )
             except Exception as e:
                 logger.warning("Auto eval_context generation failed: %s", e)
@@ -294,7 +311,8 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
         if settings.gemini_mistake_library_enabled:
             try:
                 relevant_mistakes = await get_relevant_mistakes(
-                    db, req.prompt,
+                    db,
+                    req.prompt,
                     top_k=settings.gemini_mistake_library_top_k,
                     min_occurrences=settings.gemini_mistake_library_min_occurrences,
                 )
@@ -303,7 +321,8 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     current_prompt = preamble + "\n" + current_prompt
                     logger.info(
                         "Iteration %s: prepended %d known mistakes to prompt",
-                        iteration_id, len(relevant_mistakes),
+                        iteration_id,
+                        len(relevant_mistakes),
                     )
             except Exception as e:
                 logger.warning("Mistake library retrieval failed: %s", e)
@@ -313,14 +332,17 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
         if settings.gemini_pregen_checklist_enabled:
             try:
                 pre_gen_checklist = await generate_pre_gen_checklist(
-                    client, req.prompt, req.eval_context,
+                    client,
+                    req.prompt,
+                    req.eval_context,
                     max_checks=settings.gemini_pregen_checklist_max_checks,
                 )
                 if pre_gen_checklist.checks:
                     total_tokens += pre_gen_checklist.generation_tokens
                     logger.info(
                         "Iteration %s: generated %d pre-gen checks (%d tokens)",
-                        iteration_id, len(pre_gen_checklist.checks),
+                        iteration_id,
+                        len(pre_gen_checklist.checks),
                         pre_gen_checklist.generation_tokens,
                     )
                 else:
@@ -331,7 +353,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 pre_gen_checklist = None
 
         recent_scores: List[float] = []
-        next_step_model_override: Optional[str] = None  # one-shot model switch from oscillation jolt
+        next_step_model_override: Optional[str] = (
+            None  # one-shot model switch from oscillation jolt
+        )
 
         for step_num in range(1, req.max_iterations + 1):
             step_start = time.monotonic()
@@ -364,7 +388,12 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 contents = []
                 if current_system:
                     contents.append({"role": "user", "parts": [{"text": current_system}]})
-                    contents.append({"role": "model", "parts": [{"text": "Understood. I'll follow these instructions."}]})
+                    contents.append(
+                        {
+                            "role": "model",
+                            "parts": [{"text": "Understood. I'll follow these instructions."}],
+                        }
+                    )
                 contents.append({"role": "user", "parts": [{"text": prompt_to_send}]})
 
                 gen_result = await client.generate_multi_turn(
@@ -402,7 +431,8 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 extraction_result = extract_files(response_text)
                 logger.info(
                     "Iteration %s step %d: extracted %d files (%s)",
-                    iteration_id, step_num,
+                    iteration_id,
+                    step_num,
                     extraction_result.total_files,
                     ", ".join(extraction_result.languages),
                 )
@@ -412,17 +442,21 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     if syntax_result.issues:
                         logger.info(
                             "Iteration %s step %d: %d syntax issues found",
-                            iteration_id, step_num, len(syntax_result.issues),
+                            iteration_id,
+                            step_num,
+                            len(syntax_result.issues),
                         )
                         for issue in syntax_result.issues:
-                            syntax_checks.append(AccuracyCheck(
-                                check=f"Syntax error in {issue.file_path or issue.language}",
-                                status="fail",
-                                severity="breaking",
-                                detail=(
-                                    f"Line {issue.line}, col {issue.column}: {issue.message}"
-                                ),
-                            ))
+                            syntax_checks.append(
+                                AccuracyCheck(
+                                    check=f"Syntax error in {issue.file_path or issue.language}",
+                                    status="fail",
+                                    severity="breaking",
+                                    detail=(
+                                        f"Line {issue.line}, col {issue.column}: {issue.message}"
+                                    ),
+                                )
+                            )
 
             # --- Evaluate (accuracy-first cascade + fulfillment) ---
             eval_start = time.monotonic()
@@ -441,24 +475,28 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 # Phase 1: Accuracy check — pre-gen or legacy
                 if _has_pregen["accuracy"]:
                     accuracy_result = await score_pre_gen_checklist(
-                        client, req.prompt, response_text,
+                        client,
+                        req.prompt,
+                        response_text,
                         pre_gen_checks=pre_gen_checklist.accuracy_checks,
                         dimension="accuracy",
                         eval_context=req.eval_context,
                     )
                 else:
                     accuracy_result = await evaluate_accuracy(
-                        client, req.prompt, response_text,
+                        client,
+                        req.prompt,
+                        response_text,
                         eval_context=req.eval_context,
                     )
 
                 # Inject syntax errors as breaking accuracy checks
                 if syntax_checks:
                     from ._evaluator import _score_accuracy_checks
+
                     accuracy_result.accuracy_checks.extend(syntax_checks)
                     accuracy_result.issues.extend(
-                        f"[SYNTAX:BREAKING] {c.check}: {c.detail}"
-                        for c in syntax_checks
+                        f"[SYNTAX:BREAKING] {c.check}: {c.detail}" for c in syntax_checks
                     )
                     accuracy_result.accuracy = _score_accuracy_checks(
                         accuracy_result.accuracy_checks
@@ -472,7 +510,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     logger.info(
                         "Iteration %s step %d: accuracy=%.3f < 0.7, skipping full eval "
                         "(%d checks, %d failed)",
-                        iteration_id, step_num, accuracy_result.accuracy,
+                        iteration_id,
+                        step_num,
+                        accuracy_result.accuracy,
                         len(accuracy_result.accuracy_checks),
                         sum(1 for c in accuracy_result.accuracy_checks if c.status == "fail"),
                     )
@@ -481,7 +521,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     # Use pre-gen scoring for dimensions with pre-gen checks, else post-hoc
                     if _has_pregen["completeness"]:
                         comp_task = score_pre_gen_checklist(
-                            client, req.prompt, response_text,
+                            client,
+                            req.prompt,
+                            response_text,
                             pre_gen_checks=pre_gen_checklist.completeness_checks,
                             dimension="completeness",
                         )
@@ -495,7 +537,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
 
                     if _has_pregen["fulfillment"]:
                         ful_task = score_pre_gen_checklist(
-                            client, req.prompt, response_text,
+                            client,
+                            req.prompt,
+                            response_text,
                             pre_gen_checks=pre_gen_checklist.fulfillment_checks,
                             dimension="fulfillment",
                         )
@@ -503,7 +547,10 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                         ful_task = evaluate_fulfillment(client, req.prompt, response_text)
 
                     comp_r, clar_r, act_r, ful_r = await asyncio.gather(
-                        comp_task, clar_task, act_task, ful_task,
+                        comp_task,
+                        clar_task,
+                        act_task,
+                        ful_task,
                     )
 
                     # Only include successfully parsed dimensions in the average
@@ -524,7 +571,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     if parse_failures:
                         logger.warning(
                             "Iteration %s step %d: %d eval parse failures: %s",
-                            iteration_id, step_num, len(parse_failures),
+                            iteration_id,
+                            step_num,
+                            len(parse_failures),
                             ", ".join(parse_failures),
                         )
 
@@ -535,8 +584,13 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                         clarity=clar_r.clarity,
                         actionability=act_r.actionability,
                         fulfillment=ful_r.fulfillment,
-                        issues=(accuracy_result.issues + comp_r.issues
-                                + clar_r.issues + act_r.issues + ful_r.issues),
+                        issues=(
+                            accuracy_result.issues
+                            + comp_r.issues
+                            + clar_r.issues
+                            + act_r.issues
+                            + ful_r.issues
+                        ),
                         accuracy_checks=accuracy_result.accuracy_checks,
                         fulfillment_checks=ful_r.fulfillment_checks,
                         completeness_checks=comp_r.completeness_checks,
@@ -548,15 +602,20 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 else:
                     # Legacy: _multi_model_evaluate + fulfillment
                     full_task = _multi_model_evaluate(
-                        client, req.prompt, response_text,
+                        client,
+                        req.prompt,
+                        response_text,
                         eval_models=eval_models,
                         eval_context=req.eval_context,
                     )
                     fulfill_task = evaluate_fulfillment(
-                        client, req.prompt, response_text,
+                        client,
+                        req.prompt,
+                        response_text,
                     )
                     full_result, fulfill_result = await asyncio.gather(
-                        full_task, fulfill_task,
+                        full_task,
+                        fulfill_task,
                     )
 
                     dims = [
@@ -573,8 +632,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                         clarity=full_result.clarity,
                         actionability=full_result.actionability,
                         fulfillment=fulfill_result.fulfillment,
-                        issues=(accuracy_result.issues + full_result.issues
-                                + fulfill_result.issues),
+                        issues=(
+                            accuracy_result.issues + full_result.issues + fulfill_result.issues
+                        ),
                         accuracy_checks=accuracy_result.accuracy_checks,
                         fulfillment_checks=fulfill_result.fulfillment_checks,
                     )
@@ -583,7 +643,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 if use_checklist:
                     if _has_pregen["completeness"]:
                         comp_task = score_pre_gen_checklist(
-                            client, req.prompt, response_text,
+                            client,
+                            req.prompt,
+                            response_text,
                             pre_gen_checks=pre_gen_checklist.completeness_checks,
                             dimension="completeness",
                         )
@@ -593,7 +655,9 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     act_task = evaluate_actionability(client, req.prompt, response_text)
                     if _has_pregen["fulfillment"]:
                         ful_task = score_pre_gen_checklist(
-                            client, req.prompt, response_text,
+                            client,
+                            req.prompt,
+                            response_text,
                             pre_gen_checks=pre_gen_checklist.fulfillment_checks,
                             dimension="fulfillment",
                         )
@@ -601,7 +665,10 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                         ful_task = evaluate_fulfillment(client, req.prompt, response_text)
 
                     comp_r, clar_r, act_r, ful_r = await asyncio.gather(
-                        comp_task, clar_task, act_task, ful_task,
+                        comp_task,
+                        clar_task,
+                        act_task,
+                        ful_task,
                     )
 
                     # No accuracy checklist without eval_context — use completeness as proxy
@@ -617,8 +684,7 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                         clarity=clar_r.clarity,
                         actionability=act_r.actionability,
                         fulfillment=ful_r.fulfillment,
-                        issues=(comp_r.issues + clar_r.issues
-                                + act_r.issues + ful_r.issues),
+                        issues=(comp_r.issues + clar_r.issues + act_r.issues + ful_r.issues),
                         fulfillment_checks=ful_r.fulfillment_checks,
                         completeness_checks=comp_r.completeness_checks,
                         clarity_checks=clar_r.clarity_checks,
@@ -626,15 +692,20 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     )
                 else:
                     full_task = _multi_model_evaluate(
-                        client, req.prompt, response_text,
+                        client,
+                        req.prompt,
+                        response_text,
                         eval_models=eval_models,
                         eval_context=None,
                     )
                     fulfill_task = evaluate_fulfillment(
-                        client, req.prompt, response_text,
+                        client,
+                        req.prompt,
+                        response_text,
                     )
                     full_result, fulfill_result = await asyncio.gather(
-                        full_task, fulfill_task,
+                        full_task,
+                        fulfill_task,
                     )
 
                     dims = [
@@ -678,12 +749,16 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     )
                     if all_failing_checks:
                         recorded = await record_failures(
-                            db, all_failing_checks, "mixed",
+                            db,
+                            all_failing_checks,
+                            "mixed",
                         )
                         if recorded:
                             logger.info(
                                 "Iteration %s step %d: recorded %d mistake patterns",
-                                iteration_id, step_num, recorded,
+                                iteration_id,
+                                step_num,
+                                recorded,
                             )
                 except Exception as e:
                     logger.warning("Mistake recording failed: %s", e)
@@ -711,8 +786,11 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     logger.info(
                         "Iteration %s step %d: oscillation detected "
                         "(last %d scores: %s, spread=%.3f)",
-                        iteration_id, step_num, osc_window,
-                        [f"{s:.3f}" for s in last_n], spread,
+                        iteration_id,
+                        step_num,
+                        osc_window,
+                        [f"{s:.3f}" for s in last_n],
+                        spread,
                     )
 
             if oscillation_detected:
@@ -728,7 +806,8 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                     next_step_model_override = alt_model
                     logger.info(
                         "Oscillation jolt: next step will use %s, temp=%.1f",
-                        alt_model, current_temp,
+                        alt_model,
+                        current_temp,
                     )
 
             # --- Store step ---
@@ -741,43 +820,73 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 "fulfillment": eval_result.fulfillment,
                 "issues": eval_result.issues,
                 "accuracy_checks": [
-                    {"check": c.check, "status": c.status,
-                     "severity": c.severity, "detail": c.detail}
+                    {
+                        "check": c.check,
+                        "status": c.status,
+                        "severity": c.severity,
+                        "detail": c.detail,
+                    }
                     for c in eval_result.accuracy_checks
                 ],
                 "fulfillment_checks": [
-                    {"check": c.check, "status": c.status,
-                     "severity": c.severity, "detail": c.detail}
+                    {
+                        "check": c.check,
+                        "status": c.status,
+                        "severity": c.severity,
+                        "detail": c.detail,
+                    }
                     for c in eval_result.fulfillment_checks
                 ],
                 "completeness_checks": [
-                    {"check": c.check, "status": c.status,
-                     "severity": c.severity, "detail": c.detail}
+                    {
+                        "check": c.check,
+                        "status": c.status,
+                        "severity": c.severity,
+                        "detail": c.detail,
+                    }
                     for c in eval_result.completeness_checks
                 ],
                 "clarity_checks": [
-                    {"check": c.check, "status": c.status,
-                     "severity": c.severity, "detail": c.detail}
+                    {
+                        "check": c.check,
+                        "status": c.status,
+                        "severity": c.severity,
+                        "detail": c.detail,
+                    }
                     for c in eval_result.clarity_checks
                 ],
                 "actionability_checks": [
-                    {"check": c.check, "status": c.status,
-                     "severity": c.severity, "detail": c.detail}
+                    {
+                        "check": c.check,
+                        "status": c.status,
+                        "severity": c.severity,
+                        "detail": c.detail,
+                    }
                     for c in eval_result.actionability_checks
                 ],
                 "pre_gen_checks": [
-                    {"dimension": c.dimension, "check": c.check,
-                     "severity": c.severity, "source": c.source}
+                    {
+                        "dimension": c.dimension,
+                        "check": c.check,
+                        "severity": c.severity,
+                        "source": c.source,
+                    }
                     for c in (pre_gen_checklist.checks if pre_gen_checklist else [])
                 ],
                 "accuracy_passed": accuracy_passed,
                 "parse_failed": eval_result.parse_failed,
-                "extraction": {
-                    "total_files": extraction_result.total_files if extraction_result else 0,
-                    "languages": extraction_result.languages if extraction_result else [],
-                    "truncated_files": extraction_result.truncated_files if extraction_result else 0,
-                    "syntax_issues": len(syntax_checks),
-                } if extraction_result else None,
+                "extraction": (
+                    {
+                        "total_files": extraction_result.total_files if extraction_result else 0,
+                        "languages": extraction_result.languages if extraction_result else [],
+                        "truncated_files": (
+                            extraction_result.truncated_files if extraction_result else 0
+                        ),
+                        "syntax_issues": len(syntax_checks),
+                    }
+                    if extraction_result
+                    else None
+                ),
             }
             await db.add_gemini_iteration_step(
                 iteration_id=iteration_id,
@@ -795,7 +904,7 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
             )
 
             # Update iteration progress
-            duration_ms = int((time.monotonic() - overall_start) * 1000)
+            int((time.monotonic() - overall_start) * 1000)
             await db.update_gemini_iteration(
                 iteration_id,
                 best_response=best_response,
@@ -807,33 +916,41 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
 
             logger.info(
                 "Iteration %s step %d: score=%.3f (best=%.3f@%d) strategies=%s",
-                iteration_id, step_num, eval_result.score,
-                best_score, best_iteration, strategy_names,
+                iteration_id,
+                step_num,
+                eval_result.score,
+                best_score,
+                best_iteration,
+                strategy_names,
             )
 
             # --- Per-step webhook ---
             if req.webhook_url and should_notify("step_complete", req.webhook_events):
-                asyncio.create_task(send_iteration_webhook(
-                    iteration_id, "step_complete", req.webhook_url,
-                    webhook_headers=req.webhook_headers,
-                    payload={
-                        "step": step_num,
-                        "score": eval_result.score,
-                        "best_score": best_score,
-                        "strategies": strategy_names,
-                        "model": gen_model_this_step,
-                        "gen_duration_ms": gen_duration_ms,
-                        "eval_duration_ms": eval_duration_ms,
-                        "oscillation_detected": oscillation_detected,
-                    },
-                    timeout_seconds=settings.gemini_webhook_timeout_seconds,
-                    max_retries=settings.gemini_webhook_max_retries,
-                ))
+                asyncio.create_task(
+                    send_iteration_webhook(
+                        iteration_id,
+                        "step_complete",
+                        req.webhook_url,
+                        webhook_headers=req.webhook_headers,
+                        payload={
+                            "step": step_num,
+                            "score": eval_result.score,
+                            "best_score": best_score,
+                            "strategies": strategy_names,
+                            "model": gen_model_this_step,
+                            "gen_duration_ms": gen_duration_ms,
+                            "eval_duration_ms": eval_duration_ms,
+                            "oscillation_detected": oscillation_detected,
+                        },
+                        timeout_seconds=settings.gemini_webhook_timeout_seconds,
+                        max_retries=settings.gemini_webhook_max_retries,
+                    )
+                )
 
             # --- Check threshold ---
             if eval_result.score >= req.score_threshold:
                 now = datetime.now(timezone.utc).isoformat()
-                duration_ms = int((time.monotonic() - overall_start) * 1000)
+                int((time.monotonic() - overall_start) * 1000)
                 await db.update_gemini_iteration(
                     iteration_id,
                     status="threshold_met",
@@ -846,17 +963,24 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 )
                 logger.info(
                     "Iteration %s threshold met at step %d (%.3f >= %.3f)",
-                    iteration_id, step_num, eval_result.score, req.score_threshold,
+                    iteration_id,
+                    step_num,
+                    eval_result.score,
+                    req.score_threshold,
                 )
                 await _persist_to_firestore_if_enabled(iteration_id)
                 if req.webhook_url and should_notify("threshold_met", req.webhook_events):
-                    asyncio.create_task(send_iteration_webhook(
-                        iteration_id, "threshold_met", req.webhook_url,
-                        webhook_headers=req.webhook_headers,
-                        payload={"best_score": best_score, "total_iterations": step_num},
-                        timeout_seconds=settings.gemini_webhook_timeout_seconds,
-                        max_retries=settings.gemini_webhook_max_retries,
-                    ))
+                    asyncio.create_task(
+                        send_iteration_webhook(
+                            iteration_id,
+                            "threshold_met",
+                            req.webhook_url,
+                            webhook_headers=req.webhook_headers,
+                            payload={"best_score": best_score, "total_iterations": step_num},
+                            timeout_seconds=settings.gemini_webhook_timeout_seconds,
+                            max_retries=settings.gemini_webhook_max_retries,
+                        )
+                    )
                 return
 
             # --- Build strategic retry prompt for next step ---
@@ -872,8 +996,11 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                 logger.info(
                     "Iteration %s step %d: score %.3f regressed from best %.3f, "
                     "anchoring retry to step %d response",
-                    iteration_id, step_num, eval_result.score,
-                    best_score, best_iteration,
+                    iteration_id,
+                    step_num,
+                    eval_result.score,
+                    best_score,
+                    best_iteration,
                 )
 
             if strategies:
@@ -905,7 +1032,7 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
 
         # Max iterations reached — finalize with best
         now = datetime.now(timezone.utc).isoformat()
-        duration_ms = int((time.monotonic() - overall_start) * 1000)
+        int((time.monotonic() - overall_start) * 1000)
         await db.update_gemini_iteration(
             iteration_id,
             status="max_iterations_reached",
@@ -918,17 +1045,23 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
         )
         logger.info(
             "Iteration %s max iterations reached. Best score=%.3f at step %d",
-            iteration_id, best_score, best_iteration,
+            iteration_id,
+            best_score,
+            best_iteration,
         )
         await _persist_to_firestore_if_enabled(iteration_id)
         if req.webhook_url and should_notify("max_iterations_reached", req.webhook_events):
-            asyncio.create_task(send_iteration_webhook(
-                iteration_id, "max_iterations_reached", req.webhook_url,
-                webhook_headers=req.webhook_headers,
-                payload={"best_score": best_score, "total_iterations": req.max_iterations},
-                timeout_seconds=settings.gemini_webhook_timeout_seconds,
-                max_retries=settings.gemini_webhook_max_retries,
-            ))
+            asyncio.create_task(
+                send_iteration_webhook(
+                    iteration_id,
+                    "max_iterations_reached",
+                    req.webhook_url,
+                    webhook_headers=req.webhook_headers,
+                    payload={"best_score": best_score, "total_iterations": req.max_iterations},
+                    timeout_seconds=settings.gemini_webhook_timeout_seconds,
+                    max_retries=settings.gemini_webhook_max_retries,
+                )
+            )
 
     except asyncio.CancelledError:
         now = datetime.now(timezone.utc).isoformat()
@@ -944,12 +1077,16 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
         logger.info("Iteration %s cancelled", iteration_id)
         await _persist_to_firestore_if_enabled(iteration_id)
         if req.webhook_url and should_notify("cancelled", req.webhook_events):
-            asyncio.create_task(send_iteration_webhook(
-                iteration_id, "cancelled", req.webhook_url,
-                webhook_headers=req.webhook_headers,
-                timeout_seconds=settings.gemini_webhook_timeout_seconds,
-                max_retries=settings.gemini_webhook_max_retries,
-            ))
+            asyncio.create_task(
+                send_iteration_webhook(
+                    iteration_id,
+                    "cancelled",
+                    req.webhook_url,
+                    webhook_headers=req.webhook_headers,
+                    timeout_seconds=settings.gemini_webhook_timeout_seconds,
+                    max_retries=settings.gemini_webhook_max_retries,
+                )
+            )
     except Exception as e:
         logger.exception("Iteration %s failed: %s", iteration_id, e)
         now = datetime.now(timezone.utc).isoformat()
@@ -965,16 +1102,21 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
         )
         await _persist_to_firestore_if_enabled(iteration_id)
         if req.webhook_url and should_notify("failed", req.webhook_events):
-            asyncio.create_task(send_iteration_webhook(
-                iteration_id, "failed", req.webhook_url,
-                webhook_headers=req.webhook_headers,
-                payload={"error": str(e)},
-                timeout_seconds=settings.gemini_webhook_timeout_seconds,
-                max_retries=settings.gemini_webhook_max_retries,
-            ))
+            asyncio.create_task(
+                send_iteration_webhook(
+                    iteration_id,
+                    "failed",
+                    req.webhook_url,
+                    webhook_headers=req.webhook_headers,
+                    payload={"error": str(e)},
+                    timeout_seconds=settings.gemini_webhook_timeout_seconds,
+                    max_retries=settings.gemini_webhook_max_retries,
+                )
+            )
 
 
 # --- Helper: build response from DB ---
+
 
 async def _build_iterate_response(iteration_id: str) -> IterateResponse:
     db = _get_db()
@@ -986,54 +1128,54 @@ async def _build_iterate_response(iteration_id: str) -> IterateResponse:
     steps = []
     for s in steps_rows:
         eval_scores = s.get("eval_scores") or {}
-        evaluation = EvalInfo(
-            score=eval_scores.get("score", 0.0),
-            accuracy=eval_scores.get("accuracy", 0.0),
-            completeness=eval_scores.get("completeness", 0.0),
-            clarity=eval_scores.get("clarity", 0.0),
-            actionability=eval_scores.get("actionability", 0.0),
-            fulfillment=eval_scores.get("fulfillment", 0.0),
-            issues=eval_scores.get("issues", []),
-            accuracy_passed=eval_scores.get("accuracy_passed"),
-            parse_failed=eval_scores.get("parse_failed"),
-            accuracy_checks=[
-                AccuracyCheckInfo(**c)
-                for c in eval_scores.get("accuracy_checks", [])
-            ],
-            fulfillment_checks=[
-                FulfillmentCheckInfo(**c)
-                for c in eval_scores.get("fulfillment_checks", [])
-            ],
-            completeness_checks=[
-                CompletenessCheckInfo(**c)
-                for c in eval_scores.get("completeness_checks", [])
-            ],
-            clarity_checks=[
-                ClarityCheckInfo(**c)
-                for c in eval_scores.get("clarity_checks", [])
-            ],
-            actionability_checks=[
-                ActionabilityCheckInfo(**c)
-                for c in eval_scores.get("actionability_checks", [])
-            ],
-            pre_gen_checks=[
-                PreGenCheckInfo(**c)
-                for c in eval_scores.get("pre_gen_checks", [])
-            ],
-        ) if eval_scores else None
+        evaluation = (
+            EvalInfo(
+                score=eval_scores.get("score", 0.0),
+                accuracy=eval_scores.get("accuracy", 0.0),
+                completeness=eval_scores.get("completeness", 0.0),
+                clarity=eval_scores.get("clarity", 0.0),
+                actionability=eval_scores.get("actionability", 0.0),
+                fulfillment=eval_scores.get("fulfillment", 0.0),
+                issues=eval_scores.get("issues", []),
+                accuracy_passed=eval_scores.get("accuracy_passed"),
+                parse_failed=eval_scores.get("parse_failed"),
+                accuracy_checks=[
+                    AccuracyCheckInfo(**c) for c in eval_scores.get("accuracy_checks", [])
+                ],
+                fulfillment_checks=[
+                    FulfillmentCheckInfo(**c) for c in eval_scores.get("fulfillment_checks", [])
+                ],
+                completeness_checks=[
+                    CompletenessCheckInfo(**c) for c in eval_scores.get("completeness_checks", [])
+                ],
+                clarity_checks=[
+                    ClarityCheckInfo(**c) for c in eval_scores.get("clarity_checks", [])
+                ],
+                actionability_checks=[
+                    ActionabilityCheckInfo(**c) for c in eval_scores.get("actionability_checks", [])
+                ],
+                pre_gen_checks=[
+                    PreGenCheckInfo(**c) for c in eval_scores.get("pre_gen_checks", [])
+                ],
+            )
+            if eval_scores
+            else None
+        )
 
-        steps.append(IterationStepInfo(
-            step=s["step_number"],
-            prompt_sent=s.get("prompt_sent") or "",
-            response=s.get("response") or "",
-            generation_model=s.get("generation_model") or "",
-            generation_duration_ms=s.get("generation_duration_ms", 0),
-            generation_tokens=s.get("generation_tokens", 0),
-            evaluation=evaluation,
-            eval_models_used=s.get("eval_models") or [],
-            strategies_applied=s.get("strategies_applied") or [],
-            finish_reason=s.get("finish_reason") or "",
-        ))
+        steps.append(
+            IterationStepInfo(
+                step=s["step_number"],
+                prompt_sent=s.get("prompt_sent") or "",
+                response=s.get("response") or "",
+                generation_model=s.get("generation_model") or "",
+                generation_duration_ms=s.get("generation_duration_ms", 0),
+                generation_tokens=s.get("generation_tokens", 0),
+                evaluation=evaluation,
+                eval_models_used=s.get("eval_models") or [],
+                strategies_applied=s.get("strategies_applied") or [],
+                finish_reason=s.get("finish_reason") or "",
+            )
+        )
 
     # Calculate duration
     duration_ms = 0
@@ -1063,6 +1205,7 @@ async def _build_iterate_response(iteration_id: str) -> IterateResponse:
 
 
 # --- Endpoints ---
+
 
 @router.post("/iterate", response_model=IterateResponse)
 async def start_iteration(
@@ -1099,6 +1242,7 @@ async def start_iteration(
 
     def _cleanup(t):
         _iteration_tasks.pop(iteration_id, None)
+
     task.add_done_callback(_cleanup)
 
     return await _build_iterate_response(iteration_id)
@@ -1184,10 +1328,7 @@ async def _run_batch_iterations(batch_id: str, req: BatchIterateRequest):
             )
 
     try:
-        tasks = [
-            _run_item(i, item)
-            for i, item in enumerate(req.items)
-        ]
+        tasks = [_run_item(i, item) for i, item in enumerate(req.items)]
         await asyncio.gather(*tasks, return_exceptions=True)
     except asyncio.CancelledError:
         logger.info("Batch %s cancelled", batch_id)
@@ -1218,22 +1359,26 @@ async def _build_batch_response(batch_id: str) -> BatchIterateResponse:
     for idx_str, iter_id in sorted(iteration_ids.items(), key=lambda x: int(x[0])):
         iteration = await db.get_gemini_iteration(iter_id)
         if iteration:
-            items.append(BatchIterateItemStatus(
-                index=int(idx_str),
-                label=(iteration.get("config") or {}).get("label"),
-                iteration_id=iter_id,
-                status=iteration["status"],
-                best_score=iteration.get("best_score", 0.0),
-                total_iterations=iteration.get("total_iterations", 0),
-                error=iteration.get("error"),
-            ))
+            items.append(
+                BatchIterateItemStatus(
+                    index=int(idx_str),
+                    label=(iteration.get("config") or {}).get("label"),
+                    iteration_id=iter_id,
+                    status=iteration["status"],
+                    best_score=iteration.get("best_score", 0.0),
+                    total_iterations=iteration.get("total_iterations", 0),
+                    error=iteration.get("error"),
+                )
+            )
         else:
-            items.append(BatchIterateItemStatus(
-                index=int(idx_str),
-                iteration_id=iter_id,
-                status=IterationStatus.failed,
-                error="Iteration not found",
-            ))
+            items.append(
+                BatchIterateItemStatus(
+                    index=int(idx_str),
+                    iteration_id=iter_id,
+                    status=IterationStatus.failed,
+                    error="Iteration not found",
+                )
+            )
 
     return BatchIterateResponse(
         batch_id=batch["id"],
@@ -1275,6 +1420,7 @@ async def start_batch_iteration(
 
     def _cleanup(t):
         _batch_tasks.pop(batch_id, None)
+
     task.add_done_callback(_cleanup)
 
     return await _build_batch_response(batch_id)
@@ -1325,6 +1471,7 @@ async def cancel_batch_iteration(
 
 # --- Firestore history endpoint ---
 
+
 @router.get("/iterations/history")
 async def list_iteration_history(
     limit: int = 50,
@@ -1374,15 +1521,17 @@ async def list_iterations(
             except (ValueError, TypeError):
                 pass
 
-        result.append(IterationSummaryResponse(
-            id=it["id"],
-            status=it["status"],
-            best_score=it.get("best_score", 0.0),
-            total_iterations=it.get("total_iterations", 0),
-            total_tokens=it.get("total_tokens", 0),
-            duration_ms=duration_ms,
-            created_at=it.get("created_at"),
-        ))
+        result.append(
+            IterationSummaryResponse(
+                id=it["id"],
+                status=it["status"],
+                best_score=it.get("best_score", 0.0),
+                total_iterations=it.get("total_iterations", 0),
+                total_tokens=it.get("total_tokens", 0),
+                duration_ms=duration_ms,
+                created_at=it.get("created_at"),
+            )
+        )
     return result
 
 

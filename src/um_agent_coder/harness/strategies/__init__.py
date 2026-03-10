@@ -45,9 +45,6 @@ def get_strategy(name: str, config: StrategyConfig = None) -> BaseStrategy:
     }
 
     if name.lower() not in strategies:
-        raise ValueError(
-            f"Unknown strategy: {name}. "
-            f"Available: {', '.join(strategies.keys())}"
-        )
+        raise ValueError(f"Unknown strategy: {name}. " f"Available: {', '.join(strategies.keys())}")
 
     return strategies[name.lower()](config or StrategyConfig())

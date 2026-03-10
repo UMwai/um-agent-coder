@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TaskWorker:
     """Processes tasks in background threads using the existing orchestrators."""
 
-    def __init__(self, settings: "DaemonSettings", db: "Database"):
+    def __init__(self, settings: DaemonSettings, db: Database):
         self.settings = settings
         self.db = db
         self._executor = ThreadPoolExecutor(
@@ -118,9 +118,7 @@ class TaskWorker:
                     result=result,
                     completed_at=completed_at,
                 )
-                await self.db.add_log(
-                    task_id, f"Task failed: {result.get('error')}", level="error"
-                )
+                await self.db.add_log(task_id, f"Task failed: {result.get('error')}", level="error")
 
             # Send notifications
             self._send_notifications(task_id, task, result)
@@ -201,8 +199,8 @@ class TaskWorker:
 
     def _create_gemini_llm(self):
         """Create an LLM adapter that calls Gemini via OAuth."""
-        from um_agent_coder.llm.base import LLM
         from um_agent_coder.daemon.gemini_client import create_gemini_client
+        from um_agent_coder.llm.base import LLM
 
         class GeminiOAuthLLM(LLM):
             def __init__(self):

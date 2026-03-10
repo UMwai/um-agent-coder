@@ -63,8 +63,7 @@ class MetaStateManager:
     def _init_db(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
-            conn.executescript(
-                """
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS meta_state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     started_at TEXT NOT NULL,
@@ -130,8 +129,7 @@ class MetaStateManager:
                     ON coordination_events(event_type);
                 CREATE INDEX IF NOT EXISTS idx_worktrees_branch
                     ON worktrees(branch_name);
-                """
-            )
+                """)
 
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -210,9 +208,7 @@ class MetaStateManager:
             )
 
             # Update total count
-            conn.execute(
-                "UPDATE meta_state SET total_harnesses = total_harnesses + 1 WHERE id = 1"
-            )
+            conn.execute("UPDATE meta_state SET total_harnesses = total_harnesses + 1 WHERE id = 1")
 
             # Log event
             self._log_event(conn, "harness_registered", harness_id, {"cli": cli})
@@ -371,9 +367,7 @@ class MetaStateManager:
             Harness data dict or None
         """
         with self._connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM sub_harnesses WHERE harness_id = ?", (harness_id,)
-            )
+            cursor = conn.execute("SELECT * FROM sub_harnesses WHERE harness_id = ?", (harness_id,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
@@ -396,9 +390,7 @@ class MetaStateManager:
             List of running harness data dicts
         """
         with self._connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM sub_harnesses WHERE status = 'running'"
-            )
+            cursor = conn.execute("SELECT * FROM sub_harnesses WHERE status = 'running'")
             return [dict(row) for row in cursor.fetchall()]
 
     def get_pending_harnesses(self) -> List[Dict[str, Any]]:
@@ -408,9 +400,7 @@ class MetaStateManager:
             List of pending harness data dicts
         """
         with self._connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM sub_harnesses WHERE status = 'pending'"
-            )
+            cursor = conn.execute("SELECT * FROM sub_harnesses WHERE status = 'pending'")
             return [dict(row) for row in cursor.fetchall()]
 
     def get_completed_harnesses(self) -> List[Dict[str, Any]]:
@@ -420,12 +410,10 @@ class MetaStateManager:
             List of completed harness data dicts
         """
         with self._connection() as conn:
-            cursor = conn.execute(
-                """
+            cursor = conn.execute("""
                 SELECT * FROM sub_harnesses
                 WHERE status IN ('completed', 'failed', 'stopped')
-                """
-            )
+                """)
             return [dict(row) for row in cursor.fetchall()]
 
     def get_meta_state(self) -> Dict[str, Any]:
@@ -554,10 +542,15 @@ class MetaStateManager:
                 """,
                 (harness_id, branch_name, worktree_path, base_branch, now),
             )
-            self._log_event(conn, "worktree_created", harness_id, {
-                "branch_name": branch_name,
-                "base_branch": base_branch,
-            })
+            self._log_event(
+                conn,
+                "worktree_created",
+                harness_id,
+                {
+                    "branch_name": branch_name,
+                    "base_branch": base_branch,
+                },
+            )
         logger.info(f"Registered worktree for {harness_id}: {branch_name}")
 
     def update_worktree_merged(
@@ -581,9 +574,14 @@ class MetaStateManager:
                 """,
                 (now, merge_commit, harness_id),
             )
-            self._log_event(conn, "worktree_merged", harness_id, {
-                "merge_commit": merge_commit,
-            })
+            self._log_event(
+                conn,
+                "worktree_merged",
+                harness_id,
+                {
+                    "merge_commit": merge_commit,
+                },
+            )
         logger.info(f"Marked worktree {harness_id} as merged: {merge_commit}")
 
     def get_worktree(self, harness_id: str) -> Optional[Dict[str, Any]]:
@@ -596,9 +594,7 @@ class MetaStateManager:
             Worktree data dict or None
         """
         with self._connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM worktrees WHERE harness_id = ?", (harness_id,)
-            )
+            cursor = conn.execute("SELECT * FROM worktrees WHERE harness_id = ?", (harness_id,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
@@ -611,9 +607,7 @@ class MetaStateManager:
             List of worktree data dicts
         """
         with self._connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM worktrees WHERE merged_at IS NULL"
-            )
+            cursor = conn.execute("SELECT * FROM worktrees WHERE merged_at IS NULL")
             return [dict(row) for row in cursor.fetchall()]
 
     def delete_worktree(self, harness_id: str) -> None:

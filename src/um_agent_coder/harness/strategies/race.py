@@ -6,13 +6,13 @@ First harness to complete wins, others are terminated.
 
 import logging
 from datetime import datetime
-from typing import Callable, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Optional
 
-from .base import BaseStrategy, StrategyConfig
+from .base import BaseStrategy
 
 if TYPE_CHECKING:
     from ..handle import HarnessHandle
-    from ..result import AggregatedResult, HarnessResult
+    from ..result import AggregatedResult
 
 logger = logging.getLogger(__name__)
 

@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .meta_state import MetaStateManager
-from .result import HarnessStatus
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +45,7 @@ class MetaHarnessDashboard:
             harness_dir: Base harness directory
         """
         self.harness_dir = Path(harness_dir)
-        self.meta_state = MetaStateManager(
-            db_path=str(self.harness_dir / "meta_state.db")
-        )
+        self.meta_state = MetaStateManager(db_path=str(self.harness_dir / "meta_state.db"))
 
     def get_status(self) -> Dict[str, Any]:
         """Get complete status as dictionary.
@@ -207,7 +204,7 @@ class MetaHarnessDashboard:
         print(f"\n--- Logs for {harness_id} (last {tail} lines) ---\n")
         for line in logs:
             print(line.rstrip())
-        print(f"\n--- End of logs ---\n")
+        print("\n--- End of logs ---\n")
 
     def _get_recent_alerts(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent alerts from all harnesses.

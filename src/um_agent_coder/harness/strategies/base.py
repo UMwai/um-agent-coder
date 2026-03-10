@@ -7,11 +7,11 @@ Defines the interface that all coordination strategies must implement.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 if TYPE_CHECKING:
     from ..handle import HarnessHandle
-    from ..result import AggregatedResult, HarnessResult
+    from ..result import AggregatedResult
 
 
 @dataclass

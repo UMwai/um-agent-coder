@@ -10,7 +10,7 @@ import logging
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +52,14 @@ class SharedContext:
 
         # Initialize context file if it doesn't exist
         if not self.context_file.exists():
-            self._write_context({
-                "_meta": {
-                    "created_at": datetime.utcnow().isoformat(),
-                    "version": 1,
+            self._write_context(
+                {
+                    "_meta": {
+                        "created_at": datetime.utcnow().isoformat(),
+                        "version": 1,
+                    }
                 }
-            })
+            )
 
     def _read_context(self) -> Dict[str, Any]:
         """Read context from file.
@@ -269,11 +271,13 @@ class SharedContext:
     def clear(self) -> None:
         """Clear all context data."""
         with self._lock:
-            self._write_context({
-                "_meta": {
-                    "created_at": datetime.utcnow().isoformat(),
-                    "version": 1,
-                    "cleared_at": datetime.utcnow().isoformat(),
+            self._write_context(
+                {
+                    "_meta": {
+                        "created_at": datetime.utcnow().isoformat(),
+                        "version": 1,
+                        "cleared_at": datetime.utcnow().isoformat(),
+                    }
                 }
-            })
+            )
         logger.info("Shared context cleared")

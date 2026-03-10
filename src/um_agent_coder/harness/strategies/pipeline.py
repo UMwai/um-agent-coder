@@ -8,13 +8,13 @@ into the next as context.
 import json
 import logging
 from datetime import datetime
-from typing import Callable, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Optional
 
-from .base import BaseStrategy, StrategyConfig
+from .base import BaseStrategy
 
 if TYPE_CHECKING:
     from ..handle import HarnessHandle
-    from ..result import AggregatedResult, HarnessResult
+    from ..result import AggregatedResult
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,6 @@ class PipelineStrategy(BaseStrategy):
         context: dict = self.config.extra.get("initial_context", {})
         stop_on_failure = self.config.stop_on_failure
         pass_context = self.config.pass_context
-        pipeline_failed = False
 
         logger.info(f"Starting pipeline execution of {len(handles)} stages")
 
@@ -78,8 +77,7 @@ class PipelineStrategy(BaseStrategy):
             # Send context to this stage if enabled
             if pass_context and context:
                 context_msg = (
-                    f"Context from previous pipeline stages:\n"
-                    f"{json.dumps(context, indent=2)}"
+                    f"Context from previous pipeline stages:\n" f"{json.dumps(context, indent=2)}"
                 )
                 handle.send_instruction(context_msg)
 
@@ -93,10 +91,7 @@ class PipelineStrategy(BaseStrategy):
 
             # Check for failure
             if not result.success:
-                pipeline_failed = True
-                logger.warning(
-                    f"Pipeline stage {stage_num} ({handle.harness_id}) failed"
-                )
+                logger.warning(f"Pipeline stage {stage_num} ({handle.harness_id}) failed")
 
                 if stop_on_failure:
                     logger.info("Stopping pipeline due to failure")

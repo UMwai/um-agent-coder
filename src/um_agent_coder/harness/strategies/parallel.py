@@ -6,13 +6,13 @@ All harnesses run simultaneously, results are aggregated when all complete.
 
 import logging
 from datetime import datetime
-from typing import Callable, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Optional
 
-from .base import BaseStrategy, StrategyConfig
+from .base import BaseStrategy
 
 if TYPE_CHECKING:
     from ..handle import HarnessHandle
-    from ..result import AggregatedResult, HarnessResult
+    from ..result import AggregatedResult
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,7 @@ class ParallelStrategy(BaseStrategy):
                 on_complete(handle)
 
             if fail_fast and not result.success:
-                logger.warning(
-                    f"Fail-fast: {handle.harness_id} failed, stopping others"
-                )
+                logger.warning(f"Fail-fast: {handle.harness_id} failed, stopping others")
                 failed = True
                 # Signal stop to other handles
                 for h in handles:

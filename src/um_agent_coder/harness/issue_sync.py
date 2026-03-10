@@ -302,19 +302,23 @@ class IssueSyncManager:
             if len(output) > 2000:
                 output_preview += "\n... (truncated)"
 
-            parts.extend([
-                "",
-                "### Output",
-                "```",
-                output_preview,
-                "```",
-            ])
+            parts.extend(
+                [
+                    "",
+                    "### Output",
+                    "```",
+                    output_preview,
+                    "```",
+                ]
+            )
 
-        parts.extend([
-            "",
-            "---",
-            "*Closed automatically by um-agent-coder harness*",
-        ])
+        parts.extend(
+            [
+                "",
+                "---",
+                "*Closed automatically by um-agent-coder harness*",
+            ]
+        )
 
         return "\n".join(parts)
 

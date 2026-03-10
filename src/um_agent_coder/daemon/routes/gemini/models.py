@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
 # --- Enums ---
+
 
 class GeminiModelTier(str, Enum):
     flash = "flash"
@@ -21,6 +20,7 @@ class GeminiModelTier(str, Enum):
 def _build_model_map() -> dict[str, str]:
     """Build model map from config. Called lazily to avoid import-time settings load."""
     from um_agent_coder.daemon.config import DaemonSettings
+
     s = DaemonSettings()
     return {
         "flash": s.gemini_model_flash,
@@ -73,6 +73,7 @@ class IterationStatus(str, Enum):
 
 
 # --- Common ---
+
 
 class UsageInfo(BaseModel):
     prompt_tokens: int = 0
@@ -154,10 +155,22 @@ class EvalInfo(BaseModel):
 
 # --- Evaluate endpoint ---
 
+
 class EvaluateRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=200_000, description="The original prompt/task that produced the response.")
-    response: str = Field(..., min_length=1, max_length=500_000, description="The response text to evaluate.")
-    eval_context: Optional[str] = Field(default=None, max_length=100_000, description="Reference material (API signatures, schemas, etc.) to check against.")
+    prompt: str = Field(
+        ...,
+        min_length=1,
+        max_length=200_000,
+        description="The original prompt/task that produced the response.",
+    )
+    response: str = Field(
+        ..., min_length=1, max_length=500_000, description="The response text to evaluate."
+    )
+    eval_context: Optional[str] = Field(
+        default=None,
+        max_length=100_000,
+        description="Reference material (API signatures, schemas, etc.) to check against.",
+    )
     model: GeminiModelTier = GeminiModelTier.flash
 
 
@@ -171,6 +184,7 @@ class EvaluateResponse(BaseModel):
 
 # --- Enhance endpoint ---
 
+
 class EnhanceRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=100_000)
     model: GeminiModelTier = GeminiModelTier.auto
@@ -179,9 +193,18 @@ class EnhanceRequest(BaseModel):
     max_tokens: int = Field(default=8192, ge=1, le=65536)
     enable_enhancement: bool = True
     enable_self_eval: bool = True
-    eval_model: Optional[GeminiModelTier] = Field(default=None, description="Model for self-eval. None = use config default ('auto' matches generation model).")
-    eval_context: Optional[str] = Field(default=None, max_length=50_000, description="Reference material (API signatures, schemas, etc.) the evaluator should check the response against.")
-    domain_hint: Optional[str] = Field(default=None, description="Hint for domain context: code, math, science, etc.")
+    eval_model: Optional[GeminiModelTier] = Field(
+        default=None,
+        description="Model for self-eval. None = use config default ('auto' matches generation model).",
+    )
+    eval_context: Optional[str] = Field(
+        default=None,
+        max_length=50_000,
+        description="Reference material (API signatures, schemas, etc.) the evaluator should check the response against.",
+    )
+    domain_hint: Optional[str] = Field(
+        default=None, description="Hint for domain context: code, math, science, etc."
+    )
 
 
 class EnhanceResponse(BaseModel):
@@ -195,6 +218,7 @@ class EnhanceResponse(BaseModel):
 
 
 # --- Sessions ---
+
 
 class CreateSessionRequest(BaseModel):
     system_prompt: Optional[str] = Field(default=None, max_length=50_000)
@@ -247,6 +271,7 @@ class SessionDetailResponse(BaseModel):
 
 # --- Batch ---
 
+
 class BatchQueryItem(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=100_000)
     system_prompt: Optional[str] = None
@@ -286,6 +311,7 @@ class BatchResponse(BaseModel):
 
 # --- Agent ---
 
+
 class AgentToolCall(BaseModel):
     tool: str
     args: Dict[str, Any] = {}
@@ -321,12 +347,19 @@ class AgentResponse(BaseModel):
 
 # --- Iteration runner ---
 
+
 class IterateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=500_000)
     system_prompt: Optional[str] = Field(default=None, max_length=50_000)
-    eval_context: Optional[str] = Field(default=None, max_length=200_000, description="Reference material (API signatures, schemas) for accuracy checking.")
+    eval_context: Optional[str] = Field(
+        default=None,
+        max_length=200_000,
+        description="Reference material (API signatures, schemas) for accuracy checking.",
+    )
     model: GeminiModelTier = GeminiModelTier.pro_3_1
-    eval_models: Optional[List[str]] = Field(default=None, description="Models for evaluation. None = use config default.")
+    eval_models: Optional[List[str]] = Field(
+        default=None, description="Models for evaluation. None = use config default."
+    )
     max_iterations: int = Field(default=5, ge=1, le=20)
     score_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
@@ -334,10 +367,19 @@ class IterateRequest(BaseModel):
     enable_enhancement: bool = True
     use_multi_turn: bool = True
     domain_hint: Optional[str] = None
-    source_files: Optional[Dict[str, str]] = Field(default=None, description="Source files (path→content) for auto eval_context generation.")
-    webhook_url: Optional[str] = Field(default=None, description="URL to POST webhook notifications to.")
-    webhook_headers: Optional[Dict[str, str]] = Field(default=None, description="Additional headers for webhook requests.")
-    webhook_events: List[str] = Field(default=["completed", "failed"], description="Events to notify: completed, failed, cancelled, step_complete, all.")
+    source_files: Optional[Dict[str, str]] = Field(
+        default=None, description="Source files (path→content) for auto eval_context generation."
+    )
+    webhook_url: Optional[str] = Field(
+        default=None, description="URL to POST webhook notifications to."
+    )
+    webhook_headers: Optional[Dict[str, str]] = Field(
+        default=None, description="Additional headers for webhook requests."
+    )
+    webhook_events: List[str] = Field(
+        default=["completed", "failed"],
+        description="Events to notify: completed, failed, cancelled, step_complete, all.",
+    )
 
 
 class ExtractedFileInfo(BaseModel):
@@ -410,12 +452,15 @@ class IterationSummaryResponse(BaseModel):
 
 # --- Batch iteration runner ---
 
+
 class BatchIterateItem(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=500_000)
     system_prompt: Optional[str] = Field(default=None, max_length=50_000)
     eval_context: Optional[str] = Field(default=None, max_length=200_000)
     model: Optional[GeminiModelTier] = Field(default=None, description="Per-item model override.")
-    label: Optional[str] = Field(default=None, max_length=200, description="Human-readable label for this item.")
+    label: Optional[str] = Field(
+        default=None, max_length=200, description="Human-readable label for this item."
+    )
 
 
 class BatchIterateRequest(BaseModel):
@@ -432,7 +477,9 @@ class BatchIterateRequest(BaseModel):
     webhook_url: Optional[str] = None
     webhook_headers: Optional[Dict[str, str]] = None
     webhook_events: List[str] = Field(default=["completed", "failed"])
-    max_concurrent: Optional[int] = Field(default=None, ge=1, le=20, description="Override batch concurrency limit.")
+    max_concurrent: Optional[int] = Field(
+        default=None, ge=1, le=20, description="Override batch concurrency limit."
+    )
 
 
 class BatchIterateItemStatus(BaseModel):

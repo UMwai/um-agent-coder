@@ -75,12 +75,7 @@ def _parse_sse_text(line: str) -> tuple[str, dict]:
     candidates = resp.get("candidates", [])
     if not candidates:
         return "", data
-    text = (
-        candidates[0]
-        .get("content", {})
-        .get("parts", [{}])[0]
-        .get("text", "")
-    )
+    text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
     return text, data
 
 
@@ -208,7 +203,9 @@ class GeminiCodeAssistClient:
         data = resp.json()
         self._project = data.get("cloudaicompanionProject", "")
         tier_data = data.get("currentTier", {})
-        self._tier = tier_data.get("id", "unknown") if isinstance(tier_data, dict) else str(tier_data)
+        self._tier = (
+            tier_data.get("id", "unknown") if isinstance(tier_data, dict) else str(tier_data)
+        )
         logger.info("Loaded Code Assist project=%s tier=%s", self._project, self._tier)
         return self._project
 
@@ -230,7 +227,7 @@ class GeminiCodeAssistClient:
         *,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 8192,
+        max_tokens: int = 65536,
     ) -> dict:
         contents = []
         if system_prompt:
@@ -258,7 +255,7 @@ class GeminiCodeAssistClient:
         *,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 8192,
+        max_tokens: int = 65536,
         timeout: float = 300.0,
     ) -> dict:
         """Generate a response via the streaming endpoint. Returns full text + usage.
@@ -269,7 +266,9 @@ class GeminiCodeAssistClient:
         project = await self.load_project()
         headers = await self._auth_headers(model)
         payload = self._build_payload(
-            prompt, model, project,
+            prompt,
+            model,
+            project,
             system_prompt=system_prompt,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -310,14 +309,16 @@ class GeminiCodeAssistClient:
         *,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 8192,
+        max_tokens: int = 65536,
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         """Yield text chunks as an async generator."""
         project = await self.load_project()
         headers = await self._auth_headers(model)
         payload = self._build_payload(
-            prompt, model, project,
+            prompt,
+            model,
+            project,
             system_prompt=system_prompt,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -340,14 +341,13 @@ class GeminiCodeAssistClient:
                 if text:
                     yield text
 
-
     async def generate_multi_turn(
         self,
         contents: list[dict],
         model: str = "gemini-3-flash-preview",
         *,
         temperature: float = 0.7,
-        max_tokens: int = 8192,
+        max_tokens: int = 65536,
         timeout: float = 300.0,
     ) -> dict:
         """Generate a response from a pre-built contents list (multi-turn).
@@ -406,4 +406,5 @@ class GeminiCodeAssistClient:
 
 class RateLimitError(Exception):
     """Raised when the Code Assist API returns 429."""
+
     pass

@@ -159,14 +159,16 @@ class WorktreeManager:
         # Create worktree with new branch
         logger.info(f"Creating worktree at {worktree_path} (branch: {branch_name})")
 
-        self._run_git([
-            "worktree",
-            "add",
-            "-b",
-            branch_name,
-            str(worktree_path),
-            base_branch,
-        ])
+        self._run_git(
+            [
+                "worktree",
+                "add",
+                "-b",
+                branch_name,
+                str(worktree_path),
+                base_branch,
+            ]
+        )
 
         # Restore original branch if we changed it
         if original_branch and original_branch != base_branch:
@@ -430,11 +432,13 @@ class WorktreeManager:
 
         try:
             # Get the merge base with main
-            result = self._run_git([
-                "merge-base",
-                "main",
-                branch_name,
-            ])
+            self._run_git(
+                [
+                    "merge-base",
+                    "main",
+                    branch_name,
+                ]
+            )
             # For simplicity, assume main is the base
             return "main"
         except subprocess.CalledProcessError:
@@ -461,11 +465,15 @@ class WorktreeManager:
         self._run_git(["add", "."], cwd=worktree_path, check=False)
 
         # Commit
-        self._run_git([
-            "commit",
-            "-m",
-            f"Auto-commit from harness {harness_id}",
-        ], cwd=worktree_path, check=False)
+        self._run_git(
+            [
+                "commit",
+                "-m",
+                f"Auto-commit from harness {harness_id}",
+            ],
+            cwd=worktree_path,
+            check=False,
+        )
 
     def _run_tests_in_worktree(
         self,

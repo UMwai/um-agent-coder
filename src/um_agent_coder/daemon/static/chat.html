@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WFH – Chat</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #1c2129;
+      --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+      --yellow: #d29922; --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text); display: flex; flex-direction: column;
+    }
+
+    /* Header */
+    .header {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--border);
+      background: var(--surface); flex-shrink: 0;
+    }
+    .header h1 { font-size: 1.2rem; font-weight: 600; }
+    .header h1 span { color: var(--accent); }
+    .header nav { margin-left: auto; display: flex; gap: 0.5rem; }
+    .header .nav-link {
+      color: var(--muted); text-decoration: none; font-size: 0.85rem;
+      padding: 0.3rem 0.6rem; border-radius: 6px;
+    }
+    .header .nav-link:hover { color: var(--text); background: var(--surface2); }
+
+    /* Chat messages */
+    .chat-area {
+      flex: 1; overflow-y: auto; padding: 1.5rem; display: flex;
+      flex-direction: column; gap: 1rem;
+    }
+    .message {
+      max-width: 85%; padding: 1rem 1.25rem; border-radius: 12px;
+      line-height: 1.6; font-size: 0.95rem;
+    }
+    .message.user {
+      align-self: flex-end; background: #1f3a5f; border: 1px solid #264d7a;
+    }
+    .message.assistant {
+      align-self: flex-start; background: var(--surface); border: 1px solid var(--border);
+    }
+    .message.system {
+      align-self: center; color: var(--muted); font-size: 0.85rem;
+      background: transparent; padding: 0.5rem;
+    }
+    .message.error {
+      align-self: flex-start; background: rgba(248,81,73,0.1);
+      border: 1px solid rgba(248,81,73,0.3); color: var(--red);
+    }
+
+    /* Markdown content */
+    .message p { margin-bottom: 0.5rem; }
+    .message p:last-child { margin-bottom: 0; }
+    .message pre {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.75rem; overflow-x: auto;
+      margin: 0.5rem 0; font-size: 0.85rem;
+    }
+    .message code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85em;
+    }
+    .message :not(pre) > code {
+      background: rgba(110,118,129,0.2); padding: 0.15rem 0.35rem; border-radius: 4px;
+    }
+    .message ul, .message ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+    .message table { border-collapse: collapse; margin: 0.5rem 0; width: 100%; }
+    .message th, .message td {
+      border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left;
+    }
+    .message th { background: var(--surface2); }
+    .message h1, .message h2, .message h3 { margin: 0.75rem 0 0.4rem; }
+    .message h1 { font-size: 1.2rem; }
+    .message h2 { font-size: 1.1rem; }
+    .message h3 { font-size: 1rem; }
+    .message hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
+    .message blockquote {
+      border-left: 3px solid var(--accent); padding-left: 0.75rem;
+      color: var(--muted); margin: 0.5rem 0;
+    }
+
+    /* Score badge */
+    .score-badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 600; margin-right: 0.4rem;
+    }
+    .score-good { background: rgba(63,185,80,0.15); color: var(--green); }
+    .score-ok { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .score-bad { background: rgba(248,81,73,0.15); color: var(--red); }
+
+    /* Typing indicator */
+    .typing { display: flex; gap: 4px; padding: 0.5rem 0; }
+    .typing span {
+      width: 8px; height: 8px; background: var(--muted); border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+
+    /* Progress card */
+    .progress-card {
+      align-self: flex-start; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1rem 1.25rem; min-width: 320px; max-width: 500px;
+    }
+    .progress-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;
+    }
+    .progress-title {
+      font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .progress-title .pulse {
+      width: 8px; height: 8px; background: var(--accent); border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .progress-timer {
+      font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums;
+    }
+    .progress-bar-track {
+      height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+      margin-bottom: 0.6rem;
+    }
+    .progress-bar-fill {
+      height: 100%; background: var(--accent); border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+    .progress-bar-fill.indeterminate {
+      width: 30% !important;
+      animation: indeterminate 1.5s ease-in-out infinite;
+    }
+    @keyframes indeterminate {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+    .progress-phase {
+      font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem;
+    }
+    .progress-phase .phase-label { color: var(--accent); font-weight: 500; }
+    .progress-steps {
+      display: flex; gap: 0.4rem; flex-wrap: wrap;
+    }
+    .step-dot {
+      width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 600; color: var(--muted);
+      transition: all 0.3s;
+    }
+    .step-dot.active {
+      border-color: var(--accent); color: var(--accent);
+      animation: pulse 2s infinite;
+    }
+    .step-dot.done { border-color: var(--green); background: rgba(63,185,80,0.15); color: var(--green); }
+    .step-dot.fail { border-color: var(--yellow); background: rgba(210,153,34,0.15); color: var(--yellow); }
+
+    /* Input area */
+    .input-area {
+      flex-shrink: 0; border-top: 1px solid var(--border);
+      background: var(--surface); padding: 1rem 1.5rem;
+    }
+    .mode-tabs {
+      display: flex; gap: 0.5rem; margin-bottom: 0.75rem;
+    }
+    .mode-tab {
+      background: transparent; color: var(--muted); border: 1px solid var(--border);
+      padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer;
+      font-size: 0.8rem; transition: all 0.15s;
+    }
+    .mode-tab:hover { color: var(--text); border-color: var(--accent); }
+    .mode-tab.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.1); }
+    .input-row { display: flex; gap: 0.75rem; }
+    .input-row textarea {
+      flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.95rem;
+      font-family: inherit; resize: none; min-height: 44px; max-height: 200px;
+      line-height: 1.5;
+    }
+    .input-row textarea:focus { outline: none; border-color: var(--accent); }
+    .send-btn {
+      background: #238636; color: white; border: none;
+      padding: 0 1.25rem; border-radius: 8px; cursor: pointer;
+      font-size: 0.95rem; font-weight: 500; transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .send-btn:hover { background: #2ea043; }
+    .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .input-hint {
+      color: var(--muted); font-size: 0.75rem; margin-top: 0.4rem;
+    }
+
+    /* Welcome screen */
+    .welcome {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; flex: 1; gap: 1rem; color: var(--muted);
+    }
+    .welcome h2 { color: var(--text); font-size: 1.5rem; }
+    .welcome p { max-width: 500px; text-align: center; line-height: 1.6; }
+    .welcome .examples { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+    .welcome .example-btn {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 0.6rem 1rem; border-radius: 8px;
+      cursor: pointer; text-align: left; font-size: 0.9rem; transition: border-color 0.15s;
+    }
+    .welcome .example-btn:hover { border-color: var(--accent); }
+
+    @media (max-width: 768px) {
+      .message { max-width: 95%; }
+      .input-area { padding: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><span>WFH</span></h1>
+    <nav>
+      <a href="/ui" class="nav-link">Dashboard</a>
+      <a href="/ui/chat" class="nav-link" style="color:var(--accent)">Chat</a>
+      <a href="/docs" class="nav-link">API</a>
+    </nav>
+  </div>
+
+  <div class="chat-area" id="chat">
+    <div class="welcome" id="welcome">
+      <h2>What can I help with?</h2>
+      <p>Ask a quick question or run a full iteration loop that generates, evaluates, and refines until quality threshold is met.</p>
+      <div class="examples">
+        <button class="example-btn" onclick="useExample(this)">Summarize the key risks in our current portfolio</button>
+        <button class="example-btn" onclick="useExample(this)">Write a budget alert report for Q1 2026</button>
+        <button class="example-btn" onclick="useExample(this)">Explain how the iteration evaluation pipeline works</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="mode-tabs">
+      <button class="mode-tab active" data-mode="ask" onclick="setMode('ask')">Ask</button>
+      <button class="mode-tab" data-mode="iterate" onclick="setMode('iterate')">Iterate</button>
+    </div>
+    <div class="input-row">
+      <textarea id="prompt" placeholder="Ask anything..." rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="send()">Send</button>
+    </div>
+    <div class="input-hint" id="hint">Quick Q&A — single Gemini response</div>
+  </div>
+
+  <script>
+    let mode = 'ask';
+    let busy = false;
+
+    const chat = document.getElementById('chat');
+    const promptEl = document.getElementById('prompt');
+    const sendBtn = document.getElementById('sendBtn');
+    const hint = document.getElementById('hint');
+    const welcome = document.getElementById('welcome');
+
+    const modeHints = {
+      ask: 'Quick Q&A — single Gemini response',
+      iterate: 'Full loop — generate → evaluate → retry until quality threshold met',
+    };
+
+    function setMode(m) {
+      mode = m;
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === m));
+      hint.textContent = modeHints[m];
+      promptEl.focus();
+    }
+
+    function useExample(btn) {
+      promptEl.value = btn.textContent;
+      autoResize(promptEl);
+      promptEl.focus();
+    }
+
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    }
+
+    function handleKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    }
+
+    function addMessage(role, content, isHtml = false) {
+      if (welcome) welcome.style.display = 'none';
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      if (isHtml) {
+        div.innerHTML = content;
+      } else {
+        div.innerHTML = renderMarkdown(content);
+      }
+      div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    let timerInterval = null;
+    let timerStart = 0;
+
+    function addTyping() {
+      const div = document.createElement('div');
+      div.className = 'message assistant';
+      div.id = 'typing';
+      div.innerHTML = `
+        <div style="display:flex;align-items:center;gap:0.6rem;">
+          <div class="typing"><span></span><span></span><span></span></div>
+          <span style="color:var(--muted);font-size:0.85rem;" id="think-timer">Thinking...</span>
+        </div>`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      timerStart = Date.now();
+      timerInterval = setInterval(() => {
+        const el = document.getElementById('think-timer');
+        if (el) el.textContent = `Thinking... ${formatElapsed(Date.now() - timerStart)}`;
+      }, 1000);
+      return div;
+    }
+
+    function removeTyping() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      const el = document.getElementById('typing');
+      if (el) el.remove();
+    }
+
+    function addProgressCard(maxSteps) {
+      removeTyping();
+      const div = document.createElement('div');
+      div.className = 'progress-card';
+      div.id = 'progress-card';
+      const dots = Array.from({length: maxSteps}, (_, i) =>
+        `<div class="step-dot" id="step-dot-${i+1}">${i+1}</div>`
+      ).join('');
+      div.innerHTML = `
+        <div class="progress-header">
+          <div class="progress-title"><div class="pulse"></div> Iterating</div>
+          <div class="progress-timer" id="progress-timer">0s</div>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill indeterminate" id="progress-bar" style="width:0%"></div>
+        </div>
+        <div class="progress-phase" id="progress-phase">
+          <span class="phase-label">Generating</span> initial response...
+        </div>
+        <div class="progress-steps">${dots}</div>`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      timerStart = Date.now();
+      timerInterval = setInterval(() => {
+        const el = document.getElementById('progress-timer');
+        if (el) el.textContent = formatElapsed(Date.now() - timerStart);
+      }, 1000);
+      return div;
+    }
+
+    function updateProgress(step, totalSteps, phase, score) {
+      const bar = document.getElementById('progress-bar');
+      const phaseEl = document.getElementById('progress-phase');
+      if (bar) {
+        bar.classList.remove('indeterminate');
+        bar.style.width = `${(step / totalSteps) * 100}%`;
+      }
+      if (phaseEl) {
+        const phases = {
+          generating: 'Generating response...',
+          evaluating: 'Evaluating quality...',
+          strategizing: 'Building retry strategy...',
+          done: 'Complete!',
+        };
+        phaseEl.innerHTML = `Step ${step}/${totalSteps} — <span class="phase-label">${phases[phase] || phase}</span>`;
+      }
+      // Update step dots
+      for (let i = 1; i <= totalSteps; i++) {
+        const dot = document.getElementById(`step-dot-${i}`);
+        if (!dot) continue;
+        if (i < step) {
+          dot.className = 'step-dot done';
+        } else if (i === step) {
+          dot.className = score != null ? (score >= 0.85 ? 'step-dot done' : 'step-dot fail') : 'step-dot active';
+        }
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function removeProgressCard() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      const el = document.getElementById('progress-card');
+      if (el) el.remove();
+    }
+
+    function formatElapsed(ms) {
+      const s = Math.floor(ms / 1000);
+      if (s < 60) return `${s}s`;
+      const m = Math.floor(s / 60);
+      return `${m}m ${s % 60}s`;
+    }
+
+    function renderMarkdown(text) {
+      if (!text) return '';
+      return marked.parse(text, { breaks: true, gfm: true });
+    }
+
+    function scoreBadge(score) {
+      const cls = score >= 0.85 ? 'score-good' : score >= 0.6 ? 'score-ok' : 'score-bad';
+      return `<span class="score-badge ${cls}">${(score * 100).toFixed(1)}%</span>`;
+    }
+
+    async function send() {
+      const text = promptEl.value.trim();
+      if (!text || busy) return;
+
+      busy = true;
+      sendBtn.disabled = true;
+      promptEl.value = '';
+      autoResize(promptEl);
+
+      addMessage('user', text);
+
+      if (mode === 'ask') {
+        await doAsk(text);
+      } else {
+        await doIterate(text);
+      }
+
+      busy = false;
+      sendBtn.disabled = false;
+      promptEl.focus();
+    }
+
+    async function doAsk(prompt) {
+      addTyping();
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, model: 'auto' }),
+        });
+        removeTyping();
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+          addMessage('error', `Error ${resp.status}: ${err.detail || JSON.stringify(err)}`);
+          return;
+        }
+        const data = await resp.json();
+        addMessage('assistant', data.response);
+      } catch (e) {
+        removeTyping();
+        addMessage('error', `Network error: ${e.message}`);
+      }
+    }
+
+    async function doIterate(prompt) {
+      const maxIter = 5;
+      addProgressCard(maxIter);
+
+      try {
+        const resp = await fetch('/api/gemini/iterate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            max_iterations: maxIter,
+            score_threshold: 0.85,
+          }),
+        });
+        if (!resp.ok) {
+          removeProgressCard();
+          const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+          addMessage('error', `Error ${resp.status}: ${err.detail || JSON.stringify(err)}`);
+          return;
+        }
+
+        const initial = await resp.json();
+        await pollIteration(initial.id, maxIter);
+      } catch (e) {
+        removeProgressCard();
+        addMessage('error', `Network error: ${e.message}`);
+      }
+    }
+
+    async function pollIteration(id, maxSteps) {
+      let lastStep = 0;
+
+      while (true) {
+        await sleep(2000);
+
+        try {
+          const resp = await fetch(`/api/gemini/iterate/${id}`);
+          if (!resp.ok) break;
+
+          const data = await resp.json();
+
+          // Update progress for new steps
+          if (data.steps && data.steps.length > lastStep) {
+            for (let i = lastStep; i < data.steps.length; i++) {
+              const step = data.steps[i];
+              const ev = step.evaluation;
+              const score = ev ? ev.score : null;
+
+              // Determine phase
+              let phase = 'evaluating';
+              if (data.status === 'running' && i === data.steps.length - 1) {
+                phase = score != null ? (score >= 0.85 ? 'done' : 'strategizing') : 'evaluating';
+              }
+
+              updateProgress(step.step, maxSteps, phase, score);
+            }
+            lastStep = data.steps.length;
+          }
+
+          // Check if done
+          if (data.status !== 'running') {
+            removeProgressCard();
+
+            if (data.best_response) {
+              // Build summary header
+              let header = `<strong>Iteration complete</strong> — `;
+              if (data.best_score != null) header += `Score: ${scoreBadge(data.best_score)} `;
+              header += `(${data.total_iterations} iteration${data.total_iterations !== 1 ? 's' : ''})`;
+              header += ` · ${formatElapsed(data.duration_ms)}`;
+
+              // Dimension scores
+              const bestStep = data.steps && data.steps[data.best_iteration - 1];
+              if (bestStep && bestStep.evaluation) {
+                const ev = bestStep.evaluation;
+                const dimNames = ['accuracy', 'completeness', 'clarity', 'actionability', 'fulfillment'];
+                const parts = dimNames
+                  .filter(d => typeof ev[d] === 'number' && ev[d] > 0)
+                  .map(d => `<strong>${d}</strong>: ${ev[d].toFixed(2)}`);
+                if (parts.length) header += `<br>${parts.join(' · ')}`;
+              }
+
+              addMessage('system', header, true);
+              addMessage('assistant', data.best_response);
+            } else {
+              addMessage('system', `Iteration ${data.status}: ${data.error || 'no response'}`);
+            }
+            return;
+          }
+
+          // Update phase text while waiting for next step
+          if (data.status === 'running') {
+            const currentStep = (data.steps ? data.steps.length : 0) + 1;
+            if (currentStep > lastStep) {
+              updateProgress(currentStep, maxSteps, 'generating', null);
+            }
+          }
+        } catch (e) {
+          // Polling error, keep trying
+        }
+      }
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // Focus input on load
+    promptEl.focus();
+  </script>
+</body>
+</html>

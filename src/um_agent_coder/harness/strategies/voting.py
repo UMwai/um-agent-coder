@@ -6,9 +6,9 @@ Multiple harnesses complete, best result is selected by criteria.
 
 import logging
 from datetime import datetime
-from typing import Callable, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Optional
 
-from .base import BaseStrategy, StrategyConfig
+from .base import BaseStrategy
 
 if TYPE_CHECKING:
     from ..handle import HarnessHandle
@@ -74,6 +74,7 @@ class VotingStrategy(BaseStrategy):
 
         # Wait for minimum successful completions
         import time
+
         while len(successful_results) < min_votes and pending:
             for handle in list(pending):
                 if handle.is_complete():
@@ -91,9 +92,7 @@ class VotingStrategy(BaseStrategy):
                             f"({len(successful_results)}/{min_votes})"
                         )
                     else:
-                        logger.warning(
-                            f"Failed vote from {handle.harness_id}"
-                        )
+                        logger.warning(f"Failed vote from {handle.harness_id}")
 
             # Check if we have enough votes
             if len(successful_results) >= min_votes:
@@ -132,8 +131,7 @@ class VotingStrategy(BaseStrategy):
         winner = self._select_winner(successful_results, selection_criteria)
 
         logger.info(
-            f"Voting complete. Winner: {winner.harness_id} "
-            f"(criteria: {selection_criteria})"
+            f"Voting complete. Winner: {winner.harness_id} " f"(criteria: {selection_criteria})"
         )
 
         # Reorder results to put winner first

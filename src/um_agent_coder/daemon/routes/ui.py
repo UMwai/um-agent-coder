@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 
 def get_db():
     from um_agent_coder.daemon.app import get_db as _get
+
     return _get()
 
 
@@ -26,6 +27,13 @@ async def dashboard():
     """Serve the main dashboard page."""
     index_path = STATIC_DIR / "index.html"
     return HTMLResponse(index_path.read_text())
+
+
+@router.get("/chat", response_class=HTMLResponse)
+async def chat():
+    """Serve the chat interface."""
+    chat_path = STATIC_DIR / "chat.html"
+    return HTMLResponse(chat_path.read_text())
 
 
 @router.get("/partials/stats", response_class=HTMLResponse)
@@ -119,8 +127,5 @@ def _format_time(iso_str: str) -> str:
 def _escape(text: str) -> str:
     """Basic HTML escaping."""
     return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )

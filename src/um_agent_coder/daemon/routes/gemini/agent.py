@@ -13,17 +13,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from um_agent_coder.daemon.auth import verify_api_key
 
+from ._tools import execute_tool, format_tools_for_prompt, get_tools
 from .models import (
+    GEMINI_MODEL_MAP,
     AgentRequest,
     AgentResponse,
     AgentStatus,
     AgentStep,
     AgentToolCall,
-    GeminiModelTier,
-    GEMINI_MODEL_MAP,
     UsageInfo,
 )
-from ._tools import execute_tool, format_tools_for_prompt, get_tools
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +57,13 @@ ANSWER_PATTERN = re.compile(r"ANSWER:\s*(.+)", re.DOTALL)
 
 def _get_client():
     from um_agent_coder.daemon.app import get_gemini_client
+
     return get_gemini_client()
 
 
 def _get_settings():
     from um_agent_coder.daemon.app import get_settings
+
     return get_settings()
 
 
@@ -119,7 +120,10 @@ async def run_agent(
     # Build initial conversation
     contents = [
         {"role": "user", "parts": [{"text": system_prompt}]},
-        {"role": "model", "parts": [{"text": "I understand. I will use the THOUGHT/ACTION/ANSWER format."}]},
+        {
+            "role": "model",
+            "parts": [{"text": "I understand. I will use the THOUGHT/ACTION/ANSWER format."}],
+        },
         {"role": "user", "parts": [{"text": f"Task: {req.task}"}]},
     ]
 
@@ -139,6 +143,7 @@ async def run_agent(
             )
         except Exception as e:
             from um_agent_coder.daemon.gemini_client import RateLimitError
+
             if isinstance(e, RateLimitError):
                 raise HTTPException(status_code=429, detail=str(e))
             logger.error("Agent step %d failed: %s", step_num, e)
@@ -169,25 +174,31 @@ async def run_agent(
             # Execute tool
             observation = execute_tool(tool_name, tool_args, tools)
 
-            steps.append(AgentStep(
-                step=step_num,
-                thought=thought,
-                action=AgentToolCall(tool=tool_name, args=tool_args, result=observation),
-                observation=observation,
-            ))
+            steps.append(
+                AgentStep(
+                    step=step_num,
+                    thought=thought,
+                    action=AgentToolCall(tool=tool_name, args=tool_args, result=observation),
+                    observation=observation,
+                )
+            )
 
             # Feed observation back as user message
-            contents.append({
-                "role": "user",
-                "parts": [{"text": f"OBSERVATION: {observation}"}],
-            })
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [{"text": f"OBSERVATION: {observation}"}],
+                }
+            )
         else:
             # No action or answer parsed — treat as confused, nudge
             steps.append(AgentStep(step=step_num, thought=thought or response_text))
-            contents.append({
-                "role": "user",
-                "parts": [{"text": "Please respond with either an ACTION or an ANSWER."}],
-            })
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [{"text": "Please respond with either an ACTION or an ANSWER."}],
+                }
+            )
     else:
         # Max steps reached without answer
         status = AgentStatus.max_steps_reached
@@ -198,7 +209,10 @@ async def run_agent(
     duration_ms = int((time.monotonic() - start) * 1000)
     logger.info(
         "Agent %s finished: status=%s steps=%d duration=%dms",
-        agent_id, status, len(steps), duration_ms,
+        agent_id,
+        status,
+        len(steps),
+        duration_ms,
     )
 
     return AgentResponse(

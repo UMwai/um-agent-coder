@@ -11,10 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from um_agent_coder.daemon.auth import verify_api_key
 
+from ._pipeline import enhance_prompt
 from .models import (
+    GEMINI_MODEL_MAP,
     CreateSessionRequest,
     GeminiModelTier,
-    GEMINI_MODEL_MAP,
     MessageRequest,
     MessageResponse,
     SessionDetailResponse,
@@ -22,8 +23,6 @@ from .models import (
     SessionResponse,
     UsageInfo,
 )
-from ._pipeline import enhance_prompt
-from ._router import select_model
 
 logger = logging.getLogger(__name__)
 
@@ -32,16 +31,19 @@ router = APIRouter()
 
 def _get_db():
     from um_agent_coder.daemon.app import get_db
+
     return get_db()
 
 
 def _get_client():
     from um_agent_coder.daemon.app import get_gemini_client
+
     return get_gemini_client()
 
 
 def _get_settings():
     from um_agent_coder.daemon.app import get_settings
+
     return get_settings()
 
 
@@ -99,12 +101,16 @@ async def _summarize_messages(client, messages: list[dict], keep_recent: int = 1
         summary_text = f"[Summary of {len(old_messages)} earlier messages]"
 
     summary_msg = {"role": "user", "content": f"[Conversation summary: {summary_text}]"}
-    ack_msg = {"role": "assistant", "content": "I understand the context from our previous conversation."}
+    ack_msg = {
+        "role": "assistant",
+        "content": "I understand the context from our previous conversation.",
+    }
 
     return [summary_msg, ack_msg] + recent_messages
 
 
 # --- Endpoints ---
+
 
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(
@@ -161,14 +167,16 @@ async def get_session(
     messages = await db.get_session_messages(session_id)
     msg_responses = []
     for m in messages:
-        msg_responses.append(MessageResponse(
-            id=m["id"],
-            session_id=session_id,
-            role=m["role"],
-            content=m["content"],
-            token_count=m.get("token_count", 0),
-            enhancement_applied=bool(m.get("enhancement_applied", 0)),
-        ))
+        msg_responses.append(
+            MessageResponse(
+                id=m["id"],
+                session_id=session_id,
+                role=m["role"],
+                content=m["content"],
+                token_count=m.get("token_count", 0),
+                enhancement_applied=bool(m.get("enhancement_applied", 0)),
+            )
+        )
     return SessionDetailResponse(
         session=SessionResponse(**session),
         messages=msg_responses,
@@ -258,6 +266,7 @@ async def send_message(
         )
     except Exception as e:
         from um_agent_coder.daemon.gemini_client import RateLimitError
+
         if isinstance(e, RateLimitError):
             raise HTTPException(status_code=429, detail=str(e))
         logger.error("Gemini API error in session %s: %s", session_id, e)

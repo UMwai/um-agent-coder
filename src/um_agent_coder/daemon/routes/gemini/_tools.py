@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional
 @dataclass
 class ToolDef:
     """Definition of a tool available to the agent."""
+
     name: str
     description: str
     parameters: Dict[str, str]  # param_name -> description
@@ -44,6 +45,7 @@ def _tool_file_list(path: str = ".", pattern: str = "*") -> str:
         # Simple glob filtering
         if pattern != "*":
             import fnmatch
+
             entries = [e for e in entries if fnmatch.fnmatch(e, pattern)]
         return "\n".join(entries[:100]) or "(empty directory)"
     except Exception as e:
@@ -106,7 +108,10 @@ TOOL_REGISTRY: Dict[str, ToolDef] = {
     "file_list": ToolDef(
         name="file_list",
         description="List files in a directory",
-        parameters={"path": "Directory path (default '.')", "pattern": "Glob pattern (default '*')"},
+        parameters={
+            "path": "Directory path (default '.')",
+            "pattern": "Glob pattern (default '*')",
+        },
         handler=_tool_file_list,
     ),
     "web_search": ToolDef(
@@ -118,7 +123,10 @@ TOOL_REGISTRY: Dict[str, ToolDef] = {
     "code_execute": ToolDef(
         name="code_execute",
         description="Execute Python code and return the output",
-        parameters={"code": "Python code to execute", "language": "Programming language (only 'python' supported)"},
+        parameters={
+            "code": "Python code to execute",
+            "language": "Programming language (only 'python' supported)",
+        },
         handler=_tool_code_execute,
     ),
     "summarize": ToolDef(

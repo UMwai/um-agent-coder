@@ -116,6 +116,20 @@ CREATE TABLE IF NOT EXISTS gemini_iteration_steps (
 
 CREATE INDEX IF NOT EXISTS idx_gemini_iterations_status ON gemini_iterations(status);
 CREATE INDEX IF NOT EXISTS idx_gemini_iteration_steps_iter ON gemini_iteration_steps(iteration_id);
+
+CREATE TABLE IF NOT EXISTS gemini_mistake_library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern TEXT NOT NULL UNIQUE,
+    severity TEXT NOT NULL DEFAULT 'breaking',
+    dimension TEXT NOT NULL DEFAULT 'accuracy',
+    example_detail TEXT,
+    occurrences INTEGER NOT NULL DEFAULT 1,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_gemini_mistakes_pattern ON gemini_mistake_library(pattern);
+CREATE INDEX IF NOT EXISTS idx_gemini_mistakes_occurrences ON gemini_mistake_library(occurrences DESC);
 """
 
 
@@ -198,9 +212,7 @@ class Database:
                 updates[k] = json.dumps(v)
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [task_id]
-        await self._db.execute(
-            f"UPDATE tasks SET {set_clause} WHERE id = ?", values  # noqa: S608
-        )
+        await self._db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)  # noqa: S608
         await self._db.commit()
         return await self.get_task(task_id)
 
@@ -230,9 +242,7 @@ class Database:
         )
         await self._db.commit()
 
-    async def get_logs(
-        self, task_id: str, limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    async def get_logs(self, task_id: str, limit: int = 100) -> List[Dict[str, Any]]:
         cursor = await self._db.execute(
             "SELECT * FROM task_logs WHERE task_id = ? ORDER BY created_at ASC LIMIT ?",
             (task_id, limit),
@@ -259,18 +269,22 @@ class Database:
                 total_tokens, turn_count, created_at, updated_at, expires_at)
                VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)""",
             (
-                session_id, system_prompt, model, temperature, max_tokens,
+                session_id,
+                system_prompt,
+                model,
+                temperature,
+                max_tokens,
                 json.dumps(metadata) if metadata else None,
-                now, now, expires_at,
+                now,
+                now,
+                expires_at,
             ),
         )
         await self._db.commit()
         return await self.get_gemini_session(session_id)
 
     async def get_gemini_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        cursor = await self._db.execute(
-            "SELECT * FROM gemini_sessions WHERE id = ?", (session_id,)
-        )
+        cursor = await self._db.execute("SELECT * FROM gemini_sessions WHERE id = ?", (session_id,))
         row = await cursor.fetchone()
         return self._row_to_dict(row) if row else None
 
@@ -317,8 +331,15 @@ class Database:
             """INSERT INTO gemini_messages
                (id, session_id, role, content, token_count, enhancement_applied, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (message_id, session_id, role, content, token_count,
-             1 if enhancement_applied else 0, now),
+            (
+                message_id,
+                session_id,
+                role,
+                content,
+                token_count,
+                1 if enhancement_applied else 0,
+                now,
+            ),
         )
         # Update session counters
         await self._db.execute(
@@ -333,9 +354,7 @@ class Database:
         return await self.get_gemini_message(message_id)
 
     async def get_gemini_message(self, message_id: str) -> Optional[Dict[str, Any]]:
-        cursor = await self._db.execute(
-            "SELECT * FROM gemini_messages WHERE id = ?", (message_id,)
-        )
+        cursor = await self._db.execute("SELECT * FROM gemini_messages WHERE id = ?", (message_id,))
         row = await cursor.fetchone()
         return self._row_to_dict(row) if row else None
 
@@ -363,16 +382,13 @@ class Database:
             """INSERT INTO gemini_batch_jobs
                (id, status, total_queries, model, config, created_at)
                VALUES (?, 'pending', ?, ?, ?, ?)""",
-            (batch_id, total_queries, model,
-             json.dumps(config) if config else None, now),
+            (batch_id, total_queries, model, json.dumps(config) if config else None, now),
         )
         await self._db.commit()
         return await self.get_gemini_batch(batch_id)
 
     async def get_gemini_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
-        cursor = await self._db.execute(
-            "SELECT * FROM gemini_batch_jobs WHERE id = ?", (batch_id,)
-        )
+        cursor = await self._db.execute("SELECT * FROM gemini_batch_jobs WHERE id = ?", (batch_id,))
         row = await cursor.fetchone()
         if not row:
             return None
@@ -392,8 +408,13 @@ class Database:
 
     async def update_gemini_batch(self, batch_id: str, **fields) -> Optional[Dict[str, Any]]:
         allowed = {
-            "status", "completed_queries", "failed_queries",
-            "results", "error", "started_at", "completed_at",
+            "status",
+            "completed_queries",
+            "failed_queries",
+            "results",
+            "error",
+            "started_at",
+            "completed_at",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -427,9 +448,13 @@ class Database:
                 total_tokens, created_at, started_at)
                VALUES (?, 'running', ?, ?, ?, ?, 0.0, 0, 0, 0, ?, ?)""",
             (
-                iteration_id, original_prompt, system_prompt, eval_context,
+                iteration_id,
+                original_prompt,
+                system_prompt,
+                eval_context,
                 json.dumps(config) if config else None,
-                now, now,
+                now,
+                now,
             ),
         )
         await self._db.commit()
@@ -477,10 +502,18 @@ class Database:
             result.append(d)
         return result
 
-    async def update_gemini_iteration(self, iteration_id: str, **fields) -> Optional[Dict[str, Any]]:
+    async def update_gemini_iteration(
+        self, iteration_id: str, **fields
+    ) -> Optional[Dict[str, Any]]:
         allowed = {
-            "status", "best_response", "best_score", "best_iteration",
-            "total_iterations", "total_tokens", "error", "completed_at",
+            "status",
+            "best_response",
+            "best_score",
+            "best_iteration",
+            "total_iterations",
+            "total_tokens",
+            "error",
+            "completed_at",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -520,13 +553,19 @@ class Database:
                 strategies_applied, finish_reason, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                iteration_id, step_number, prompt_sent, response,
-                generation_model, generation_duration_ms, generation_tokens,
+                iteration_id,
+                step_number,
+                prompt_sent,
+                response,
+                generation_model,
+                generation_duration_ms,
+                generation_tokens,
                 json.dumps(eval_scores) if eval_scores else None,
                 json.dumps(eval_models) if eval_models else None,
                 eval_duration_ms,
                 json.dumps(strategies_applied) if strategies_applied else None,
-                finish_reason, now,
+                finish_reason,
+                now,
             ),
         )
         await self._db.commit()
@@ -538,9 +577,7 @@ class Database:
         row = await cursor.fetchone()
         return self._row_to_dict(row) if row else {}
 
-    async def get_gemini_iteration_steps(
-        self, iteration_id: str
-    ) -> List[Dict[str, Any]]:
+    async def get_gemini_iteration_steps(self, iteration_id: str) -> List[Dict[str, Any]]:
         cursor = await self._db.execute(
             "SELECT * FROM gemini_iteration_steps WHERE iteration_id = ? ORDER BY step_number ASC",
             (iteration_id,),
@@ -557,6 +594,72 @@ class Database:
                         pass
             result.append(d)
         return result
+
+    # -- Mistake Library --
+
+    async def upsert_mistake(
+        self,
+        pattern: str,
+        severity: str,
+        dimension: str,
+        example_detail: str = "",
+    ) -> None:
+        """Insert or increment a mistake pattern."""
+        now = datetime.now(timezone.utc).isoformat()
+        await self._db.execute(
+            """INSERT INTO gemini_mistake_library
+            (pattern, severity, dimension, example_detail, occurrences, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT(pattern) DO UPDATE SET
+                occurrences = occurrences + 1,
+                last_seen = excluded.last_seen,
+                example_detail = excluded.example_detail,
+                severity = excluded.severity
+            """,
+            (pattern, severity, dimension, example_detail, now, now),
+        )
+        await self._db.commit()
+
+    async def get_top_mistakes(
+        self,
+        top_k: int = 10,
+        min_occurrences: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """Get most common mistake patterns."""
+        cursor = await self._db.execute(
+            """SELECT * FROM gemini_mistake_library
+            WHERE occurrences >= ?
+            ORDER BY occurrences DESC, last_seen DESC
+            LIMIT ?""",
+            (min_occurrences, top_k),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_dict(row) for row in rows]
+
+    async def search_mistakes(
+        self,
+        keywords: List[str],
+        top_k: int = 10,
+        min_occurrences: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """Search mistakes by keyword overlap with pattern text."""
+        if not keywords:
+            return await self.get_top_mistakes(top_k, min_occurrences)
+
+        # Build LIKE conditions for keyword matching
+        conditions = " OR ".join("pattern LIKE ?" for _ in keywords)
+        params = [f"%{kw}%" for kw in keywords]
+        params.extend([min_occurrences, top_k])
+
+        cursor = await self._db.execute(
+            f"""SELECT * FROM gemini_mistake_library
+            WHERE ({conditions}) AND occurrences >= ?
+            ORDER BY occurrences DESC, last_seen DESC
+            LIMIT ?""",  # noqa: S608
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_dict(row) for row in rows]
 
     # -- Helpers --
 

@@ -146,14 +146,14 @@ def create_app() -> FastAPI:
         )
 
     # Mount routes
-    from um_agent_coder.daemon.routes.tasks import router as tasks_router
-    from um_agent_coder.daemon.routes.github import router as github_router
-    from um_agent_coder.daemon.routes.slack import router as slack_router
-    from um_agent_coder.daemon.routes.discord import router as discord_router
-    from um_agent_coder.daemon.routes.ui import router as ui_router
-    from um_agent_coder.daemon.routes.query import router as query_router
     from um_agent_coder.daemon.routes.auth_gemini import router as auth_gemini_router
+    from um_agent_coder.daemon.routes.discord import router as discord_router
     from um_agent_coder.daemon.routes.gemini import router as gemini_router
+    from um_agent_coder.daemon.routes.github import router as github_router
+    from um_agent_coder.daemon.routes.query import router as query_router
+    from um_agent_coder.daemon.routes.slack import router as slack_router
+    from um_agent_coder.daemon.routes.tasks import router as tasks_router
+    from um_agent_coder.daemon.routes.ui import router as ui_router
 
     app.include_router(tasks_router)
     app.include_router(github_router)
@@ -165,7 +165,6 @@ def create_app() -> FastAPI:
     app.include_router(gemini_router)
 
     # Serve static files
-    import importlib.resources as pkg_resources
     from pathlib import Path
 
     static_dir = Path(__file__).parent / "static"

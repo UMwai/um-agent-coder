@@ -148,7 +148,11 @@ class EnvironmentManager:
         # Initialize file watcher
         self._file_watcher: Optional[WorkspaceWatcher | PollingWatcher] = None
         self._enable_file_watcher = enable_file_watcher
-        force_polling = os.environ.get("UM_AGENT_CODER_FORCE_POLLING", "").lower() in ("1", "true", "yes")
+        force_polling = os.environ.get("UM_AGENT_CODER_FORCE_POLLING", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         under_pytest = "PYTEST_CURRENT_TEST" in os.environ
         self._use_polling = use_polling or force_polling or under_pytest
 

@@ -9,7 +9,7 @@ import hashlib
 import json
 import logging
 import shutil
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -292,7 +292,7 @@ class ArtifactManager:
         registry = self._read_registry()
         artifacts = []
 
-        for name, data in registry.items():
+        for _name, data in registry.items():
             artifact = Artifact.from_dict(data)
 
             if source_harness and artifact.source_harness != source_harness:

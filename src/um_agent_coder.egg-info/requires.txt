@@ -8,6 +8,15 @@ um-agent-coder[anthropic,google,openai]
 [anthropic]
 anthropic>=0.18.0
 
+[daemon]
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+aiosqlite>=0.19.0
+pydantic-settings>=2.1.0
+httpx>=0.26.0
+jinja2>=3.1.0
+python-multipart>=0.0.6
+
 [dev]
 pytest>=7.0
 pytest-asyncio>=0.21

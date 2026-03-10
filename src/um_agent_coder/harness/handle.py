@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .result import HarnessResult, HarnessStatus, HarnessMetrics
+from .result import HarnessMetrics, HarnessResult, HarnessStatus
 
 logger = logging.getLogger(__name__)
 
@@ -212,9 +212,7 @@ class HarnessHandle:
                 self.tasks_failed = row["tasks_failed"]
 
             # Get current task
-            cursor.execute(
-                "SELECT id, description FROM tasks WHERE status = 'in_progress' LIMIT 1"
-            )
+            cursor.execute("SELECT id, description FROM tasks WHERE status = 'in_progress' LIMIT 1")
             row = cursor.fetchone()
             if row:
                 self.current_task = row["description"][:50]

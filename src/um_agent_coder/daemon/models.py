@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
 # -- Requests --
+
 
 class CreateTaskRequest(BaseModel):
     """Request body for POST /api/tasks."""
@@ -29,6 +28,7 @@ class CancelTaskRequest(BaseModel):
 
 
 # -- Responses --
+
 
 class TaskResponse(BaseModel):
     """Response model for a single task."""

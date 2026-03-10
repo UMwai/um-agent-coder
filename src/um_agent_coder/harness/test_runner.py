@@ -88,9 +88,7 @@ class TestRunner:
             TestResult with parsed test outcomes
         """
         # Create temp file for JSON report
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as report_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as report_file:
             report_path = report_file.name
 
         try:

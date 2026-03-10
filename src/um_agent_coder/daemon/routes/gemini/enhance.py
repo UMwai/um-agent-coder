@@ -11,18 +11,18 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from um_agent_coder.daemon.auth import verify_api_key
 
-from .models import (
-    EnhanceRequest,
-    EnhanceResponse,
-    EnhancementInfo,
-    EvalInfo,
-    GeminiModelTier,
-    GEMINI_MODEL_MAP,
-    UsageInfo,
-)
+from ._evaluator import build_retry_prompt, evaluate_response
 from ._pipeline import enhance_prompt
 from ._router import score_complexity, select_model
-from ._evaluator import evaluate_response, build_retry_prompt
+from .models import (
+    GEMINI_MODEL_MAP,
+    EnhancementInfo,
+    EnhanceRequest,
+    EnhanceResponse,
+    EvalInfo,
+    GeminiModelTier,
+    UsageInfo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,13 @@ router = APIRouter()
 
 def _get_client():
     from um_agent_coder.daemon.app import get_gemini_client
+
     return get_gemini_client()
 
 
 def _get_settings():
     from um_agent_coder.daemon.app import get_settings
+
     return get_settings()
 
 
@@ -116,6 +118,7 @@ async def enhance_query(
         )
     except Exception as e:
         from um_agent_coder.daemon.gemini_client import RateLimitError
+
         if isinstance(e, RateLimitError):
             raise HTTPException(status_code=429, detail=str(e))
         logger.error("Gemini API error: %s", e)
@@ -131,8 +134,11 @@ async def enhance_query(
         logger.info("Query %s: using eval model %s", query_id, eval_model_name)
 
         eval_result = await evaluate_response(
-            client, req.prompt, response_text,
-            model=eval_model_name, eval_context=req.eval_context,
+            client,
+            req.prompt,
+            response_text,
+            model=eval_model_name,
+            eval_context=req.eval_context,
         )
         retry_count = 0
 
@@ -143,13 +149,14 @@ async def enhance_query(
             retry_count += 1
             logger.info(
                 "Query %s: eval score %.2f < %.2f, retrying (%d/%d)",
-                query_id, eval_result.score, settings.gemini_self_eval_threshold,
-                retry_count, settings.gemini_max_retries,
+                query_id,
+                eval_result.score,
+                settings.gemini_self_eval_threshold,
+                retry_count,
+                settings.gemini_max_retries,
             )
 
-            improved_prompt = build_retry_prompt(
-                prompt_to_send, response_text, eval_result
-            )
+            improved_prompt = build_retry_prompt(prompt_to_send, response_text, eval_result)
             try:
                 gen_result = await client.generate(
                     prompt=improved_prompt,
@@ -167,8 +174,11 @@ async def enhance_query(
                 break
 
             eval_result = await evaluate_response(
-                client, req.prompt, response_text,
-                model=eval_model_name, eval_context=req.eval_context,
+                client,
+                req.prompt,
+                response_text,
+                model=eval_model_name,
+                eval_context=req.eval_context,
             )
 
         eval_result.retry_count = retry_count

@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .handle import HarnessHandle
 from .meta_state import MetaStateManager
 from .result import AggregatedResult, HarnessResult, HarnessStatus
-from .worktree_manager import MergeStatus, WorktreeManager
+from .worktree_manager import WorktreeManager
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +72,7 @@ class HarnessManager:
         self.harness_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize meta state manager for tracking all sub-harnesses
-        self.meta_state = MetaStateManager(
-            db_path=str(self.harness_dir / "meta_state.db")
-        )
+        self.meta_state = MetaStateManager(db_path=str(self.harness_dir / "meta_state.db"))
 
         # Initialize worktree manager if worktree isolation is enabled
         self.worktree_manager: Optional[WorktreeManager] = None
@@ -120,7 +118,9 @@ class HarnessManager:
         working_dir = working_dir.resolve()
 
         # Determine worktree settings
-        should_use_worktree = use_worktree if use_worktree is not None else self.config.use_worktrees
+        should_use_worktree = (
+            use_worktree if use_worktree is not None else self.config.use_worktrees
+        )
         base_branch = worktree_base_branch or self.config.worktree_base_branch
         should_auto_merge = auto_merge if auto_merge is not None else self.config.auto_merge
 
@@ -260,7 +260,7 @@ class HarnessManager:
         """
         start_time = datetime.now()
         results: Dict[str, HarnessResult] = {}
-        pending = set(h.harness_id for h in handles)
+        pending = {h.harness_id for h in handles}
 
         while pending and not self._stop_requested:
             # Check timeout
@@ -275,9 +275,7 @@ class HarnessManager:
                     result = handle.get_result()
                     results[harness_id] = result
                     pending.remove(harness_id)
-                    logger.info(
-                        f"Harness {harness_id} completed with status {result.status.value}"
-                    )
+                    logger.info(f"Harness {harness_id} completed with status {result.status.value}")
 
                     # Update meta state
                     self.meta_state.update_harness_completed(
@@ -297,7 +295,9 @@ class HarnessManager:
                                 try:
                                     ctx = json.loads(parent_ctx.get("parent_context", "{}"))
                                     if "worktree" in ctx:
-                                        should_merge = ctx["worktree"].get("auto_merge", should_merge)
+                                        should_merge = ctx["worktree"].get(
+                                            "auto_merge", should_merge
+                                        )
                                 except json.JSONDecodeError:
                                     pass
 
@@ -311,10 +311,7 @@ class HarnessManager:
                 time.sleep(self.config.poll_interval_seconds)
 
         # Build final results in handle order
-        return [
-            results.get(h.harness_id, h.get_result())
-            for h in handles
-        ]
+        return [results.get(h.harness_id, h.get_result()) for h in handles]
 
     def wait_for_any(
         self,
@@ -378,7 +375,11 @@ class HarnessManager:
 
         return AggregatedResult(
             strategy=strategy,
-            success=all(r.success for r in results) if strategy != "race" else any(r.success for r in results),
+            success=(
+                all(r.success for r in results)
+                if strategy != "race"
+                else any(r.success for r in results)
+            ),
             results=results,
             winner=results[0] if strategy in ("race", "voting") and results else None,
             started_at=started_at,
@@ -392,7 +393,6 @@ class HarnessManager:
     ) -> List[HarnessResult]:
         """Run all harnesses in parallel, wait for all."""
         fail_fast = config.get("fail_fast", self.config.fail_fast)
-        results: List[HarnessResult] = []
 
         def on_complete(handle: HarnessHandle):
             result = handle.get_result()

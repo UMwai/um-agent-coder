@@ -10,12 +10,13 @@ import sys
 def main():
     """Main CLI entry point."""
     # Check if daemon mode is requested
-    if '--daemon' in sys.argv or '--serve' in sys.argv:
-        if '--daemon' in sys.argv:
-            sys.argv.remove('--daemon')
-        if '--serve' in sys.argv:
-            sys.argv.remove('--serve')
+    if "--daemon" in sys.argv or "--serve" in sys.argv:
+        if "--daemon" in sys.argv:
+            sys.argv.remove("--daemon")
+        if "--serve" in sys.argv:
+            sys.argv.remove("--serve")
         from um_agent_coder.daemon.app import main as daemon_main
+
         return daemon_main()
 
     # Check if data mode is requested

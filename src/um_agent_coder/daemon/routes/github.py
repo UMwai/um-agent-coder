@@ -17,16 +17,19 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 def get_db():
     from um_agent_coder.daemon.app import get_db as _get
+
     return _get()
 
 
 def get_worker():
     from um_agent_coder.daemon.app import get_worker as _get
+
     return _get()
 
 
 def get_settings():
     from um_agent_coder.daemon.app import get_settings as _get
+
     return _get()
 
 

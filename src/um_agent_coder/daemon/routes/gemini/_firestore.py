@@ -104,7 +104,8 @@ async def persist_iteration_to_firestore(
 
         logger.info(
             "Persisted iteration %s to Firestore (%d steps)",
-            iteration_id, len(steps),
+            iteration_id,
+            len(steps),
         )
         return True
 

@@ -29,9 +29,7 @@ from typing import (
     Any,
     Callable,
     Collection,
-    Dict,
     Generic,
-    Iterable,
     List,
     Mapping,
     Optional,
@@ -346,18 +344,24 @@ def validate_json_schema(instance: Any, schema: Mapping[str, Any], *, path: str 
         if "pattern" in schema:
             pattern = str(schema["pattern"])
             if re.search(pattern, instance) is None:
-                raise SchemaValidationError("String does not match pattern", path=path, value=instance)
+                raise SchemaValidationError(
+                    "String does not match pattern", path=path, value=instance
+                )
         if "format" in schema:
             fmt = str(schema["format"])
             if fmt == "email" and not is_valid_email(instance):
-                raise SchemaValidationError("String is not a valid email", path=path, value=instance)
+                raise SchemaValidationError(
+                    "String is not a valid email", path=path, value=instance
+                )
             if fmt == "uri" and not is_valid_url(instance, allowed_schemes=("http", "https")):
                 raise SchemaValidationError("String is not a valid URI", path=path, value=instance)
             if fmt == "date":
                 try:
                     parse_date(instance)
                 except DateTimeValidationError as e:
-                    raise SchemaValidationError("String is not a valid date", path=path, value=instance) from e
+                    raise SchemaValidationError(
+                        "String is not a valid date", path=path, value=instance
+                    ) from e
             if fmt in {"date-time", "datetime"}:
                 try:
                     parse_datetime(instance)
@@ -386,14 +390,18 @@ def validate_json_schema(instance: Any, schema: Mapping[str, Any], *, path: str 
         required = schema.get("required", [])
         if required:
             if not isinstance(required, Sequence) or isinstance(required, (str, bytes)):
-                raise SchemaValidationError("Schema 'required' must be a list", path=path, value=required)
+                raise SchemaValidationError(
+                    "Schema 'required' must be a list", path=path, value=required
+                )
             for key in required:
                 if not isinstance(key, str):
                     raise SchemaValidationError(
                         "Schema 'required' must contain strings", path=path, value=required
                     )
                 if key not in instance:
-                    raise SchemaValidationError(f"Missing required property '{key}'", path=path, value=instance)
+                    raise SchemaValidationError(
+                        f"Missing required property '{key}'", path=path, value=instance
+                    )
 
         properties: Mapping[str, Any] = schema.get("properties", {}) or {}
         if properties and not isinstance(properties, Mapping):
@@ -437,7 +445,9 @@ _DEFAULT_DATETIME_FORMATS: Tuple[str, ...] = (
 )
 
 
-def parse_date(value: Union[str, date, datetime], *, formats: Optional[Sequence[str]] = None) -> date:
+def parse_date(
+    value: Union[str, date, datetime], *, formats: Optional[Sequence[str]] = None
+) -> date:
     """Parse a date from common string formats.
 
     Supported formats include ISO dates and a few pragmatic variants. If `value` is already a
@@ -501,12 +511,18 @@ def parse_datetime(
     """
 
     if isinstance(value, datetime):
-        return value if value.tzinfo is not None or assume_tz is None else value.replace(tzinfo=assume_tz)
+        return (
+            value
+            if value.tzinfo is not None or assume_tz is None
+            else value.replace(tzinfo=assume_tz)
+        )
     if isinstance(value, date):
         dt = datetime.combine(value, time.min)
         return dt if assume_tz is None else dt.replace(tzinfo=assume_tz)
     if not isinstance(value, str):
-        raise DateTimeValidationError("Datetime must be a string or date-like", path="$", value=value)
+        raise DateTimeValidationError(
+            "Datetime must be a string or date-like", path="$", value=value
+        )
 
     candidate = value.strip()
     if not candidate:
@@ -566,7 +582,7 @@ class Validator(Generic[T]):
         self._func = func
         self._name = name
 
-    def with_name(self, name: str) -> "Validator[T]":
+    def with_name(self, name: str) -> Validator[T]:
         """Return a copy that uses `name` in error messages."""
 
         return Validator(self._func, name=name)
@@ -584,7 +600,7 @@ class Validator(Generic[T]):
     def __call__(self, value: Any) -> T:
         return self.validate(value)
 
-    def then(self, next_validator: "Validator[U]") -> "Validator[U]":
+    def then(self, next_validator: Validator[U]) -> Validator[U]:
         """Compose this validator with another."""
 
         def _composed(value: Any) -> U:
@@ -592,7 +608,7 @@ class Validator(Generic[T]):
 
         return Validator(_composed, name=self._name)
 
-    def map(self, mapper: Callable[[T], U]) -> "Validator[U]":
+    def map(self, mapper: Callable[[T], U]) -> Validator[U]:
         """Transform the validated value."""
 
         def _mapped(value: Any) -> U:
@@ -600,7 +616,7 @@ class Validator(Generic[T]):
 
         return Validator(_mapped, name=self._name)
 
-    def optional(self) -> "Validator[Optional[T]]":
+    def optional(self) -> Validator[Optional[T]]:
         """Accept `None` without further validation."""
 
         def _optional(value: Any) -> Optional[T]:
@@ -610,7 +626,7 @@ class Validator(Generic[T]):
 
         return Validator(_optional, name=self._name)
 
-    def or_else(self, fallback: "Validator[T]") -> "Validator[T]":
+    def or_else(self, fallback: Validator[T]) -> Validator[T]:
         """Try this validator, otherwise try `fallback`."""
 
         def _either(value: Any) -> T:
@@ -655,7 +671,9 @@ def instance_of(expected_type: Union[Type[Any], Tuple[Type[Any], ...]]) -> Valid
 
     def _inst(value: Any) -> Any:
         if not isinstance(value, expected_type):
-            raise ValidationError(f"Expected {expected_type}, got {type(value)}", path="$", value=value)
+            raise ValidationError(
+                f"Expected {expected_type}, got {type(value)}", path="$", value=value
+            )
         return value
 
     return Validator(_inst)
@@ -680,7 +698,9 @@ def non_empty_string(*, strip: bool = True) -> Validator[str]:
     return Validator(_s)
 
 
-def matches_regex(pattern: Union[str, re.Pattern[str]], message: str = "Invalid format") -> Validator[str]:
+def matches_regex(
+    pattern: Union[str, re.Pattern[str]], message: str = "Invalid format"
+) -> Validator[str]:
     """Validate a string by regex."""
 
     compiled = re.compile(pattern) if isinstance(pattern, str) else pattern

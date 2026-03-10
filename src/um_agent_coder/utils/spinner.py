@@ -54,7 +54,9 @@ class Spinner:
         while self.running:
             elapsed = time.time() - (self.start_time or time.time())
             time_str = f"({elapsed:.1f}s)"
-            sys.stdout.write(f"\r{ANSI.style(next(self.spinner), ANSI.CYAN)} {self.text} {ANSI.style(time_str, ANSI.BLUE)}\033[K")
+            sys.stdout.write(
+                f"\r{ANSI.style(next(self.spinner), ANSI.CYAN)} {self.text} {ANSI.style(time_str, ANSI.BLUE)}\033[K"
+            )
             sys.stdout.flush()
             time.sleep(self.delay)
 

@@ -155,7 +155,9 @@ def main():
             if api_key:
                 provider_config["api_key"] = api_key
             else:
-                print(f"{ANSI.style('Error:', ANSI.FAIL)} {env_var} not found in config or environment")
+                print(
+                    f"{ANSI.style('Error:', ANSI.FAIL)} {env_var} not found in config or environment"
+                )
                 print(
                     f"Please set the {ANSI.style(env_var, ANSI.BOLD)} environment variable or update config.yaml"
                 )

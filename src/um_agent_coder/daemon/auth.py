@@ -7,7 +7,7 @@ import hmac
 import time
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Request, Security
+from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -36,23 +36,19 @@ def verify_github_signature(payload: bytes, signature: str, secret: str) -> bool
     """Verify GitHub webhook HMAC-SHA256 signature."""
     if not signature.startswith("sha256="):
         return False
-    expected = hmac.new(
-        secret.encode(), payload, hashlib.sha256
-    ).hexdigest()
+    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", signature)
 
 
-def verify_slack_signature(
-    payload: bytes, timestamp: str, signature: str, secret: str
-) -> bool:
+def verify_slack_signature(payload: bytes, timestamp: str, signature: str, secret: str) -> bool:
     """Verify Slack request signing secret."""
     # Reject requests older than 5 minutes
     if abs(time.time() - int(timestamp)) > 300:
         return False
     sig_basestring = f"v0:{timestamp}:{payload.decode()}"
-    computed = "v0=" + hmac.new(
-        secret.encode(), sig_basestring.encode(), hashlib.sha256
-    ).hexdigest()
+    computed = (
+        "v0=" + hmac.new(secret.encode(), sig_basestring.encode(), hashlib.sha256).hexdigest()
+    )
     return hmac.compare_digest(computed, signature)
 
 

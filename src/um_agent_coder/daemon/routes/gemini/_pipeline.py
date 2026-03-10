@@ -13,7 +13,6 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-
 # --- Domain detection patterns ---
 
 DOMAIN_PATTERNS = {
@@ -58,6 +57,7 @@ FORMAT_PATTERNS = {
 @dataclass
 class EnhancementResult:
     """Result of running the enhancement pipeline."""
+
     original: str
     enhanced: str
     stages_applied: List[str] = field(default_factory=list)

@@ -10,7 +10,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +171,7 @@ class DependencyGraph:
             True if cycle exists
         """
         WHITE, GRAY, BLACK = 0, 1, 2
-        color: Dict[str, int] = {node: WHITE for node in self.nodes}
+        color: Dict[str, int] = dict.fromkeys(self.nodes, WHITE)
 
         def dfs(node: str) -> bool:
             color[node] = GRAY
@@ -234,9 +234,9 @@ class DependencyGraph:
         if self.has_cycle():
             raise ValueError("Graph has a cycle, cannot topologically sort")
 
-        in_degree = {node: 0 for node in self.nodes}
+        in_degree = dict.fromkeys(self.nodes, 0)
         for node in self.nodes:
-            for dep in self.edges.get(node, set()):
+            for _dep in self.edges.get(node, set()):
                 in_degree[node] = in_degree.get(node, 0) + 1
 
         # Nodes with no dependencies
@@ -330,18 +330,10 @@ class DependencyParser:
     """
 
     # Regex patterns for parsing
-    HARNESS_PATTERN = re.compile(
-        r"^\s*-\s+\*\*([^*]+)\*\*:\s*(.+)$", re.MULTILINE
-    )
-    DEPENDS_PATTERN = re.compile(
-        r"^\s*-\s+depends:\s*(.+)$", re.MULTILINE | re.IGNORECASE
-    )
-    ARTIFACTS_PATTERN = re.compile(
-        r"^\s*-\s+artifacts:\s*(.+)$", re.MULTILINE | re.IGNORECASE
-    )
-    CONTEXT_PATTERN = re.compile(
-        r"^\s*-\s+context:\s*(.+)$", re.MULTILINE | re.IGNORECASE
-    )
+    HARNESS_PATTERN = re.compile(r"^\s*-\s+\*\*([^*]+)\*\*:\s*(.+)$", re.MULTILINE)
+    DEPENDS_PATTERN = re.compile(r"^\s*-\s+depends:\s*(.+)$", re.MULTILINE | re.IGNORECASE)
+    ARTIFACTS_PATTERN = re.compile(r"^\s*-\s+artifacts:\s*(.+)$", re.MULTILINE | re.IGNORECASE)
+    CONTEXT_PATTERN = re.compile(r"^\s*-\s+context:\s*(.+)$", re.MULTILINE | re.IGNORECASE)
 
     def parse_roadmap(self, roadmap_path: Path) -> DependencyGraph:
         """Parse a roadmap file and build dependency graph.

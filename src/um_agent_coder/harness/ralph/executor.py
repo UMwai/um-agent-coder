@@ -157,7 +157,6 @@ class RalphExecutor:
 
         # Main loop
         last_output = ""
-        last_test_result: Optional[TestResult] = None
 
         while tracker.can_continue():
             iteration_num = tracker.current_iteration + 1
@@ -189,21 +188,16 @@ class RalphExecutor:
                         test_path=test_path,
                         cwd=task.cwd,
                     )
-                    last_test_result = test_result
                     test_passed = test_result.success
                     test_summary = test_result.summary
 
                     if not test_result.success:
                         # Tests failed - don't accept the promise
-                        logger.warning(
-                            f"Promise found but tests failed: {test_result.summary}"
-                        )
+                        logger.warning(f"Promise found but tests failed: {test_result.summary}")
                         detection.found = False  # Override promise detection
 
                         # Build test failure prompt for next iteration
-                        ralph_prompt = self._build_test_failure_prompt(
-                            task, context, test_result
-                        )
+                        ralph_prompt = self._build_test_failure_prompt(task, context, test_result)
 
                 # End iteration tracking with test info
                 tracker.end_iteration(
@@ -365,56 +359,70 @@ class RalphExecutor:
         if self.test_runner:
             prompt_parts.append(self.test_runner.format_failure_prompt(test_result))
         else:
-            prompt_parts.extend([
-                "### Test Results",
-                f"- Total: {test_result.total_tests}",
-                f"- Passed: {test_result.passed}",
-                f"- Failed: {test_result.failed}",
-                "",
-                "### Error Summary",
-                "```",
-                test_result.error_summary[:1500] if test_result.error_summary else "No details available",
-                "```",
-            ])
+            prompt_parts.extend(
+                [
+                    "### Test Results",
+                    f"- Total: {test_result.total_tests}",
+                    f"- Passed: {test_result.passed}",
+                    f"- Failed: {test_result.failed}",
+                    "",
+                    "### Error Summary",
+                    "```",
+                    (
+                        test_result.error_summary[:1500]
+                        if test_result.error_summary
+                        else "No details available"
+                    ),
+                    "```",
+                ]
+            )
 
-        prompt_parts.extend([
-            "",
-            "---",
-            "",
-            "## Original Task",
-            "",
-            f"**Task ID:** {task.id}",
-            f"**Description:** {task.description}",
-            "",
-        ])
+        prompt_parts.extend(
+            [
+                "",
+                "---",
+                "",
+                "## Original Task",
+                "",
+                f"**Task ID:** {task.id}",
+                f"**Description:** {task.description}",
+                "",
+            ]
+        )
 
         if task.success_criteria:
-            prompt_parts.extend([
-                "## Success Criteria",
-                task.success_criteria,
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "## Success Criteria",
+                    task.success_criteria,
+                    "",
+                ]
+            )
 
         if context:
-            prompt_parts.extend([
-                "## Context",
-                context,
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "## Context",
+                    context,
+                    "",
+                ]
+            )
 
         # Remind about completion
         promise_format = f"<promise>{self.completion_promise}</promise>"
-        prompt_parts.extend([
-            "## Next Steps",
-            "",
-            "1. Fix the failing tests",
-            "2. Verify your changes work correctly",
-            "3. Only output the completion promise when ALL tests pass:",
-            "",
-            f"    {promise_format}",
-            "",
-            "**DO NOT** output the promise until tests pass.",
-        ])
+        prompt_parts.extend(
+            [
+                "## Next Steps",
+                "",
+                "1. Fix the failing tests",
+                "2. Verify your changes work correctly",
+                "3. Only output the completion promise when ALL tests pass:",
+                "",
+                f"    {promise_format}",
+                "",
+                "**DO NOT** output the promise until tests pass.",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 

@@ -78,6 +78,7 @@ _round_robin: Optional[itertools.cycle] = None
 def _get_round_robin_models() -> list[str]:
     """Get the auto model list from settings."""
     from um_agent_coder.daemon.app import get_settings
+
     settings = get_settings()
     return [m.strip() for m in settings.gemini_auto_models.split(",") if m.strip()]
 
@@ -100,12 +101,15 @@ def _resolve_model(model: GeminiModel) -> str:
 
 # --- Client accessor ---
 
+
 def _get_client():
     from um_agent_coder.daemon.app import get_gemini_client
+
     return get_gemini_client()
 
 
 # --- Endpoints ---
+
 
 @router.post("", response_model=QueryResponse)
 async def query(
@@ -131,6 +135,7 @@ async def query(
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         from um_agent_coder.daemon.gemini_client import RateLimitError
+
         if isinstance(e, RateLimitError):
             raise HTTPException(status_code=429, detail=str(e))
         logger.error("Gemini API error: %s", e)

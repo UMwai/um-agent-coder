@@ -10,12 +10,13 @@ Supports three evaluation modes:
 
 Accuracy/fulfillment checks use tiered penalties:
 - BREAKING (0 pts): Wrong signatures, missing params, runtime errors
-- FOREIGN (0.5 pts): External dependencies not in the project
-- STYLE (0.75 pts): Pattern deviations, missing __init__.py, file structure
+- FOREIGN (0.25 pts): External dependencies not in the project
+- STYLE (0.5 pts): Pattern deviations, missing __init__.py, file structure
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -24,14 +25,61 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+_RATE_LIMIT_MAX_RETRIES = 3
+_RATE_LIMIT_BASE_DELAY = 15  # seconds
+
+
+async def _generate_with_retry(client, **kwargs) -> dict:
+    """Call client.generate() with exponential backoff on rate limits."""
+    from um_agent_coder.daemon.gemini_client import RateLimitError
+
+    for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
+        try:
+            return await client.generate(**kwargs)
+        except RateLimitError:
+            if attempt >= _RATE_LIMIT_MAX_RETRIES:
+                raise
+            delay = _RATE_LIMIT_BASE_DELAY * (2**attempt)
+            logger.warning(
+                "Rate limited (attempt %d/%d), waiting %ds before retry",
+                attempt + 1,
+                _RATE_LIMIT_MAX_RETRIES,
+                delay,
+            )
+            await asyncio.sleep(delay)
+    # unreachable, but keeps type checkers happy
+    raise RuntimeError("Exhausted rate limit retries")
+
+
+def _get_eval_model() -> str:
+    """Get default eval model from config."""
+    try:
+        from um_agent_coder.daemon.app import get_settings
+
+        return get_settings().gemini_eval_model
+    except Exception:
+        return "gemini-3-flash-preview"
+
+
+def _get_accuracy_eval_model() -> str:
+    """Get accuracy/fulfillment eval model from config."""
+    try:
+        from um_agent_coder.daemon.app import get_settings
+
+        return get_settings().gemini_accuracy_eval_model
+    except Exception:
+        return "gemini-3.1-pro-preview"
+
+
+# Keep as fallback constants for scripts that import directly
 DEFAULT_EVAL_MODEL = "gemini-3-flash-preview"
 ACCURACY_EVAL_MODEL = "gemini-3.1-pro-preview"
 
 # --- Severity weights for tiered penalties ---
 SEVERITY_WEIGHTS: Dict[str, float] = {
-    "breaking": 0.0,    # Wrong signatures, runtime errors → 0 points
-    "foreign": 0.5,     # External deps not in project → half credit
-    "style": 0.75,      # Pattern deviations → 3/4 credit
+    "breaking": 0.0,  # Wrong signatures, runtime errors → 0 points
+    "foreign": 0.25,  # External deps not in project → quarter credit
+    "style": 0.5,  # Pattern deviations → half credit
 }
 
 EVAL_SYSTEM_PROMPT = """You are a strict JSON-only response evaluator. You will receive a task description, a response to evaluate, and optionally reference material.
@@ -82,8 +130,13 @@ SEVERITY LEVELS:
 - "foreign": Uses external dependency not in the project, or invents APIs. Score: 0.5 points.
 - "style": Pattern deviation that works but doesn't match project conventions. Score: 0.75 points.
 
-Output EXACTLY this JSON format and NOTHING else:
-{"checks": [{"check": "description", "status": "pass"|"fail", "severity": "breaking"|"foreign"|"style", "detail": "explanation"}]}
+Output one check per line in this pipe-delimited format (NO JSON, no markdown, no commentary):
+PASS|breaking|Check description|Detail text
+FAIL|foreign|Check description|Detail text
+
+Example:
+PASS|breaking|create_task() takes task_id as first param|Matches reference signature
+FAIL|foreign|Uses requests library|Project uses httpx, not requests
 
 Be thorough. Check EVERY function call against the reference material. Check EVERY import path. Check EVERY file path. Missing checks are worse than false positives."""
 
@@ -117,23 +170,227 @@ SEVERITY LEVELS:
 - "foreign": A requirement is only partially fulfilled or the implementation doesn't match what was asked. Score: 0.5 points.
 - "style": A minor or implied requirement is not fully met. Score: 0.75 points.
 
-Output EXACTLY this JSON format and NOTHING else:
-{"checks": [{"check": "requirement description", "status": "pass"|"fail", "severity": "breaking"|"foreign"|"style", "detail": "explanation"}]}
+Output one check per line in this pipe-delimited format (NO JSON, no markdown, no commentary):
+PASS|breaking|Check description|Detail text
+FAIL|foreign|Check description|Detail text
+
+Example:
+PASS|breaking|All 11 requested files are present|Counted 11 files in response
+FAIL|breaking|No TODO comments|Found 3 TODO comments in auth.py
 
 Be thorough. Extract EVERY requirement — explicit and clearly implied. Check quantitative claims (e.g., "11 files" — count them). Check qualitative claims (e.g., "complete implementations" — verify no stubs)."""
+
+
+COMPLETENESS_SYSTEM_PROMPT = """You are a strict completeness auditor. You will receive:
+1. A task description
+2. A code response to audit
+
+Your job is to check whether the response covers the FULL scope of the task. This is NOT about correctness — it is about whether everything requested is present.
+
+CHECK CATEGORIES:
+
+**File/Component Coverage** — For each requested deliverable:
+- Is the file/component present in the response?
+- Is it complete (not truncated mid-function or mid-class)?
+- Are all sections/methods of the component included?
+
+**Feature Coverage** — For each feature area:
+- Are ALL sub-features implemented?
+- Are edge cases handled when requested?
+- Are error handling paths present?
+- Are configuration/setup steps included?
+
+**Scope Completeness** — Overall scope coverage:
+- Does the response address EVERY part of a multi-part request?
+- Are dependencies between components addressed?
+- Are integration points covered?
+- Is any section cut short with "etc.", "...", or "similar for other X"?
+
+SEVERITY LEVELS:
+- "breaking": An entire requested file, component, or feature is missing. Score: 0 points.
+- "foreign": A component is present but significantly incomplete (major sections missing). Score: 0.5 points.
+- "style": Minor omission that doesn't block functionality. Score: 0.75 points.
+
+Output one check per line in this pipe-delimited format (NO JSON, no markdown, no commentary):
+PASS|breaking|Check description|Detail text
+FAIL|foreign|Check description|Detail text
+
+Example:
+PASS|breaking|All 5 requested files present|Found models.py, routes.py, tests.py, config.py, utils.py
+FAIL|breaking|Error handling paths present|Missing try/except in database module
+
+Be thorough. Count files, count functions, count features. If the task asks for 5 files and 3 are present, that's a failing check."""
+
+
+CLARITY_SYSTEM_PROMPT = """You are a strict clarity and organization auditor. You will receive:
+1. A task description
+2. A code response to audit
+
+Your job is to check whether the response is well-organized, readable, and easy to follow. This is NOT about correctness — it is about communication quality.
+
+CHECK CATEGORIES:
+
+**Structure and Organization** — For the overall response:
+- Are code blocks clearly delimited with file paths?
+- Are sections logically ordered (models before usage, base before derived)?
+- Is there a clear overview/summary before diving into code?
+- Are related pieces grouped together?
+
+**Code Readability** — For code quality:
+- Are variable/function names descriptive and consistent?
+- Are complex logic blocks commented or explained?
+- Is indentation and formatting consistent?
+- Are magic numbers or strings explained?
+
+**Documentation Quality** — For explanatory content:
+- Are function/class docstrings present for public APIs?
+- Are non-obvious design decisions explained?
+- Are usage examples provided when helpful?
+- Is terminology consistent throughout?
+
+SEVERITY LEVELS:
+- "breaking": Response is fundamentally disorganized — code mixed with prose, no file boundaries, unreadable structure. Score: 0 points.
+- "foreign": Significant clarity issues — missing explanations for complex logic, inconsistent naming, poor organization. Score: 0.5 points.
+- "style": Minor clarity issues — could use better comments, slightly inconsistent formatting. Score: 0.75 points.
+
+Output one check per line in this pipe-delimited format (NO JSON, no markdown, no commentary):
+PASS|breaking|Check description|Detail text
+FAIL|foreign|Check description|Detail text
+
+Example:
+PASS|style|Code blocks clearly delimited with file paths|Each file has header comment
+FAIL|foreign|Complex logic blocks commented|Database query builder has no explanation
+
+Focus on whether someone could understand and USE this response easily."""
+
+
+ACTIONABILITY_SYSTEM_PROMPT = """You are a strict actionability auditor. You will receive a task and a code response.
+
+Check whether the response is DIRECTLY USABLE — can someone copy-paste it and run without extra work?
+
+CHECK THESE (combine related issues into single checks):
+1. Stubs/TODOs: Any `pass`, `...`, `raise NotImplementedError`, TODO comments, or "add your code here"?
+2. Imports: Are all import statements present?
+3. Config: Are config values real (not "YOUR_KEY_HERE")?
+4. File paths: Are files clearly labeled for placement?
+5. Dependencies: Are requirements/setup steps mentioned?
+
+SEVERITY: "breaking" (stubs/TODOs, 0 pts), "foreign" (missing deps, 0.5 pts), "style" (minor, 0.75 pts).
+
+RULES:
+- Maximum 15 checks. Group related issues.
+- Keep detail to 1 SHORT sentence.
+
+Output one check per line in this pipe-delimited format (NO JSON, no markdown, no commentary):
+PASS|breaking|Check description|Detail text
+FAIL|foreign|Check description|Detail text
+
+Example:
+PASS|breaking|No stubs or TODOs|All functions fully implemented
+FAIL|breaking|All imports present|Missing import for datetime module"""
 
 
 @dataclass
 class AccuracyCheck:
     """A single pass/fail accuracy check."""
+
     check: str
     status: str  # "pass" or "fail"
     severity: str  # "breaking", "foreign", "style"
     detail: str = ""
 
 
-# FulfillmentCheck reuses AccuracyCheck structure (same fields, same scoring)
+# Type aliases — all checklist dimensions reuse AccuracyCheck structure
 FulfillmentCheck = AccuracyCheck
+CompletenessCheck = AccuracyCheck
+ClarityCheck = AccuracyCheck
+ActionabilityCheck = AccuracyCheck
+
+
+@dataclass
+class PreGenCheck:
+    """A single pre-generated check for accuracy/fulfillment/completeness."""
+
+    dimension: str  # "accuracy", "fulfillment", "completeness"
+    check: str
+    severity: str = "breaking"
+    detail: str = ""  # Filled during scoring
+    source: str = "pre_gen"  # "pre_gen" or "evaluator"
+
+
+@dataclass
+class PreGenChecklist:
+    """Fixed checklist generated BEFORE code generation."""
+
+    checks: List[PreGenCheck] = field(default_factory=list)
+    generation_tokens: int = 0
+
+    @property
+    def accuracy_checks(self) -> List[PreGenCheck]:
+        return [c for c in self.checks if c.dimension == "accuracy"]
+
+    @property
+    def fulfillment_checks(self) -> List[PreGenCheck]:
+        return [c for c in self.checks if c.dimension == "fulfillment"]
+
+    @property
+    def completeness_checks(self) -> List[PreGenCheck]:
+        return [c for c in self.checks if c.dimension == "completeness"]
+
+    def format_for_prompt(self) -> str:
+        """Format checklist for injection into generation prompt."""
+        lines = ["[EVALUATION CHECKLIST]"]
+        for c in self.checks:
+            lines.append(f"- [{c.severity.upper()}] [{c.dimension}] {c.check}")
+        return "\n".join(lines)
+
+
+CHECKLIST_GENERATION_SYSTEM_PROMPT = """You are a strict evaluation checklist generator. You will receive a task description and optionally reference material (eval_context).
+
+Your job is to produce a FIXED checklist of checks that will be used to evaluate ANY response to this task. The checks must be:
+1. Derived ONLY from the task description and reference material — NOT from any response
+2. Specific and objectively verifiable (pass/fail, not subjective)
+3. Categorized by dimension: accuracy, fulfillment, or completeness
+
+DIMENSIONS:
+
+**accuracy** — Checks verifiable against the reference material:
+- Expected API calls, function signatures, parameter names
+- Required imports and module paths
+- Expected types, enums, database patterns
+- Runtime correctness patterns (async/await, error handling)
+Only generate accuracy checks if eval_context is provided.
+
+**fulfillment** — Checks derived from the task requirements:
+- Each explicit requirement in the prompt
+- Each deliverable (file, component, feature) requested
+- Negative requirements ("no TODOs", "no stubs", "must be async")
+- Quantitative requirements ("11 files", "full CRUD")
+
+**completeness** — Checks for expected scope:
+- Each file or component explicitly requested
+- Sub-features within larger features
+- Integration points and dependencies
+- Configuration and setup requirements
+
+SEVERITY LEVELS:
+- "breaking": Core requirement, wrong/missing = unusable. Score: 0 points.
+- "foreign": Important but partial fulfillment still has value. Score: 0.25 points.
+- "style": Minor convention or preference. Score: 0.5 points.
+
+RULES:
+- Maximum 40 checks total (5-15 per dimension)
+- Each check must be independently verifiable
+- Do NOT check for code quality, clarity, or style (those are separate dimensions)
+- Keep check descriptions concise (1 sentence)
+
+Output one check per line in this pipe-delimited format (NO JSON, no markdown, no commentary):
+DIMENSION|SEVERITY|Check description
+
+Example:
+accuracy|breaking|create_task() signature matches reference (task_id, name, config)
+fulfillment|breaking|All 11 requested files are present
+completeness|foreign|Error handling for API failures included"""
 
 
 @dataclass
@@ -148,7 +405,11 @@ class EvalResult:
     retry_count: int = 0
     accuracy_checks: List[AccuracyCheck] = field(default_factory=list)
     fulfillment_checks: List[FulfillmentCheck] = field(default_factory=list)
+    completeness_checks: List[CompletenessCheck] = field(default_factory=list)
+    clarity_checks: List[ClarityCheck] = field(default_factory=list)
+    actionability_checks: List[ActionabilityCheck] = field(default_factory=list)
     parse_failed: bool = False
+    parse_failed_dimensions: List[str] = field(default_factory=list)
 
 
 def _parse_eval_response(text: str) -> Optional[dict]:
@@ -190,17 +451,27 @@ def _parse_eval_response(text: str) -> Optional[dict]:
 
 
 def _parse_accuracy_checks(text: str) -> Optional[dict]:
-    """Extract JSON checklist from accuracy evaluator response."""
-    # Try direct parse
+    """Extract JSON checklist from evaluator response.
+
+    Handles multiple failure modes:
+    1. Direct JSON (clean LLM output)
+    2. JSON inside markdown code blocks
+    3. JSON with commentary before/after
+    4. Truncated JSON (response cut off mid-array)
+    5. Individual check objects (no wrapper)
+    """
+    cleaned = text.strip()
+
+    # 1. Direct parse
     try:
-        data = json.loads(text.strip())
+        data = json.loads(cleaned)
         if "checks" in data:
             return data
     except json.JSONDecodeError:
         pass
 
-    # Try markdown code blocks
-    match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    # 2. Markdown code blocks (```json ... ``` or ``` ... ```)
+    match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.DOTALL)
     if match:
         try:
             data = json.loads(match.group(1))
@@ -209,19 +480,133 @@ def _parse_accuracy_checks(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
-    # Try finding the outermost JSON object containing "checks"
-    # Use a greedy match from first { to last }
-    match = re.search(r"\{.*\}", text, re.DOTALL)
+    # 3. Find outermost { ... } containing "checks"
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if match:
+        candidate = match.group(0)
         try:
-            data = json.loads(match.group(0))
+            data = json.loads(candidate)
             if "checks" in data:
                 return data
         except json.JSONDecodeError:
-            pass
+            # 4. Truncated JSON — find last complete check object and close the array
+            last_complete = candidate.rfind("},")
+            if last_complete == -1:
+                last_complete = candidate.rfind("}")
+            if last_complete > 0:
+                repaired = candidate[: last_complete + 1] + "]}"
+                try:
+                    data = json.loads(repaired)
+                    if "checks" in data:
+                        logger.info(
+                            "Repaired truncated JSON: recovered %d checks",
+                            len(data.get("checks", [])),
+                        )
+                        return data
+                except json.JSONDecodeError:
+                    pass
 
-    logger.warning("Could not parse accuracy checks JSON from: %s", text[:300])
+    # 5. Individual check objects scattered in text (no wrapper)
+    check_objects = []
+    for m in re.finditer(r'\{\s*"check"\s*:\s*"[^"]*"[^}]*\}', cleaned, re.DOTALL):
+        try:
+            obj = json.loads(m.group(0))
+            if "check" in obj and "status" in obj:
+                check_objects.append(obj)
+        except json.JSONDecodeError:
+            continue
+    if check_objects:
+        logger.info("Recovered %d individual check objects", len(check_objects))
+        return {"checks": check_objects}
+
+    logger.warning("Could not parse accuracy checks JSON from: %s", cleaned[:500])
     return None
+
+
+def _parse_checklist_lines(text: str, *, format: str = "standard") -> Optional[dict]:
+    """Parse pipe-delimited checklist lines with JSON fallback.
+
+    Formats:
+      standard:  STATUS|SEVERITY|Check description|Detail text
+      pre_gen:   DIMENSION|SEVERITY|Check description
+      scoring:   STATUS|SEVERITY|SOURCE|Check description|Detail text
+
+    Falls back to _parse_accuracy_checks() (JSON) if no pipe lines found.
+    """
+    lines = text.strip().splitlines()
+    checks = []
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("="):
+            continue
+        # Strip leading "- " or "* " bullet markers
+        if line.startswith(("- ", "* ")):
+            line = line[2:]
+
+        parts = [p.strip() for p in line.split("|")]
+
+        if format == "standard" and len(parts) >= 3:
+            status = parts[0].lower()
+            if status not in ("pass", "fail"):
+                continue
+            severity = parts[1].lower()
+            if severity not in ("breaking", "foreign", "style"):
+                severity = "breaking"
+            check_desc = parts[2]
+            detail = parts[3] if len(parts) >= 4 else ""
+            checks.append(
+                {
+                    "check": check_desc,
+                    "status": status,
+                    "severity": severity,
+                    "detail": detail,
+                }
+            )
+
+        elif format == "pre_gen" and len(parts) >= 3:
+            dim = parts[0].lower()
+            if dim not in ("accuracy", "fulfillment", "completeness"):
+                continue
+            severity = parts[1].lower()
+            if severity not in ("breaking", "foreign", "style"):
+                severity = "breaking"
+            check_desc = parts[2]
+            checks.append(
+                {
+                    "dimension": dim,
+                    "check": check_desc,
+                    "severity": severity,
+                }
+            )
+
+        elif format == "scoring" and len(parts) >= 4:
+            status = parts[0].lower()
+            if status not in ("pass", "fail"):
+                continue
+            severity = parts[1].lower()
+            if severity not in ("breaking", "foreign", "style"):
+                severity = "breaking"
+            source = parts[2].lower()
+            if source not in ("pre_gen", "evaluator"):
+                source = "pre_gen"
+            check_desc = parts[3]
+            detail = parts[4] if len(parts) >= 5 else ""
+            checks.append(
+                {
+                    "check": check_desc,
+                    "status": status,
+                    "severity": severity,
+                    "detail": detail,
+                    "source": source,
+                }
+            )
+
+    if checks:
+        return {"checks": checks}
+
+    # Fallback to JSON parser
+    return _parse_accuracy_checks(text)
 
 
 def _score_accuracy_checks(checks: List[AccuracyCheck]) -> float:
@@ -271,7 +656,7 @@ async def evaluate_accuracy(
         Other dimensions (completeness, clarity, actionability) are zeroed — caller
         should run evaluate_response() separately if accuracy passes.
     """
-    eval_model = model or ACCURACY_EVAL_MODEL
+    eval_model = model or _get_accuracy_eval_model()
 
     # Truncate for eval
     MAX_PROMPT_CHARS = 8_000
@@ -299,13 +684,12 @@ async def evaluate_accuracy(
         "=== END CODE RESPONSE ===\n\n"
         "Now audit this code response against the reference material. "
         "Check EVERY function call, import, file path, and pattern. "
-        "Output your checklist as JSON:\n"
-        '{"checks": [{"check": "...", "status": "pass"|"fail", '
-        '"severity": "breaking"|"foreign"|"style", "detail": "..."}]}'
+        "One check per line: STATUS|SEVERITY|Check description|Detail"
     )
 
     try:
-        result = await client.generate(
+        result = await _generate_with_retry(
+            client,
             prompt=eval_prompt,
             model=eval_model,
             system_prompt=ACCURACY_SYSTEM_PROMPT,
@@ -318,40 +702,69 @@ async def evaluate_accuracy(
         finish = result.get("usage", {}).get("finish_reason", "unknown")
         logger.info(
             "Accuracy eval raw (%d chars, finish=%s): %s",
-            len(eval_text), finish, eval_text[:500],
+            len(eval_text),
+            finish,
+            eval_text[:500],
         )
 
-        # Handle truncated JSON
-        cleaned = eval_text.strip()
-        if cleaned.startswith("{") and not cleaned.endswith("}"):
-            logger.warning("Accuracy eval JSON truncated, attempting repair")
-            # Find last complete check object
-            last_brace = cleaned.rfind("}")
-            if last_brace > 0:
-                cleaned = cleaned[:last_brace + 1] + "]}"
-            eval_text = cleaned
-
-        parsed = _parse_accuracy_checks(eval_text)
+        parsed = _parse_checklist_lines(eval_text, format="standard")
         if not parsed or "checks" not in parsed:
-            logger.warning("Failed to parse accuracy checks, returning default")
+            # Retry with Flash model
+            logger.warning("Failed to parse accuracy checks, falling back to Flash")
+            flash_model = _get_eval_model()  # Flash
+            FLASH_MAX = 15_000
+            flash_response = response[:FLASH_MAX] if len(response) > FLASH_MAX else response
+            flash_ctx = eval_context[:20_000] if len(eval_context) > 20_000 else eval_context
+            flash_prompt = (
+                f"TASK:\n{truncated_prompt[:4000]}\n\n"
+                f"REFERENCE:\n{flash_ctx}\n\n"
+                f"CODE TO AUDIT:\n{flash_response}\n\n"
+                "Audit for accuracy. One check per line: PASS|SEVERITY|Check description|Detail"
+            )
+            flash_system = (
+                "You are an accuracy auditor. Check code against the reference material. "
+                "Output ONLY pipe-delimited lines. No JSON, no markdown, no commentary. "
+                "Format: STATUS|SEVERITY|Check description|Detail text"
+            )
+            try:
+                flash_result = await _generate_with_retry(
+                    client,
+                    prompt=flash_prompt,
+                    model=flash_model,
+                    system_prompt=flash_system,
+                    temperature=0.0,
+                    max_tokens=8192,
+                    timeout=90.0,
+                )
+                eval_text = flash_result.get("text", "")
+                logger.info(
+                    "Accuracy Flash fallback (%d chars): %s", len(eval_text), eval_text[:300]
+                )
+                parsed = _parse_checklist_lines(eval_text, format="standard")
+            except Exception as flash_err:
+                logger.warning("Accuracy Flash fallback failed: %s", flash_err)
+
+        if not parsed or "checks" not in parsed:
+            logger.warning("Failed to parse accuracy checks after all retries")
             return EvalResult(score=0.5, accuracy=0.5, parse_failed=True)
 
         # Convert to AccuracyCheck objects
         checks: List[AccuracyCheck] = []
         for raw in parsed["checks"]:
-            checks.append(AccuracyCheck(
-                check=raw.get("check", "unknown"),
-                status=raw.get("status", "fail"),
-                severity=raw.get("severity", "breaking"),
-                detail=raw.get("detail", ""),
-            ))
+            checks.append(
+                AccuracyCheck(
+                    check=raw.get("check", "unknown"),
+                    status=raw.get("status", "fail"),
+                    severity=raw.get("severity", "breaking"),
+                    detail=raw.get("detail", ""),
+                )
+            )
 
         accuracy_score = _score_accuracy_checks(checks)
 
         # Build issues from failing checks
         issues = [
-            f"[{c.severity.upper()}] {c.check}: {c.detail}"
-            for c in checks if c.status == "fail"
+            f"[{c.severity.upper()}] {c.check}: {c.detail}" for c in checks if c.status == "fail"
         ]
 
         logger.info(
@@ -381,25 +794,37 @@ async def evaluate_fulfillment(
     *,
     model: Optional[str] = None,
 ) -> EvalResult:
-    """Run fulfillment evaluation — checks response against prompt requirements.
+    """Run fulfillment evaluation with pass/fail checklist.
 
-    Uses a specialized system prompt that extracts requirements from the prompt
-    and checks each one against the response with pass/fail checklist.
-
-    Args:
-        client: GeminiCodeAssistClient instance.
-        prompt: The original user prompt (requirements source).
-        response: The model's response to evaluate.
-        model: Model for eval. Defaults to ACCURACY_EVAL_MODEL (Pro 3.1).
-
-    Returns:
-        EvalResult with fulfillment score from checklist and fulfillment_checks populated.
-        Other dimensions are zeroed — caller merges with other eval results.
+    Uses the shared _run_checklist_eval which includes retry logic on parse failure.
     """
-    eval_model = model or ACCURACY_EVAL_MODEL
+    return await _run_checklist_eval(
+        client,
+        prompt,
+        response,
+        system_prompt=FULFILLMENT_SYSTEM_PROMPT,
+        dimension="fulfillment",
+        model=model,
+    )
 
-    # Truncate for eval
-    MAX_PROMPT_CHARS = 12_000  # Keep more prompt — it's the requirements source
+
+async def _run_checklist_eval(
+    client,
+    prompt: str,
+    response: str,
+    system_prompt: str,
+    dimension: str,
+    *,
+    model: Optional[str] = None,
+) -> EvalResult:
+    """Generic checklist evaluation for any dimension.
+
+    Shares the same pattern: build eval prompt → call Pro 3.1 → parse →
+    score via _score_accuracy_checks.
+    """
+    eval_model = model or _get_accuracy_eval_model()
+
+    MAX_PROMPT_CHARS = 12_000
     MAX_RESPONSE_CHARS = 60_000
     truncated_prompt = prompt[:MAX_PROMPT_CHARS] + ("..." if len(prompt) > MAX_PROMPT_CHARS else "")
     if len(response) > MAX_RESPONSE_CHARS:
@@ -413,25 +838,22 @@ async def evaluate_fulfillment(
         truncated_response = response
 
     eval_prompt = (
-        "=== TASK DESCRIPTION (extract ALL requirements from this) ===\n"
+        "=== TASK DESCRIPTION ===\n"
         f"{truncated_prompt}\n"
         "=== END TASK DESCRIPTION ===\n\n"
         "=== RESPONSE TO AUDIT ===\n"
         f"{truncated_response}\n"
         "=== END RESPONSE ===\n\n"
-        "Now extract every requirement from the task description and check whether "
-        "the response fulfills it. Check file counts, feature completeness, "
-        "negative requirements (no stubs, no TODOs), and all explicit asks.\n"
-        "Output your checklist as JSON:\n"
-        '{"checks": [{"check": "...", "status": "pass"|"fail", '
-        '"severity": "breaking"|"foreign"|"style", "detail": "..."}]}'
+        f"Now audit this response for {dimension}. "
+        "One check per line: STATUS|SEVERITY|Check description|Detail"
     )
 
     try:
-        result = await client.generate(
+        result = await _generate_with_retry(
+            client,
             prompt=eval_prompt,
             model=eval_model,
-            system_prompt=FULFILLMENT_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             temperature=0.1,
             max_tokens=16384,
             timeout=180.0,
@@ -440,58 +862,526 @@ async def evaluate_fulfillment(
         eval_text = result.get("text", "")
         finish = result.get("usage", {}).get("finish_reason", "unknown")
         logger.info(
-            "Fulfillment eval raw (%d chars, finish=%s): %s",
-            len(eval_text), finish, eval_text[:500],
+            "%s eval raw (%d chars, finish=%s): %s",
+            dimension.capitalize(),
+            len(eval_text),
+            finish,
+            eval_text[:500],
         )
 
-        # Handle truncated JSON
-        cleaned = eval_text.strip()
-        if cleaned.startswith("{") and not cleaned.endswith("}"):
-            logger.warning("Fulfillment eval JSON truncated, attempting repair")
-            last_brace = cleaned.rfind("}")
-            if last_brace > 0:
-                cleaned = cleaned[:last_brace + 1] + "]}"
-            eval_text = cleaned
-
-        parsed = _parse_accuracy_checks(eval_text)  # Same JSON format
+        parsed = _parse_checklist_lines(eval_text, format="standard")
         if not parsed or "checks" not in parsed:
-            logger.warning("Failed to parse fulfillment checks, returning default")
-            return EvalResult(score=0.5, fulfillment=0.5, parse_failed=True)
+            # Single retry with shorter response excerpt and strict prompt
+            logger.warning(
+                "Failed to parse %s checks (finish=%s), retrying with stricter prompt",
+                dimension,
+                finish,
+            )
+            # Truncate response more aggressively for retry
+            RETRY_MAX = 30_000
+            retry_response = response[:RETRY_MAX] if len(response) > RETRY_MAX else response
+            retry_prompt = (
+                f"TASK: {truncated_prompt[:6000]}\n\n"
+                f"RESPONSE TO AUDIT:\n{retry_response}\n\n"
+                f"Audit for {dimension}. One check per line: STATUS|SEVERITY|Check description|Detail"
+            )
+            try:
+                retry_result = await _generate_with_retry(
+                    client,
+                    prompt=retry_prompt,
+                    model=eval_model,
+                    system_prompt=system_prompt
+                    + "\nYou MUST output ONLY pipe-delimited lines. No JSON, no markdown, no commentary.",
+                    temperature=0.0,
+                    max_tokens=16384,
+                    timeout=120.0,
+                )
+                eval_text = retry_result.get("text", "")
+                logger.info(
+                    "%s eval retry (%d chars): %s",
+                    dimension.capitalize(),
+                    len(eval_text),
+                    eval_text[:300],
+                )
+                parsed = _parse_checklist_lines(eval_text, format="standard")
+            except Exception as retry_err:
+                logger.warning("%s eval retry failed: %s", dimension.capitalize(), retry_err)
 
-        checks: List[FulfillmentCheck] = []
+        if not parsed or "checks" not in parsed:
+            # 2nd retry: Flash model fallback
+            logger.warning(
+                "Failed to parse %s checks after retry, falling back to Flash",
+                dimension,
+            )
+            flash_model = _get_eval_model()  # Flash
+            FLASH_MAX = 15_000
+            flash_response = response[:FLASH_MAX] if len(response) > FLASH_MAX else response
+            flash_prompt = (
+                f"TASK:\n{truncated_prompt[:4000]}\n\n"
+                f"RESPONSE:\n{flash_response}\n\n"
+                f"Audit for {dimension}. One check per line: STATUS|SEVERITY|Check description|Detail"
+            )
+            flash_system = (
+                f"You are a {dimension} auditor. Output ONLY pipe-delimited lines. "
+                "No JSON, no markdown, no commentary. "
+                "Format: STATUS|SEVERITY|Check description|Detail text"
+            )
+            try:
+                flash_result = await _generate_with_retry(
+                    client,
+                    prompt=flash_prompt,
+                    model=flash_model,
+                    system_prompt=flash_system,
+                    temperature=0.0,
+                    max_tokens=8192,
+                    timeout=90.0,
+                )
+                eval_text = flash_result.get("text", "")
+                logger.info(
+                    "%s eval Flash fallback (%d chars): %s",
+                    dimension.capitalize(),
+                    len(eval_text),
+                    eval_text[:300],
+                )
+                parsed = _parse_checklist_lines(eval_text, format="standard")
+            except Exception as flash_err:
+                logger.warning("%s Flash fallback failed: %s", dimension.capitalize(), flash_err)
+
+        if not parsed or "checks" not in parsed:
+            logger.warning(
+                "Failed to parse %s checks after all retries, returning default", dimension
+            )
+            return EvalResult(score=0.5, parse_failed=True, **{dimension: 0.5})
+
+        checks: List[AccuracyCheck] = []
         for raw in parsed["checks"]:
-            checks.append(FulfillmentCheck(
-                check=raw.get("check", "unknown"),
-                status=raw.get("status", "fail"),
-                severity=raw.get("severity", "breaking"),
-                detail=raw.get("detail", ""),
-            ))
+            checks.append(
+                AccuracyCheck(
+                    check=raw.get("check", "unknown"),
+                    status=raw.get("status", "fail"),
+                    severity=raw.get("severity", "breaking"),
+                    detail=raw.get("detail", ""),
+                )
+            )
 
-        fulfillment_score = _score_accuracy_checks(checks)  # Same scoring logic
+        score = _score_accuracy_checks(checks)
 
         issues = [
-            f"[FULFILLMENT:{c.severity.upper()}] {c.check}: {c.detail}"
-            for c in checks if c.status == "fail"
+            f"[{dimension.upper()}:{c.severity.upper()}] {c.check}: {c.detail}"
+            for c in checks
+            if c.status == "fail"
         ]
 
         logger.info(
-            "Fulfillment eval: %d checks, %d passed, %d failed, score=%.3f",
+            "%s eval: %d checks, %d passed, %d failed, score=%.3f",
+            dimension.capitalize(),
             len(checks),
             sum(1 for c in checks if c.status == "pass"),
             sum(1 for c in checks if c.status == "fail"),
-            fulfillment_score,
+            score,
         )
 
         return EvalResult(
-            score=fulfillment_score,
-            fulfillment=fulfillment_score,
+            score=score,
             issues=issues,
-            fulfillment_checks=checks,
+            **{dimension: score, f"{dimension}_checks": checks},
         )
 
     except Exception as e:
-        logger.warning("Fulfillment eval failed: %s", e)
-        return EvalResult(score=0.5, fulfillment=0.5, parse_failed=True)
+        logger.warning("%s eval failed: %s", dimension.capitalize(), e)
+        return EvalResult(score=0.5, parse_failed=True, **{dimension: 0.5})
+
+
+async def evaluate_completeness(
+    client,
+    prompt: str,
+    response: str,
+    *,
+    model: Optional[str] = None,
+) -> EvalResult:
+    """Run completeness evaluation with pass/fail checklist."""
+    return await _run_checklist_eval(
+        client,
+        prompt,
+        response,
+        system_prompt=COMPLETENESS_SYSTEM_PROMPT,
+        dimension="completeness",
+        model=model,
+    )
+
+
+async def evaluate_clarity(
+    client,
+    prompt: str,
+    response: str,
+    *,
+    model: Optional[str] = None,
+) -> EvalResult:
+    """Run clarity evaluation with pass/fail checklist."""
+    return await _run_checklist_eval(
+        client,
+        prompt,
+        response,
+        system_prompt=CLARITY_SYSTEM_PROMPT,
+        dimension="clarity",
+        model=model,
+    )
+
+
+async def evaluate_actionability(
+    client,
+    prompt: str,
+    response: str,
+    *,
+    model: Optional[str] = None,
+) -> EvalResult:
+    """Run actionability evaluation with pass/fail checklist."""
+    return await _run_checklist_eval(
+        client,
+        prompt,
+        response,
+        system_prompt=ACTIONABILITY_SYSTEM_PROMPT,
+        dimension="actionability",
+        model=model,
+    )
+
+
+async def generate_pre_gen_checklist(
+    client,
+    prompt: str,
+    eval_context: Optional[str] = None,
+    *,
+    model: Optional[str] = None,
+    max_checks: int = 40,
+) -> PreGenChecklist:
+    """Generate a fixed checklist BEFORE code generation.
+
+    One LLM call that produces checks for accuracy/fulfillment/completeness.
+    These checks stay constant across all iteration steps.
+    """
+    eval_model = model or _get_accuracy_eval_model()
+
+    MAX_PROMPT_CHARS = 12_000
+    truncated_prompt = prompt[:MAX_PROMPT_CHARS] + ("..." if len(prompt) > MAX_PROMPT_CHARS else "")
+
+    parts = [
+        "=== TASK DESCRIPTION ===\n",
+        truncated_prompt,
+        "\n=== END TASK DESCRIPTION ===\n\n",
+    ]
+    if eval_context:
+        MAX_CONTEXT_CHARS = 60_000
+        truncated_context = eval_context[:MAX_CONTEXT_CHARS] + (
+            "..." if len(eval_context) > MAX_CONTEXT_CHARS else ""
+        )
+        parts.append("=== REFERENCE MATERIAL (eval_context) ===\n")
+        parts.append(truncated_context)
+        parts.append("\n=== END REFERENCE MATERIAL ===\n\n")
+
+    parts.append(
+        "Generate a checklist of checks to evaluate ANY response to this task. "
+        "One check per line: DIMENSION|SEVERITY|Check description"
+    )
+    gen_prompt = "".join(parts)
+
+    try:
+        result = await _generate_with_retry(
+            client,
+            prompt=gen_prompt,
+            model=eval_model,
+            system_prompt=CHECKLIST_GENERATION_SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=8192,
+            timeout=120.0,
+        )
+
+        gen_text = result.get("text", "")
+        gen_tokens = result.get("usage", {}).get("total_tokens", 0)
+
+        logger.info(
+            "Pre-gen checklist raw (%d chars): %s",
+            len(gen_text),
+            gen_text[:500],
+        )
+
+        parsed = _parse_checklist_lines(gen_text, format="pre_gen")
+        if not parsed or "checks" not in parsed:
+            # Retry with stricter prompt
+            logger.warning("Failed to parse pre-gen checklist, retrying")
+            retry_result = await _generate_with_retry(
+                client,
+                prompt=gen_prompt,
+                model=eval_model,
+                system_prompt=CHECKLIST_GENERATION_SYSTEM_PROMPT
+                + "\nYou MUST output ONLY pipe-delimited lines. No JSON, no markdown, no commentary.",
+                temperature=0.0,
+                max_tokens=8192,
+                timeout=90.0,
+            )
+            gen_text = retry_result.get("text", "")
+            gen_tokens += retry_result.get("usage", {}).get("total_tokens", 0)
+            parsed = _parse_checklist_lines(gen_text, format="pre_gen")
+
+        if not parsed or "checks" not in parsed:
+            logger.warning("Pre-gen checklist generation failed after retry")
+            return PreGenChecklist(generation_tokens=gen_tokens)
+
+        valid_dims = {"accuracy", "fulfillment", "completeness"}
+        checks: List[PreGenCheck] = []
+        for raw in parsed["checks"][:max_checks]:
+            dim = raw.get("dimension", "")
+            if dim not in valid_dims:
+                continue
+            # Skip accuracy checks when no eval_context provided
+            if dim == "accuracy" and not eval_context:
+                continue
+            checks.append(
+                PreGenCheck(
+                    dimension=dim,
+                    check=raw.get("check", "unknown"),
+                    severity=raw.get("severity", "breaking"),
+                )
+            )
+
+        logger.info(
+            "Pre-gen checklist: %d checks (accuracy=%d, fulfillment=%d, completeness=%d)",
+            len(checks),
+            sum(1 for c in checks if c.dimension == "accuracy"),
+            sum(1 for c in checks if c.dimension == "fulfillment"),
+            sum(1 for c in checks if c.dimension == "completeness"),
+        )
+
+        return PreGenChecklist(checks=checks, generation_tokens=gen_tokens)
+
+    except Exception as e:
+        logger.warning("Pre-gen checklist generation failed: %s", e)
+        return PreGenChecklist()
+
+
+PREGEN_SCORING_SYSTEM_PROMPT = """You are a strict code auditor. You will receive:
+1. A task description
+2. A fixed checklist of checks to score
+3. A code response to audit
+
+Your job is to score EACH check in the checklist as pass or fail, AND you may add up to 5 NEW checks for important issues the checklist missed.
+
+For EACH check in the provided checklist, output it with status "pass" or "fail" and a brief detail.
+For any NEW checks you add, include source="evaluator" to distinguish them.
+
+SEVERITY LEVELS (for new checks only — pre-gen checks keep their original severity):
+- "breaking": Would cause runtime error, wrong behavior, or missing core requirement. Score: 0 points.
+- "foreign": Uses external dependency not in project, or partially fulfills requirement. Score: 0.25 points.
+- "style": Pattern deviation or minor omission. Score: 0.5 points.
+
+Output one check per line in this pipe-delimited format (NO JSON, no markdown, no commentary):
+STATUS|SEVERITY|SOURCE|Check description|Detail text
+
+Example:
+PASS|breaking|pre_gen|create_task() signature matches reference|All params correct
+FAIL|foreign|evaluator|Uses external caching library|Project has built-in cache"""
+
+
+async def score_pre_gen_checklist(
+    client,
+    prompt: str,
+    response: str,
+    pre_gen_checks: List[PreGenCheck],
+    dimension: str,
+    *,
+    eval_context: Optional[str] = None,
+    model: Optional[str] = None,
+) -> EvalResult:
+    """Score a response against a fixed pre-generated checklist for one dimension.
+
+    The evaluator scores each pre-gen check and may add up to 5 new checks.
+    """
+    eval_model = model or _get_accuracy_eval_model()
+
+    MAX_PROMPT_CHARS = 12_000
+    MAX_RESPONSE_CHARS = 60_000
+    truncated_prompt = prompt[:MAX_PROMPT_CHARS] + ("..." if len(prompt) > MAX_PROMPT_CHARS else "")
+    if len(response) > MAX_RESPONSE_CHARS:
+        half = MAX_RESPONSE_CHARS // 2
+        truncated_response = (
+            response[:half]
+            + f"\n\n[... {len(response) - MAX_RESPONSE_CHARS} chars omitted ...]\n\n"
+            + response[-half:]
+        )
+    else:
+        truncated_response = response
+
+    # Format the pre-gen checks for the evaluator
+    checks_text = "\n".join(f"- [{c.severity.upper()}] {c.check}" for c in pre_gen_checks)
+
+    parts = [
+        "=== TASK DESCRIPTION ===\n",
+        truncated_prompt,
+        "\n=== END TASK DESCRIPTION ===\n\n",
+    ]
+    if eval_context and dimension == "accuracy":
+        MAX_CONTEXT_CHARS = 60_000
+        truncated_context = eval_context[:MAX_CONTEXT_CHARS] + (
+            "..." if len(eval_context) > MAX_CONTEXT_CHARS else ""
+        )
+        parts.append("=== REFERENCE MATERIAL ===\n")
+        parts.append(truncated_context)
+        parts.append("\n=== END REFERENCE MATERIAL ===\n\n")
+    parts.extend(
+        [
+            f"=== FIXED CHECKLIST FOR {dimension.upper()} ===\n",
+            checks_text,
+            "\n=== END CHECKLIST ===\n\n",
+            "=== RESPONSE TO AUDIT ===\n",
+            truncated_response,
+            "\n=== END RESPONSE ===\n\n",
+            f"Score EACH check in the {dimension} checklist as pass/fail. "
+            "You may add up to 5 NEW checks for important issues the checklist missed "
+            "(tag them source=evaluator). One check per line: STATUS|SEVERITY|SOURCE|Check description|Detail",
+        ]
+    )
+    eval_prompt = "".join(parts)
+
+    try:
+        result = await _generate_with_retry(
+            client,
+            prompt=eval_prompt,
+            model=eval_model,
+            system_prompt=PREGEN_SCORING_SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=16384,
+            timeout=180.0,
+        )
+
+        eval_text = result.get("text", "")
+        finish = result.get("usage", {}).get("finish_reason", "unknown")
+        logger.info(
+            "Pre-gen %s scoring raw (%d chars, finish=%s): %s",
+            dimension,
+            len(eval_text),
+            finish,
+            eval_text[:500],
+        )
+
+        parsed = _parse_checklist_lines(eval_text, format="scoring")
+        if not parsed or "checks" not in parsed:
+            # Retry
+            logger.warning("Failed to parse pre-gen %s scoring, retrying", dimension)
+            RETRY_MAX = 30_000
+            retry_response = response[:RETRY_MAX] if len(response) > RETRY_MAX else response
+            retry_prompt = (
+                f"TASK: {truncated_prompt[:6000]}\n\n"
+                f"CHECKLIST:\n{checks_text}\n\n"
+                f"RESPONSE:\n{retry_response}\n\n"
+                f"Score each check as pass/fail. One check per line: STATUS|SEVERITY|SOURCE|Check description|Detail"
+            )
+            try:
+                retry_result = await _generate_with_retry(
+                    client,
+                    prompt=retry_prompt,
+                    model=eval_model,
+                    system_prompt=PREGEN_SCORING_SYSTEM_PROMPT
+                    + "\nYou MUST output ONLY pipe-delimited lines. No JSON, no markdown, no commentary.",
+                    temperature=0.0,
+                    max_tokens=16384,
+                    timeout=120.0,
+                )
+                eval_text = retry_result.get("text", "")
+                parsed = _parse_checklist_lines(eval_text, format="scoring")
+            except Exception as retry_err:
+                logger.warning("Pre-gen %s retry failed: %s", dimension, retry_err)
+
+        if not parsed or "checks" not in parsed:
+            # 2nd retry: Flash model fallback
+            logger.warning(
+                "Pre-gen %s scoring failed after retry, falling back to Flash",
+                dimension,
+            )
+            flash_model = _get_eval_model()  # Flash
+            FLASH_MAX = 15_000
+            flash_response = response[:FLASH_MAX] if len(response) > FLASH_MAX else response
+            flash_prompt = (
+                f"TASK:\n{truncated_prompt[:4000]}\n\n"
+                f"CHECKLIST:\n{checks_text}\n\n"
+                f"RESPONSE:\n{flash_response}\n\n"
+                f"Score each check as pass/fail. One check per line: STATUS|SEVERITY|SOURCE|Check description|Detail"
+            )
+            flash_system = (
+                f"You are a {dimension} auditor. Score the given checklist against the response. "
+                "Output ONLY pipe-delimited lines. No JSON, no markdown, no commentary. "
+                "Format: STATUS|SEVERITY|SOURCE|Check description|Detail text"
+            )
+            try:
+                flash_result = await _generate_with_retry(
+                    client,
+                    prompt=flash_prompt,
+                    model=flash_model,
+                    system_prompt=flash_system,
+                    temperature=0.0,
+                    max_tokens=8192,
+                    timeout=90.0,
+                )
+                eval_text = flash_result.get("text", "")
+                logger.info(
+                    "Pre-gen %s Flash fallback (%d chars): %s",
+                    dimension,
+                    len(eval_text),
+                    eval_text[:300],
+                )
+                parsed = _parse_checklist_lines(eval_text, format="scoring")
+            except Exception as flash_err:
+                logger.warning("Pre-gen %s Flash fallback failed: %s", dimension, flash_err)
+
+        if not parsed or "checks" not in parsed:
+            logger.warning("Pre-gen %s scoring failed after all retries", dimension)
+            return EvalResult(score=0.5, parse_failed=True, **{dimension: 0.5})
+
+        # Cap evaluator-added checks at 5
+        evaluator_count = 0
+        checks: List[AccuracyCheck] = []
+        for raw in parsed["checks"]:
+            src = raw.get("source", "pre_gen")
+            if src == "evaluator":
+                evaluator_count += 1
+                if evaluator_count > 5:
+                    continue
+            checks.append(
+                AccuracyCheck(
+                    check=raw.get("check", "unknown"),
+                    status=raw.get("status", "fail"),
+                    severity=raw.get("severity", "breaking"),
+                    detail=raw.get("detail", ""),
+                )
+            )
+
+        score = _score_accuracy_checks(checks)
+
+        issues = [
+            f"[{dimension.upper()}:{c.severity.upper()}] {c.check}: {c.detail}"
+            for c in checks
+            if c.status == "fail"
+        ]
+
+        logger.info(
+            "Pre-gen %s scoring: %d checks (%d pre-gen + %d evaluator), "
+            "%d passed, %d failed, score=%.3f",
+            dimension,
+            len(checks),
+            sum(1 for r in parsed["checks"] if r.get("source", "pre_gen") == "pre_gen"),
+            min(evaluator_count, 5),
+            sum(1 for c in checks if c.status == "pass"),
+            sum(1 for c in checks if c.status == "fail"),
+            score,
+        )
+
+        return EvalResult(
+            score=score,
+            issues=issues,
+            **{dimension: score, f"{dimension}_checks": checks},
+        )
+
+    except Exception as e:
+        logger.warning("Pre-gen %s scoring failed: %s", dimension, e)
+        return EvalResult(score=0.5, parse_failed=True, **{dimension: 0.5})
 
 
 async def evaluate_response(
@@ -514,7 +1404,7 @@ async def evaluate_response(
     Returns:
         EvalResult with scores and issues.
     """
-    eval_model = model or DEFAULT_EVAL_MODEL
+    eval_model = model or _get_eval_model()
 
     # Truncate very long prompts/responses to keep eval focused
     MAX_PROMPT_CHARS = 8_000
@@ -540,14 +1430,16 @@ async def evaluate_response(
         parts.append("=== REFERENCE MATERIAL ===\n")
         parts.append(eval_context)
         parts.append("\n=== END REFERENCE MATERIAL ===\n\n")
-    parts.extend([
-        "=== RESPONSE TO EVALUATE ===\n",
-        truncated_response,
-        "\n=== END RESPONSE ===\n\n",
-        "Now output your evaluation as a single JSON object. "
-        "Do NOT output anything except the JSON:\n"
-        '{"accuracy": N, "completeness": N, "clarity": N, "actionability": N, "issues": ["..."]}',
-    ])
+    parts.extend(
+        [
+            "=== RESPONSE TO EVALUATE ===\n",
+            truncated_response,
+            "\n=== END RESPONSE ===\n\n",
+            "Now output your evaluation as a single JSON object. "
+            "Do NOT output anything except the JSON:\n"
+            '{"accuracy": N, "completeness": N, "clarity": N, "actionability": N, "issues": ["..."]}',
+        ]
+    )
     eval_prompt = "".join(parts)
     system_prompt = EVAL_SYSTEM_PROMPT
 
@@ -565,7 +1457,9 @@ async def evaluate_response(
         finish = result.get("usage", {}).get("finish_reason", "unknown")
         logger.info(
             "Eval raw response (%d chars, finish=%s): %s",
-            len(eval_text), finish, eval_text[:500],
+            len(eval_text),
+            finish,
+            eval_text[:500],
         )
 
         # If the response looks like truncated JSON, try to repair it
@@ -575,9 +1469,9 @@ async def evaluate_response(
             last_quote = cleaned.rfind('"')
             if last_quote > 0:
                 if '"issues"' in cleaned:
-                    cleaned = cleaned[:last_quote + 1] + "]}"
+                    cleaned = cleaned[: last_quote + 1] + "]}"
                 else:
-                    cleaned = cleaned[:last_quote + 1] + "}"
+                    cleaned = cleaned[: last_quote + 1] + "}"
             eval_text = cleaned
 
         scores = _parse_eval_response(eval_text)

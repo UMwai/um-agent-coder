@@ -122,9 +122,7 @@ class Harness:
         self.reasoning_effort = reasoning_effort
 
         # Ralph persistence (shared across ralph executors, but isolated per harness)
-        self.ralph_persistence = RalphPersistence(
-            db_path=self.state_dir / "ralph_state.db"
-        )
+        self.ralph_persistence = RalphPersistence(db_path=self.state_dir / "ralph_state.db")
 
         # Runtime state
         self.roadmap: Optional[Roadmap] = None
@@ -713,18 +711,21 @@ def main():
     # Handle meta-harness commands first (before normal harness logic)
     if args.meta_status:
         from .dashboard import MetaHarnessDashboard
+
         dashboard = MetaHarnessDashboard()
         dashboard.print_status()
         return
 
     if args.meta_logs:
         from .dashboard import MetaHarnessDashboard
+
         dashboard = MetaHarnessDashboard()
         dashboard.print_harness_logs(args.meta_logs, tail=100)
         return
 
     if args.meta_stop_all:
         from .manager import HarnessManager
+
         manager = HarnessManager()
         logger.info("Stopping all sub-harnesses...")
         manager.request_stop_all()

@@ -51,9 +51,7 @@ class DaemonSettings(BaseSettings):
     # Query proxy
     codex_model: str = "gpt-5.2"
     gemini_model: str = "gemini-3-flash-preview"
-    gemini_auto_models: str = (
-        "gemini-3-flash-preview,gemini-3-pro-preview,gemini-3.1-pro-preview"
-    )
+    gemini_auto_models: str = "gemini-3-flash-preview,gemini-3-pro-preview,gemini-3.1-pro-preview"
     query_rate_limit: int = 60  # requests/min/provider
 
     # Worker
@@ -115,9 +113,9 @@ class DaemonSettings(BaseSettings):
     gemini_iterate_generation_model: str = "gemini-3.1-pro-preview"
     gemini_iterate_temperature: float = 0.7
     gemini_iterate_max_tokens: int = 65536
-    gemini_iterate_max_strategies: int = 2          # max fix strategies per retry
-    gemini_iterate_oscillation_window: int = 3      # steps to detect plateau
-    gemini_iterate_oscillation_spread: float = 0.03 # max score spread = plateau
+    gemini_iterate_max_strategies: int = 2  # max fix strategies per retry
+    gemini_iterate_oscillation_window: int = 3  # steps to detect plateau
+    gemini_iterate_oscillation_spread: float = 0.03  # max score spread = plateau
 
     # Orchestrator
     checkpoint_dir: str = ".pipeline_checkpoints"
