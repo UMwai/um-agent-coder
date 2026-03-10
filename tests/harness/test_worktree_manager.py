@@ -170,6 +170,10 @@ branch refs/heads/harness/task-001
                 self.patcher.start()
 
 
+@unittest.skipIf(
+    os.environ.get("CI") == "true",
+    "git worktree tests require full clone (not shallow)",
+)
 class TestWorktreeManagerIntegration(unittest.TestCase):
     """Integration tests for WorktreeManager with real git."""
 
