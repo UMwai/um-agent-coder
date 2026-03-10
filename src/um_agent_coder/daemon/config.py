@@ -38,6 +38,7 @@ class DaemonSettings(BaseSettings):
     # Discord
     discord_public_key: Optional[str] = None
     discord_bot_token: Optional[str] = None
+    discord_application_id: Optional[str] = None
 
     # Notification defaults
     default_webhook_url: Optional[str] = None
@@ -71,6 +72,42 @@ class DaemonSettings(BaseSettings):
     gemini_agent_max_steps: int = 10
     gemini_complexity_threshold: int = 50
 
+    # Model registry — update these env vars when new models ship
+    gemini_model_flash: str = "gemini-3-flash-preview"
+    gemini_model_pro: str = "gemini-3-pro-preview"
+    gemini_model_pro_latest: str = "gemini-3.1-pro-preview"
+    gemini_eval_model: str = "gemini-3-flash-preview"  # general eval (fast)
+    gemini_accuracy_eval_model: str = "gemini-3.1-pro-preview"  # accuracy + fulfillment eval
+
+    # Checklist evaluation (Phase 1)
+    gemini_checklist_eval_enabled: bool = True
+
+    # File extraction + syntax validation (Phase 2)
+    gemini_file_extraction_enabled: bool = True
+    gemini_syntax_validation_enabled: bool = True
+
+    # Mistake library (Phase 3)
+    gemini_mistake_library_enabled: bool = True
+    gemini_mistake_library_top_k: int = 10
+    gemini_mistake_library_min_occurrences: int = 2
+
+    # Webhook notifications (Phase 4)
+    gemini_webhook_timeout_seconds: int = 30
+    gemini_webhook_max_retries: int = 3
+
+    # Auto eval_context (Phase 5)
+    gemini_auto_eval_context_enabled: bool = True
+    gemini_auto_eval_context_max_files: int = 100
+
+    # Pre-generation checklist
+    gemini_pregen_checklist_enabled: bool = True
+    gemini_pregen_checklist_in_prompt: bool = True
+    gemini_pregen_checklist_max_checks: int = 40
+
+    # Firestore persistence (opt-in)
+    gemini_firestore_enabled: bool = False
+    gemini_firestore_collection: str = "iteration_runs"
+
     # Iteration runner
     gemini_iterate_max_iterations: int = 5
     gemini_iterate_score_threshold: float = 0.85
@@ -78,6 +115,9 @@ class DaemonSettings(BaseSettings):
     gemini_iterate_generation_model: str = "gemini-3.1-pro-preview"
     gemini_iterate_temperature: float = 0.7
     gemini_iterate_max_tokens: int = 65536
+    gemini_iterate_max_strategies: int = 2          # max fix strategies per retry
+    gemini_iterate_oscillation_window: int = 3      # steps to detect plateau
+    gemini_iterate_oscillation_spread: float = 0.03 # max score spread = plateau
 
     # Orchestrator
     checkpoint_dir: str = ".pipeline_checkpoints"

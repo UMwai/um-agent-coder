@@ -18,6 +18,29 @@ class GeminiModelTier(str, Enum):
     auto = "auto"
 
 
+def _build_model_map() -> dict[str, str]:
+    """Build model map from config. Called lazily to avoid import-time settings load."""
+    from um_agent_coder.daemon.config import DaemonSettings
+    s = DaemonSettings()
+    return {
+        "flash": s.gemini_model_flash,
+        "pro": s.gemini_model_pro,
+        "pro-3.1": s.gemini_model_pro_latest,
+    }
+
+
+# Lazy-loaded singleton — use get_model_map() instead of GEMINI_MODEL_MAP directly
+_model_map_cache: dict[str, str] | None = None
+
+
+def get_model_map() -> dict[str, str]:
+    global _model_map_cache
+    if _model_map_cache is None:
+        _model_map_cache = _build_model_map()
+    return _model_map_cache
+
+
+# Keep for backward compat — but code should migrate to get_model_map()
 GEMINI_MODEL_MAP = {
     "flash": "gemini-3-flash-preview",
     "pro": "gemini-3-pro-preview",
@@ -80,6 +103,36 @@ class FulfillmentCheckInfo(BaseModel):
     detail: str = ""
 
 
+class CompletenessCheckInfo(BaseModel):
+    check: str = ""
+    status: str = ""
+    severity: str = ""
+    detail: str = ""
+
+
+class ClarityCheckInfo(BaseModel):
+    check: str = ""
+    status: str = ""
+    severity: str = ""
+    detail: str = ""
+
+
+class ActionabilityCheckInfo(BaseModel):
+    check: str = ""
+    status: str = ""
+    severity: str = ""
+    detail: str = ""
+
+
+class PreGenCheckInfo(BaseModel):
+    dimension: str = ""  # "accuracy", "fulfillment", "completeness"
+    check: str = ""
+    status: str = ""  # "pass" or "fail"
+    severity: str = "breaking"
+    detail: str = ""
+    source: str = "pre_gen"  # "pre_gen" or "evaluator"
+
+
 class EvalInfo(BaseModel):
     score: float = 0.0
     accuracy: float = 0.0
@@ -89,8 +142,14 @@ class EvalInfo(BaseModel):
     fulfillment: float = 0.0
     issues: List[str] = []
     retry_count: int = 0
+    accuracy_passed: Optional[bool] = None
+    parse_failed: Optional[bool] = None
     accuracy_checks: List[AccuracyCheckInfo] = []
     fulfillment_checks: List[FulfillmentCheckInfo] = []
+    completeness_checks: List[CompletenessCheckInfo] = []
+    clarity_checks: List[ClarityCheckInfo] = []
+    actionability_checks: List[ActionabilityCheckInfo] = []
+    pre_gen_checks: List[PreGenCheckInfo] = []
 
 
 # --- Evaluate endpoint ---
@@ -275,6 +334,38 @@ class IterateRequest(BaseModel):
     enable_enhancement: bool = True
     use_multi_turn: bool = True
     domain_hint: Optional[str] = None
+    source_files: Optional[Dict[str, str]] = Field(default=None, description="Source files (path→content) for auto eval_context generation.")
+    webhook_url: Optional[str] = Field(default=None, description="URL to POST webhook notifications to.")
+    webhook_headers: Optional[Dict[str, str]] = Field(default=None, description="Additional headers for webhook requests.")
+    webhook_events: List[str] = Field(default=["completed", "failed"], description="Events to notify: completed, failed, cancelled, step_complete, all.")
+
+
+class ExtractedFileInfo(BaseModel):
+    path: str = ""
+    language: str = ""
+    content: str = ""
+    start_line: int = 0
+    end_line: int = 0
+    is_complete: bool = True
+    syntax_valid: Optional[bool] = None
+
+
+class SyntaxIssueInfo(BaseModel):
+    language: str = ""
+    file_path: str = ""
+    line: int = 0
+    column: int = 0
+    message: str = ""
+    severity: str = "breaking"
+
+
+class FileExtractionInfo(BaseModel):
+    files: List[ExtractedFileInfo] = []
+    total_files: int = 0
+    languages: List[str] = []
+    truncated_files: int = 0
+    syntax_issues: List[SyntaxIssueInfo] = []
+    syntax_score: float = 1.0
 
 
 class IterationStepInfo(BaseModel):
@@ -288,6 +379,7 @@ class IterationStepInfo(BaseModel):
     eval_models_used: List[str] = []
     strategies_applied: List[str] = []
     finish_reason: str = ""
+    extracted_files: Optional[FileExtractionInfo] = None
 
 
 class IterateResponse(BaseModel):
@@ -314,3 +406,51 @@ class IterationSummaryResponse(BaseModel):
     total_tokens: int = 0
     duration_ms: int = 0
     created_at: Optional[str] = None
+
+
+# --- Batch iteration runner ---
+
+class BatchIterateItem(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=500_000)
+    system_prompt: Optional[str] = Field(default=None, max_length=50_000)
+    eval_context: Optional[str] = Field(default=None, max_length=200_000)
+    model: Optional[GeminiModelTier] = Field(default=None, description="Per-item model override.")
+    label: Optional[str] = Field(default=None, max_length=200, description="Human-readable label for this item.")
+
+
+class BatchIterateRequest(BaseModel):
+    items: List[BatchIterateItem] = Field(..., min_length=1, max_length=50)
+    model: GeminiModelTier = GeminiModelTier.pro_3_1
+    eval_models: Optional[List[str]] = None
+    max_iterations: int = Field(default=5, ge=1, le=20)
+    score_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=65536, ge=1, le=1_000_000)
+    enable_enhancement: bool = True
+    use_multi_turn: bool = True
+    domain_hint: Optional[str] = None
+    webhook_url: Optional[str] = None
+    webhook_headers: Optional[Dict[str, str]] = None
+    webhook_events: List[str] = Field(default=["completed", "failed"])
+    max_concurrent: Optional[int] = Field(default=None, ge=1, le=20, description="Override batch concurrency limit.")
+
+
+class BatchIterateItemStatus(BaseModel):
+    index: int
+    label: Optional[str] = None
+    iteration_id: Optional[str] = None
+    status: IterationStatus = IterationStatus.running
+    best_score: float = 0.0
+    total_iterations: int = 0
+    error: Optional[str] = None
+
+
+class BatchIterateResponse(BaseModel):
+    batch_id: str
+    status: BatchStatus
+    total_items: int
+    completed_items: int = 0
+    failed_items: int = 0
+    items: List[BatchIterateItemStatus] = []
+    created_at: Optional[str] = None
+    completed_at: Optional[str] = None
