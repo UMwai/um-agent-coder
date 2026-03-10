@@ -117,6 +117,20 @@ class DaemonSettings(BaseSettings):
     gemini_iterate_oscillation_window: int = 3  # steps to detect plateau
     gemini_iterate_oscillation_spread: float = 0.03  # max score spread = plateau
 
+    # Knowledge Base
+    kb_firestore_collection: str = "knowledge_base"
+    kb_auto_extract_enabled: bool = True
+    kb_max_inject_items: int = 5
+    kb_extract_model: str = "gemini-3-flash-preview"
+
+    # World Agent
+    world_agent_enabled: bool = False
+    world_agent_github_repos: str = ""  # Comma-separated "owner/repo"
+    world_agent_relevance_threshold: float = 0.3
+    world_agent_goals_path: str = "goals/"
+    world_agent_orientation_model: str = ""  # Empty = use gemini_model_flash
+    world_agent_max_events_per_batch: int = 50
+
     # Orchestrator
     checkpoint_dir: str = ".pipeline_checkpoints"
     verbose: bool = True

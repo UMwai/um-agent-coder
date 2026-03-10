@@ -13,12 +13,12 @@ gcloud run deploy "${SERVICE_NAME}" \
   --project "${PROJECT_ID}" \
   --region "${REGION}" \
   --allow-unauthenticated \
-  --min-instances 1 \
+  --min-instances 0 \
   --memory 2Gi \
   --cpu 2 \
   --timeout 3600 \
   --no-cpu-throttling \
-  --set-env-vars "UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db,UM_DAEMON_GCP_PROJECT_ID=${PROJECT_ID}" \
+  --set-env-vars "UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db,UM_DAEMON_GCP_PROJECT_ID=${PROJECT_ID},UM_DAEMON_GEMINI_FIRESTORE_ENABLED=true,UM_DAEMON_WORLD_AGENT_ENABLED=true,UM_DAEMON_WORLD_AGENT_GITHUB_REPOS=UMwai/um-agent-coder" \
   --update-secrets="/home/appuser/.gemini/oauth_creds.json=gemini-oauth-creds:latest"
 
 # Grant service account permission to add secret versions

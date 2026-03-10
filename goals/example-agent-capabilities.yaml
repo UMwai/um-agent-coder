@@ -1,0 +1,25 @@
+goal:
+  id: "agent-capabilities"
+  name: "Continuously Improve Agent Capabilities"
+  description: |
+    Monitor the AI/ML ecosystem for new tools, models, and techniques.
+    Evaluate and integrate improvements. Keep the agent framework
+    at the cutting edge.
+  priority: 2
+  status: active
+  constraints:
+    - "Don't break existing functionality"
+    - "All changes must pass CI"
+  kpis:
+    - metric: "eval_scores"
+      target: "> 0.95 across all evals"
+      current: "0.93"
+  projects:
+    - repo: "um-agent-coder"
+      role: "Core framework"
+  event_sources:
+    - "dev.github_events"
+    - "dev.dependency_updates"
+  schedule:
+    frequency_active: "30min"
+    frequency_idle: "4h"
