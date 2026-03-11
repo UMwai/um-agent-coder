@@ -45,6 +45,12 @@ class RalphConfig:
     require_goal_validation: bool = False
     goal_threshold: float = 0.8
     daemon_url: str = ""  # Cloud Run URL for goal validation
+    # Intelligent loop fields (Gemini layer principles)
+    scoring_interval: int = 3  # Run eval scoring every N iterations
+    inject_checklist: bool = True  # Inject goal criteria into initial prompt
+    enable_oscillation_detection: bool = True  # Detect stuck loops
+    oscillation_window: int = 4  # Score window for oscillation detection
+    oscillation_spread: float = 0.03  # Spread threshold for oscillation
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -59,6 +65,11 @@ class RalphConfig:
             "require_goal_validation": self.require_goal_validation,
             "goal_threshold": self.goal_threshold,
             "daemon_url": self.daemon_url,
+            "scoring_interval": self.scoring_interval,
+            "inject_checklist": self.inject_checklist,
+            "enable_oscillation_detection": self.enable_oscillation_detection,
+            "oscillation_window": self.oscillation_window,
+            "oscillation_spread": self.oscillation_spread,
         }
 
     @classmethod
@@ -75,6 +86,11 @@ class RalphConfig:
             require_goal_validation=data.get("require_goal_validation", False),
             goal_threshold=data.get("goal_threshold", 0.8),
             daemon_url=data.get("daemon_url", ""),
+            scoring_interval=data.get("scoring_interval", 3),
+            inject_checklist=data.get("inject_checklist", True),
+            enable_oscillation_detection=data.get("enable_oscillation_detection", True),
+            oscillation_window=data.get("oscillation_window", 4),
+            oscillation_spread=data.get("oscillation_spread", 0.03),
         )
 
 

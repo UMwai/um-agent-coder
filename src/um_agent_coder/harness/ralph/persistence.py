@@ -101,6 +101,11 @@ class RalphPersistence:
                 conn.execute("ALTER TABLE ralph_iterations ADD COLUMN test_summary TEXT")
                 logger.info("Added test_summary column to ralph_iterations")
 
+            # Add eval_score column if missing (intelligent loop scoring)
+            if "eval_score" not in columns:
+                conn.execute("ALTER TABLE ralph_iterations ADD COLUMN eval_score REAL")
+                logger.info("Added eval_score column to ralph_iterations")
+
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Context manager for database connections."""
@@ -155,15 +160,17 @@ class RalphPersistence:
                     """
                     INSERT INTO ralph_iterations (
                         task_id, iteration_num, started_at, ended_at,
-                        output_snippet, promise_found, error, test_passed, test_summary
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        output_snippet, promise_found, error, test_passed, test_summary,
+                        eval_score
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(task_id, iteration_num) DO UPDATE SET
                         ended_at = excluded.ended_at,
                         output_snippet = excluded.output_snippet,
                         promise_found = excluded.promise_found,
                         error = excluded.error,
                         test_passed = excluded.test_passed,
-                        test_summary = excluded.test_summary
+                        test_summary = excluded.test_summary,
+                        eval_score = excluded.eval_score
                 """,
                     (
                         tracker.task_id,
@@ -175,6 +182,7 @@ class RalphPersistence:
                         record.error,
                         int(record.test_passed) if record.test_passed is not None else None,
                         record.test_summary,
+                        record.eval_score,
                     ),
                 )
 
@@ -218,6 +226,7 @@ class RalphPersistence:
                     error=ir["error"],
                     test_passed=bool(ir["test_passed"]) if ir["test_passed"] is not None else None,
                     test_summary=ir["test_summary"] or "",
+                    eval_score=float(ir["eval_score"]) if ir["eval_score"] is not None else None,
                 )
                 for ir in iter_rows
             ]
@@ -333,6 +342,9 @@ class RalphPersistence:
                         bool(row["test_passed"]) if row["test_passed"] is not None else None
                     ),
                     test_summary=row["test_summary"] or "",
+                    eval_score=(
+                        float(row["eval_score"]) if row["eval_score"] is not None else None
+                    ),
                 )
                 for row in rows
             ]

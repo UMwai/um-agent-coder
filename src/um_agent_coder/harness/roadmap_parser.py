@@ -176,6 +176,9 @@ class RoadmapParser:
                     require_goal_validation=props.get("goal_validate", False),
                     goal_threshold=props.get("goal_threshold", 0.8),
                     daemon_url=props.get("daemon_url", ""),
+                    scoring_interval=props.get("scoring_interval", 3),
+                    inject_checklist=props.get("inject_checklist", True),
+                    enable_oscillation_detection=props.get("oscillation_detection", True),
                 )
 
             task = Task(
@@ -237,6 +240,10 @@ class RoadmapParser:
             "goal_validate": False,
             "goal_threshold": 0.8,
             "daemon_url": "",
+            # Intelligent loop properties
+            "scoring_interval": 3,
+            "inject_checklist": True,
+            "oscillation_detection": True,
             # Worktree isolation properties
             "worktree": False,
             "worktree_base": "main",
@@ -295,6 +302,17 @@ class RoadmapParser:
                     pass
             elif line.startswith("daemon_url:"):
                 props["daemon_url"] = line.split(":", 1)[1].strip()
+            # Intelligent loop fields
+            elif line.startswith("scoring_interval:"):
+                interval_match = re.search(r"(\d+)", line)
+                if interval_match:
+                    props["scoring_interval"] = int(interval_match.group(1))
+            elif line.startswith("inject_checklist:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["inject_checklist"] = value in ("true", "yes", "1")
+            elif line.startswith("oscillation_detection:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["oscillation_detection"] = value in ("true", "yes", "1")
             # Worktree isolation fields
             elif line.startswith("worktree:"):
                 value = line.split(":", 1)[1].strip().lower()

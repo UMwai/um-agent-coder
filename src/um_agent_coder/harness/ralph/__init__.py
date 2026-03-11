@@ -10,6 +10,7 @@ from .goal_validator import GoalValidationResult, GoalValidator
 from .iteration_tracker import IterationRecord, IterationTracker
 from .persistence import RalphPersistence
 from .promise_detector import DetectionResult, PromiseDetector
+from .strategies import RalphStrategy, build_strategic_prompt, select_strategies
 
 __all__ = [
     "DetectionResult",
@@ -21,4 +22,7 @@ __all__ = [
     "RalphExecutor",
     "RalphPersistence",
     "RalphResult",
+    "RalphStrategy",
+    "build_strategic_prompt",
+    "select_strategies",
 ]

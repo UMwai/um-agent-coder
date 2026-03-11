@@ -443,6 +443,11 @@ class Harness:
             persistence=self.ralph_persistence,
             require_xml_format=config.require_xml_format,
             goal_validator=goal_validator,
+            scoring_interval=config.scoring_interval,
+            inject_checklist=config.inject_checklist,
+            enable_oscillation_detection=config.enable_oscillation_detection,
+            oscillation_window=config.oscillation_window,
+            oscillation_spread=config.oscillation_spread,
         )
 
         # Build context from dependencies
