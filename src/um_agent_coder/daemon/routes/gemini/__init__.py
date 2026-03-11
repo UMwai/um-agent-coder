@@ -8,6 +8,7 @@ from .context_extractor import router as context_extractor_router
 from .enhance import router as enhance_router
 from .evaluate import router as evaluate_router
 from .extract import router as extract_router
+from .goal_validate import router as goal_validate_router
 from .iterate import router as iterate_router
 from .models_endpoint import router as models_endpoint_router
 from .sessions import router as sessions_router
@@ -23,3 +24,4 @@ router.include_router(context_extractor_router)
 router.include_router(extract_router)
 router.include_router(iterate_router)
 router.include_router(models_endpoint_router)
+router.include_router(goal_validate_router)

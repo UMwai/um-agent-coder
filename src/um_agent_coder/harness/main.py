@@ -415,6 +415,28 @@ class Harness:
             f"(max {config.max_iterations} iterations, promise: {config.completion_promise})"
         )
 
+        # Initialize goal validator if configured
+        goal_validator = None
+        if config.require_goal_validation and config.daemon_url:
+            from .ralph.goal_validator import GoalValidator
+
+            goal_validator = GoalValidator(
+                daemon_url=config.daemon_url,
+                threshold=config.goal_threshold,
+            )
+            # Decompose goal into criteria from task description + success criteria
+            criteria = goal_validator.initialize(
+                goal_description=task.description,
+                success_criteria=task.success_criteria,
+            )
+            if criteria:
+                logger.info(
+                    f"Goal decomposed into {len(criteria)} validation criteria"
+                )
+            else:
+                logger.warning("Goal decomposition returned no criteria, disabling goal validation")
+                goal_validator = None
+
         # Create ralph executor wrapping the base executor
         ralph_executor = RalphExecutor(
             base_executor=base_executor,
@@ -422,6 +444,7 @@ class Harness:
             completion_promise=config.completion_promise,
             persistence=self.ralph_persistence,
             require_xml_format=config.require_xml_format,
+            goal_validator=goal_validator,
         )
 
         # Build context from dependencies

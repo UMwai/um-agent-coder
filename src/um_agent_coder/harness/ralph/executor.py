@@ -20,6 +20,7 @@ from typing import Optional
 from ..executors import BaseCLIExecutor
 from ..models import Task
 from ..test_runner import TestResult, TestRunner
+from .goal_validator import GoalValidationResult, GoalValidator
 from .iteration_tracker import IterationTracker
 from .persistence import RalphPersistence
 from .promise_detector import PromiseDetector
@@ -77,6 +78,7 @@ class RalphExecutor:
         require_xml_format: bool = True,
         require_tests_passing: bool = False,
         test_path: str = "tests",
+        goal_validator: Optional[GoalValidator] = None,
     ):
         """Initialize the ralph executor.
 
@@ -88,6 +90,7 @@ class RalphExecutor:
             require_xml_format: If True, only match XML-style promises
             require_tests_passing: If True, run tests before accepting promise
             test_path: Path to test files when require_tests_passing is True
+            goal_validator: Optional GoalValidator for goal-level validation
         """
         self.base_executor = base_executor
         self.max_iterations = max_iterations
@@ -96,6 +99,7 @@ class RalphExecutor:
         self.require_xml_format = require_xml_format
         self.require_tests_passing = require_tests_passing
         self.test_path = test_path
+        self.goal_validator = goal_validator
 
         self.promise_detector = PromiseDetector(
             promise=completion_promise,
@@ -199,6 +203,37 @@ class RalphExecutor:
                         # Build test failure prompt for next iteration
                         ralph_prompt = self._build_test_failure_prompt(task, context, test_result)
 
+                # Goal validation gate (runs after test gate)
+                goal_score: Optional[float] = None
+                goal_passed: Optional[bool] = None
+
+                if detection.found and self.goal_validator:
+                    logger.info("Promise detected, running goal validation...")
+
+                    goal_result = self.goal_validator.validate(
+                        result.output,
+                        iteration=tracker.current_iteration,
+                    )
+                    goal_score = goal_result.score
+                    goal_passed = goal_result.passed
+
+                    if not goal_result.passed:
+                        logger.warning(
+                            "Promise found but goal validation failed: "
+                            "score=%.2f (%d failing criteria)",
+                            goal_result.score,
+                            len(goal_result.failing_criteria),
+                        )
+                        detection.found = False
+
+                        ralph_prompt = self._build_goal_failure_prompt(
+                            task, context, goal_result
+                        )
+                    else:
+                        logger.info(
+                            "Goal validation passed: score=%.2f", goal_result.score
+                        )
+
                 # End iteration tracking with test info
                 tracker.end_iteration(
                     output=result.output,
@@ -209,6 +244,8 @@ class RalphExecutor:
                 if tracker.iteration_history:
                     tracker.iteration_history[-1].test_passed = test_passed
                     tracker.iteration_history[-1].test_summary = test_summary
+                    tracker.iteration_history[-1].goal_score = goal_score
+                    tracker.iteration_history[-1].goal_passed = goal_passed
 
                 # Save state after each iteration
                 self.persistence.save_tracker(tracker)
@@ -425,6 +462,21 @@ class RalphExecutor:
         )
 
         return "\n".join(prompt_parts)
+
+    def _build_goal_failure_prompt(
+        self,
+        task: Task,
+        context: str,
+        goal_result: GoalValidationResult,
+    ) -> str:
+        """Build a prompt when goal validation fails after promise detection."""
+        if self.goal_validator:
+            return self.goal_validator.build_failure_prompt(
+                result=goal_result,
+                task_description=task.description,
+                context=context,
+            )
+        return self._build_ralph_prompt(task, context)
 
     def _is_fatal_error(self, error: Exception) -> bool:
         """Determine if an error should stop the loop.

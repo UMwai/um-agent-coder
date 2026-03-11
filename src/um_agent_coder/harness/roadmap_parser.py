@@ -173,6 +173,9 @@ class RoadmapParser:
                     completion_promise=props.get("completion_promise", "COMPLETE"),
                     require_tests_passing=props.get("require_tests", False),
                     test_path=props.get("test_path", "tests"),
+                    require_goal_validation=props.get("goal_validate", False),
+                    goal_threshold=props.get("goal_threshold", 0.8),
+                    daemon_url=props.get("daemon_url", ""),
                 )
 
             task = Task(
@@ -230,6 +233,10 @@ class RoadmapParser:
             "completion_promise": "COMPLETE",
             "require_tests": False,
             "test_path": "tests",
+            # Goal validation properties
+            "goal_validate": False,
+            "goal_threshold": 0.8,
+            "daemon_url": "",
             # Worktree isolation properties
             "worktree": False,
             "worktree_base": "main",
@@ -277,6 +284,17 @@ class RoadmapParser:
                 props["require_tests"] = value in ("true", "yes", "1")
             elif line.startswith("test_path:"):
                 props["test_path"] = line.split(":", 1)[1].strip()
+            # Goal validation fields
+            elif line.startswith("goal_validate:"):
+                value = line.split(":", 1)[1].strip().lower()
+                props["goal_validate"] = value in ("true", "yes", "1")
+            elif line.startswith("goal_threshold:"):
+                try:
+                    props["goal_threshold"] = float(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+            elif line.startswith("daemon_url:"):
+                props["daemon_url"] = line.split(":", 1)[1].strip()
             # Worktree isolation fields
             elif line.startswith("worktree:"):
                 value = line.split(":", 1)[1].strip().lower()

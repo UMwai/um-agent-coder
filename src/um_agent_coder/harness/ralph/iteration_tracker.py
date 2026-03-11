@@ -23,6 +23,9 @@ class IterationRecord:
     # QA validation fields
     test_passed: Optional[bool] = None  # None if tests not run, bool otherwise
     test_summary: str = ""  # Brief test result summary
+    # Goal validation fields
+    goal_score: Optional[float] = None  # None if goal validation not run
+    goal_passed: Optional[bool] = None
 
     @property
     def duration(self) -> Optional[timedelta]:
@@ -42,6 +45,8 @@ class IterationRecord:
             "error": self.error,
             "test_passed": self.test_passed,
             "test_summary": self.test_summary,
+            "goal_score": self.goal_score,
+            "goal_passed": self.goal_passed,
         }
 
     @classmethod
@@ -56,6 +61,8 @@ class IterationRecord:
             error=data.get("error"),
             test_passed=data.get("test_passed"),
             test_summary=data.get("test_summary", ""),
+            goal_score=data.get("goal_score"),
+            goal_passed=data.get("goal_passed"),
         )
 
 

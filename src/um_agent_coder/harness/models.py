@@ -41,6 +41,10 @@ class RalphConfig:
     require_tests_passing: bool = False
     test_command: str = "pytest"
     test_path: str = "tests"
+    # Goal validation fields
+    require_goal_validation: bool = False
+    goal_threshold: float = 0.8
+    daemon_url: str = ""  # Cloud Run URL for goal validation
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -52,6 +56,9 @@ class RalphConfig:
             "require_tests_passing": self.require_tests_passing,
             "test_command": self.test_command,
             "test_path": self.test_path,
+            "require_goal_validation": self.require_goal_validation,
+            "goal_threshold": self.goal_threshold,
+            "daemon_url": self.daemon_url,
         }
 
     @classmethod
@@ -65,6 +72,9 @@ class RalphConfig:
             require_tests_passing=data.get("require_tests_passing", False),
             test_command=data.get("test_command", "pytest"),
             test_path=data.get("test_path", "tests"),
+            require_goal_validation=data.get("require_goal_validation", False),
+            goal_threshold=data.get("goal_threshold", 0.8),
+            daemon_url=data.get("daemon_url", ""),
         )
 
 
