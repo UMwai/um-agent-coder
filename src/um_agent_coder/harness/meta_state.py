@@ -63,8 +63,7 @@ class MetaStateManager:
     def _init_db(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
-            conn.executescript(
-                """
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS meta_state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     started_at TEXT NOT NULL,
@@ -130,8 +129,7 @@ class MetaStateManager:
                     ON coordination_events(event_type);
                 CREATE INDEX IF NOT EXISTS idx_worktrees_branch
                     ON worktrees(branch_name);
-                """
-            )
+                """)
 
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -412,12 +410,10 @@ class MetaStateManager:
             List of completed harness data dicts
         """
         with self._connection() as conn:
-            cursor = conn.execute(
-                """
+            cursor = conn.execute("""
                 SELECT * FROM sub_harnesses
                 WHERE status IN ('completed', 'failed', 'stopped')
-                """
-            )
+                """)
             return [dict(row) for row in cursor.fetchall()]
 
     def get_meta_state(self) -> Dict[str, Any]:

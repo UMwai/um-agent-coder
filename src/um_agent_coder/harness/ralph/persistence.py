@@ -52,8 +52,7 @@ class RalphPersistence:
     def _init_db(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
-            conn.executescript(
-                """
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS ralph_trackers (
                     task_id TEXT PRIMARY KEY,
                     max_iterations INTEGER NOT NULL,
@@ -83,8 +82,7 @@ class RalphPersistence:
                     ON ralph_iterations(task_id);
                 CREATE INDEX IF NOT EXISTS idx_trackers_completed
                     ON ralph_trackers(completed);
-            """
-            )
+            """)
 
     def _migrate_db(self) -> None:
         """Run database migrations for schema changes."""
@@ -276,8 +274,7 @@ class RalphPersistence:
             List of tracker summaries
         """
         with self._connection() as conn:
-            rows = conn.execute(
-                """
+            rows = conn.execute("""
                 SELECT
                     t.task_id,
                     t.max_iterations,
@@ -291,8 +288,7 @@ class RalphPersistence:
                 LEFT JOIN ralph_iterations i ON t.task_id = i.task_id
                 GROUP BY t.task_id
                 ORDER BY t.updated_at DESC
-            """
-            ).fetchall()
+            """).fetchall()
 
             return [
                 {
