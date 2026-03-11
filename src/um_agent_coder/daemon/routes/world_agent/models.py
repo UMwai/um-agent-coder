@@ -224,6 +224,9 @@ class CycleRecord(BaseModel):
     planned_tasks: List[Dict[str, Any]] = Field(
         default_factory=list, description="Tasks planned this cycle"
     )
+    act_results: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Results from task execution (act step)"
+    )
     event_ids: List[str] = Field(
         default_factory=list, description="IDs of events collected this cycle"
     )

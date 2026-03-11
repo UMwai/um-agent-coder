@@ -57,6 +57,7 @@ def _build_decide_prompt(
     goals: List[Goal],
     signals: List[Signal],
     repos: List[str],
+    learned_context: str = "",
 ) -> str:
     """Build the user prompt for the decision LLM."""
     goals_text = ""
@@ -74,12 +75,17 @@ def _build_decide_prompt(
 
     repos_text = ", ".join(repos)
 
-    return (
+    prompt = (
         f"## GOALS\n{goals_text}\n\n"
         f"## SIGNALS ({len(signals)})\n{signals_text}\n"
         f"## AVAILABLE REPOS\n{repos_text}\n\n"
-        f"Produce the task list JSON."
     )
+
+    if learned_context:
+        prompt += f"{learned_context}\n\n"
+
+    prompt += "Produce the task list JSON."
+    return prompt
 
 
 def _parse_decide_response(text: str) -> List[Dict[str, Any]]:
@@ -117,7 +123,17 @@ async def decide(
     settings = get_settings()
     model = settings.gemini_model_pro
 
-    user_prompt = _build_decide_prompt(goals, signals, repos)
+    # Fetch learned lessons from past experience
+    learned_context = ""
+    try:
+        from um_agent_coder.daemon.routes.world_agent._learner import get_decision_context
+
+        goal_ids = [g.id for g in goals]
+        learned_context = await get_decision_context(goal_ids=goal_ids)
+    except Exception as e:
+        logger.debug("Could not load decision lessons: %s", e)
+
+    user_prompt = _build_decide_prompt(goals, signals, repos, learned_context=learned_context)
 
     try:
         client = get_gemini_client()

@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Path, Query
 
 from um_agent_coder.daemon.routes.world_agent import _firestore as store
 from um_agent_coder.daemon.routes.world_agent import _goals as goal_store
+from um_agent_coder.daemon.routes.world_agent._act import act
 from um_agent_coder.daemon.routes.world_agent._collectors import GitHubEventsCollector
 from um_agent_coder.daemon.routes.world_agent._decide import decide
 from um_agent_coder.daemon.routes.world_agent._github_write import GitHubWriteClient
@@ -129,6 +130,123 @@ async def _append_cycle_to_journal(
         await store.save_journal_entry(entry.model_dump(mode="json"))
 
 
+async def _notify_slack_cycle(
+    cycle_id: str,
+    events_collected: int,
+    signals_generated: int,
+    tasks_created: int,
+    duration_ms: int,
+    summary: str = "",
+    signals: list | None = None,
+    planned_tasks: list | None = None,
+    act_results: list | None = None,
+    error: str | None = None,
+) -> None:
+    """Send a Slack webhook notification after a world agent cycle."""
+    settings = _get_settings()
+    webhook_url = settings.default_slack_webhook
+    if not webhook_url:
+        return
+
+    import httpx
+
+    # Build Slack blocks
+    if error:
+        color = "#dc3545"
+        status_emoji = ":x:"
+        status_text = f"*Cycle Failed*\n`{error[:200]}`"
+    elif signals_generated > 0 or tasks_created > 0:
+        color = "#28a745"
+        status_emoji = ":large_green_circle:"
+        status_text = f"*{events_collected}* events | *{signals_generated}* signals | *{tasks_created}* tasks"
+    else:
+        color = "#6c757d"
+        status_emoji = ":white_circle:"
+        status_text = f"*{events_collected}* events | no actionable signals"
+
+    fields = [
+        {"title": "Cycle", "value": f"`{cycle_id}`", "short": True},
+        {"title": "Duration", "value": f"{duration_ms}ms", "short": True},
+    ]
+
+    # Add signal details if any
+    if signals:
+        signal_lines = []
+        for s in signals[:5]:
+            urgency = getattr(s, "urgency", None)
+            urgency_val = urgency.value if urgency else "?"
+            goal = getattr(s, "goal_id", "")
+            interp = getattr(s, "interpretation", "")[:80]
+            signal_lines.append(f"• [{urgency_val}] {goal}: {interp}")
+        if signal_lines:
+            fields.append({
+                "title": f"Signals ({len(signals)})",
+                "value": "\n".join(signal_lines),
+                "short": False,
+            })
+
+    # Add planned tasks if any
+    if planned_tasks:
+        task_lines = []
+        for t in planned_tasks[:5]:
+            title = getattr(t, "title", str(t)[:60])
+            project = getattr(t, "project", "")
+            task_lines.append(f"• {project}: {title}")
+        if task_lines:
+            fields.append({
+                "title": f"Planned Tasks ({len(planned_tasks)})",
+                "value": "\n".join(task_lines),
+                "short": False,
+            })
+
+    # Add act results if any
+    if act_results:
+        act_lines = []
+        for r in act_results[:5]:
+            status = r.get("status", "?")
+            task_id = r.get("task_id", "?")
+            emoji = ":white_check_mark:" if status == "completed" else ":x:"
+            pr = r.get("pr", {})
+            pr_link = f" → <{pr['html_url']}|PR #{pr['pr_number']}>" if pr else ""
+            score = r.get("final_score")
+            score_text = f" (score: {score:.2f})" if score else ""
+            act_lines.append(f"{emoji} `{task_id}` {status}{score_text}{pr_link}")
+        if act_lines:
+            fields.append({
+                "title": f"Executed ({len(act_results)})",
+                "value": "\n".join(act_lines),
+                "short": False,
+            })
+
+    if summary:
+        fields.append({
+            "title": "Summary",
+            "value": summary[:500],
+            "short": False,
+        })
+
+    payload = {
+        "attachments": [
+            {
+                "color": color,
+                "fallback": f"{status_emoji} World Agent {cycle_id}: {events_collected} events, {signals_generated} signals, {tasks_created} tasks",
+                "pretext": f"{status_emoji} *World Agent Cycle Complete*",
+                "fields": fields,
+                "footer": "um-agent-daemon | world-agent",
+                "ts": int(datetime.now(timezone.utc).timestamp()),
+            }
+        ]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(webhook_url, json=payload)
+            if resp.status_code >= 300:
+                logger.warning("Slack webhook returned %d", resp.status_code)
+    except Exception as e:
+        logger.warning("Slack webhook failed: %s", e)
+
+
 # --- Cycle ---
 
 
@@ -186,7 +304,19 @@ async def run_cycle(request: CycleRequest):
             task_dicts = [t.model_dump(mode="json") for t in planned_tasks]
             await store.save_events(task_dicts)  # reuse events store for now
 
-        # 4. Update world state
+        # 4. Act: execute planned tasks via Gemini iterate engine
+        act_results = []
+        if planned_tasks:
+            try:
+                act_results = await act(planned_tasks, max_concurrent=2)
+                logger.info(
+                    "Cycle %s act: %d/%d tasks executed",
+                    cycle_id, len(act_results), len(planned_tasks),
+                )
+            except Exception as ae:
+                logger.error("Act step failed in cycle %s: %s", cycle_id, ae)
+
+        # 5. Update world state
         existing_state = await store.get_world_state()
         cycle_count = (existing_state or {}).get("cycle_count", 0) + 1
         total_events = (existing_state or {}).get("total_events_collected", 0) + len(all_events)
@@ -224,6 +354,7 @@ async def run_cycle(request: CycleRequest):
             summary=summary,
             signals=signals,
             planned_tasks=[t.model_dump(mode="json") for t in planned_tasks],
+            act_results=act_results,
             event_ids=[e.id for e in all_events],
             goal_ids_touched=goal_ids_touched,
         )
@@ -241,6 +372,22 @@ async def run_cycle(request: CycleRequest):
             )
         except Exception as je:
             logger.warning("Failed to update journal from cycle: %s", je)
+
+        # Slack notification
+        try:
+            await _notify_slack_cycle(
+                cycle_id=cycle_id,
+                events_collected=len(all_events),
+                signals_generated=len(signals),
+                tasks_created=tasks_created,
+                duration_ms=duration_ms,
+                summary=summary,
+                signals=signals,
+                planned_tasks=planned_tasks,
+                act_results=act_results,
+            )
+        except Exception as se:
+            logger.warning("Failed to send Slack notification: %s", se)
 
         return CycleResponse(
             cycle_id=cycle_id,
@@ -264,6 +411,19 @@ async def run_cycle(request: CycleRequest):
                 error=str(e),
             )
             await store.save_cycle_record(failed_record.model_dump(mode="json"))
+        except Exception:
+            pass
+
+        # Notify failure to Slack
+        try:
+            await _notify_slack_cycle(
+                cycle_id=cycle_id,
+                events_collected=0,
+                signals_generated=0,
+                tasks_created=0,
+                duration_ms=duration_ms,
+                error=str(e),
+            )
         except Exception:
             pass
 
@@ -538,3 +698,52 @@ async def list_journal(
     """List recent journal entries, newest first."""
     entries = await store.list_journal_entries(limit=limit)
     return [JournalEntry(**e) for e in entries]
+
+
+# --- Learning ---
+
+
+@router.post("/learn/reflect")
+async def run_reflection(
+    days: int = Query(default=7, ge=1, le=30),
+):
+    """Run a reflection cycle: analyze past journals and cycle history,
+    extract lessons about task planning, and store them in the KB.
+
+    Call weekly or on-demand to improve future decision quality.
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    from um_agent_coder.daemon.routes.world_agent._learner import reflect
+
+    try:
+        result = await reflect(days=days)
+        return result
+    except Exception as e:
+        logger.error("Reflection failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Reflection failed: {e}")
+
+
+@router.get("/learn/lessons")
+async def list_lessons(
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """List current decision-making lessons from the KB."""
+    from um_agent_coder.daemon.routes.kb import _store as kb_store
+
+    lessons, tokens = await kb_store.search_items("decide-lesson", limit=limit)
+    return {"lessons": lessons, "count": len(lessons), "search_tokens": tokens}
+
+
+@router.get("/learn/context")
+async def preview_decision_context(
+    goal_id: Optional[str] = Query(default=None),
+):
+    """Preview what learned context would be injected into the next decision cycle."""
+    from um_agent_coder.daemon.routes.world_agent._learner import get_decision_context
+
+    goal_ids = [goal_id] if goal_id else None
+    context = await get_decision_context(goal_ids=goal_ids)
+    return {"context": context, "has_lessons": bool(context)}

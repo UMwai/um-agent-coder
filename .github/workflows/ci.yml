@@ -100,3 +100,90 @@ jobs:
             --set-env-vars "^||^UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db||UM_DAEMON_GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}||UM_DAEMON_GEMINI_FIRESTORE_ENABLED=true||UM_DAEMON_WORLD_AGENT_ENABLED=true||UM_DAEMON_WORLD_AGENT_GITHUB_REPOS=UMwai/um-agent-coder,UMwai/um_ai-hedge-fund" \
             --update-secrets="/home/appuser/.gemini/oauth_creds.json=gemini-oauth-creds:latest" \
             --quiet
+
+      - name: Get Cloud Run service URL
+        id: service_url
+        run: |
+          URL=$(gcloud run services describe um-agent-daemon \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --region us-central1 \
+            --format 'value(status.url)')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Cloud Scheduler jobs
+        run: |
+          PROJECT=${{ secrets.GCP_PROJECT_ID }}
+          REGION=us-central1
+          BASE_URL=${{ steps.service_url.outputs.url }}
+
+          # --- World Agent heartbeat: every 15 minutes ---
+          gcloud scheduler jobs describe world-agent-heartbeat \
+            --project "$PROJECT" --location "$REGION" > /dev/null 2>&1 \
+          && gcloud scheduler jobs update http world-agent-heartbeat \
+            --project "$PROJECT" \
+            --location "$REGION" \
+            --schedule "*/15 * * * *" \
+            --uri "${BASE_URL}/api/world-agent/cycle" \
+            --http-method POST \
+            --headers "Content-Type=application/json" \
+            --message-body '{"source":"heartbeat"}' \
+            --attempt-deadline 300s \
+            --time-zone "UTC" \
+          || gcloud scheduler jobs create http world-agent-heartbeat \
+            --project "$PROJECT" \
+            --location "$REGION" \
+            --schedule "*/15 * * * *" \
+            --uri "${BASE_URL}/api/world-agent/cycle" \
+            --http-method POST \
+            --headers "Content-Type=application/json" \
+            --message-body '{"source":"heartbeat"}' \
+            --attempt-deadline 300s \
+            --time-zone "UTC"
+
+          # --- Daily journal generation: 23:45 UTC ---
+          gcloud scheduler jobs describe world-agent-daily-journal \
+            --project "$PROJECT" --location "$REGION" > /dev/null 2>&1 \
+          && gcloud scheduler jobs update http world-agent-daily-journal \
+            --project "$PROJECT" \
+            --location "$REGION" \
+            --schedule "45 23 * * *" \
+            --uri "${BASE_URL}/api/world-agent/journal/generate" \
+            --http-method POST \
+            --headers "Content-Type=application/json" \
+            --message-body '{}' \
+            --attempt-deadline 120s \
+            --time-zone "UTC" \
+          || gcloud scheduler jobs create http world-agent-daily-journal \
+            --project "$PROJECT" \
+            --location "$REGION" \
+            --schedule "45 23 * * *" \
+            --uri "${BASE_URL}/api/world-agent/journal/generate" \
+            --http-method POST \
+            --headers "Content-Type=application/json" \
+            --message-body '{}' \
+            --attempt-deadline 120s \
+            --time-zone "UTC"
+
+          # --- Weekly reflection (learning): Sundays 00:00 UTC ---
+          gcloud scheduler jobs describe world-agent-weekly-reflection \
+            --project "$PROJECT" --location "$REGION" > /dev/null 2>&1 \
+          && gcloud scheduler jobs update http world-agent-weekly-reflection \
+            --project "$PROJECT" \
+            --location "$REGION" \
+            --schedule "0 0 * * 0" \
+            --uri "${BASE_URL}/api/world-agent/learn/reflect?days=7" \
+            --http-method POST \
+            --headers "Content-Type=application/json" \
+            --message-body '{}' \
+            --attempt-deadline 300s \
+            --time-zone "UTC" \
+          || gcloud scheduler jobs create http world-agent-weekly-reflection \
+            --project "$PROJECT" \
+            --location "$REGION" \
+            --schedule "0 0 * * 0" \
+            --uri "${BASE_URL}/api/world-agent/learn/reflect?days=7" \
+            --http-method POST \
+            --headers "Content-Type=application/json" \
+            --message-body '{}' \
+            --attempt-deadline 300s \
+            --time-zone "UTC"
