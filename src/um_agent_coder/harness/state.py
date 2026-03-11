@@ -29,7 +29,8 @@ class StateManager:
     def _init_db(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
-            conn.executescript("""
+            conn.executescript(
+                """
                 CREATE TABLE IF NOT EXISTS harness_state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     roadmap_path TEXT NOT NULL,
@@ -84,7 +85,8 @@ class StateManager:
 
                 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
                 CREATE INDEX IF NOT EXISTS idx_execution_log_task ON execution_log(task_id);
-            """)
+            """
+            )
 
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -370,9 +372,11 @@ class StateManager:
         """Get harness statistics."""
         with self._connection() as conn:
             state = conn.execute("SELECT * FROM harness_state WHERE id = 1").fetchone()
-            task_counts = conn.execute("""
+            task_counts = conn.execute(
+                """
                 SELECT status, COUNT(*) as count FROM tasks GROUP BY status
-            """).fetchall()
+            """
+            ).fetchall()
             total_executions = conn.execute(
                 "SELECT COUNT(*) as count FROM execution_log"
             ).fetchone()

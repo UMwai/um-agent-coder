@@ -584,7 +584,9 @@ models:
                 model_name = task.get("name", "model")
                 sql = task.get("sql", "SELECT * FROM source_table")
 
-                models[f"models/{model_name}.sql"] = f"""
+                models[
+                    f"models/{model_name}.sql"
+                ] = f"""
 -- {model_name} model
 -- Generated on {datetime.now().isoformat()}
 

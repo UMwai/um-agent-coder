@@ -98,7 +98,8 @@ async def stats_partial():
     failed = t_failed + i_failed
     pending = t_pending
 
-    return HTMLResponse(f"""
+    return HTMLResponse(
+        f"""
     <div class="stat stat-pending">
       <div class="stat-value">{pending}</div>
       <div class="stat-label">Pending</div>
@@ -115,7 +116,8 @@ async def stats_partial():
       <div class="stat-value">{failed}</div>
       <div class="stat-label">Failed</div>
     </div>
-    """)
+    """
+    )
 
 
 @router.get("/partials/tasks", response_class=HTMLResponse)
@@ -138,7 +140,8 @@ async def tasks_partial(
             prompt_short += "..."
         created = _format_time(t.get("created_at", ""))
 
-        rows.append(f"""
+        rows.append(
+            f"""
         <tr>
           <td><code style="color:var(--accent)">{t['id']}</code></td>
           <td class="prompt-cell" title="{_escape(t['prompt'] or '')}">{_escape(prompt_short)}</td>
@@ -146,9 +149,11 @@ async def tasks_partial(
           <td class="source-cell">{t['source']}</td>
           <td class="time-cell">{created}</td>
         </tr>
-        """)
+        """
+        )
 
-    return HTMLResponse(f"""
+    return HTMLResponse(
+        f"""
     <table>
       <thead>
         <tr>
@@ -163,7 +168,8 @@ async def tasks_partial(
         {''.join(rows)}
       </tbody>
     </table>
-    """)
+    """
+    )
 
 
 @router.get("/partials/iterations", response_class=HTMLResponse)
@@ -202,9 +208,7 @@ async def iterations_partial(
                 if fs_it.get("id") not in sqlite_ids:
                     iterations.append(fs_it)
             # Re-sort by created_at descending
-            iterations.sort(
-                key=lambda x: x.get("created_at") or "", reverse=True
-            )
+            iterations.sort(key=lambda x: x.get("created_at") or "", reverse=True)
             iterations = iterations[:limit]
         except Exception as e:
             logger.warning("Failed to fetch Firestore iterations: %s", e)
@@ -271,7 +275,8 @@ async def iterations_partial(
         else:
             link = f'<a href="/ui/chat#iter={iter_id}" class="iter-link">View in Chat &rarr;</a>'
 
-        rows.append(f"""
+        rows.append(
+            f"""
         <tr>
           <td>{pulse}<span class="badge {badge_class}">{label}</span></td>
           <td class="prompt-cell" title="{_escape(prompt_raw)}">{prompt_short}</td>
@@ -280,9 +285,11 @@ async def iterations_partial(
           <td class="time-cell">{elapsed}</td>
           <td>{link}</td>
         </tr>
-        """)
+        """
+        )
 
-    return HTMLResponse(f"""
+    return HTMLResponse(
+        f"""
     <table>
       <thead>
         <tr>
@@ -298,7 +305,8 @@ async def iterations_partial(
         {''.join(rows)}
       </tbody>
     </table>
-    """)
+    """
+    )
 
 
 def _format_time(iso_str: str) -> str:

@@ -140,7 +140,9 @@ async def run_cycle(request: CycleRequest):
         raise HTTPException(status_code=503, detail="World agent is disabled")
 
     start = time.time()
-    cycle_id = f"cycle-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    cycle_id = (
+        f"cycle-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    )
 
     try:
         # 1. Observe: collect events
@@ -198,19 +200,19 @@ async def run_cycle(request: CycleRequest):
         await store.save_world_state(world_state.model_dump(mode="json"))
 
         # Save scheduler state
-        await store.save_scheduler_state({
-            "last_cycle_id": cycle_id,
-            "last_cycle_source": request.source.value,
-            "events_collected": len(all_events),
-            "signals_generated": len(signals),
-        })
+        await store.save_scheduler_state(
+            {
+                "last_cycle_id": cycle_id,
+                "last_cycle_source": request.source.value,
+                "events_collected": len(all_events),
+                "signals_generated": len(signals),
+            }
+        )
 
         duration_ms = int((time.time() - start) * 1000)
 
         # Persist full cycle record (append-only history)
-        goal_ids_touched = sorted({
-            s.goal_id for s in signals if s.goal_id
-        })
+        goal_ids_touched = sorted({s.goal_id for s in signals if s.goal_id})
         cycle_record = CycleRecord(
             cycle_id=cycle_id,
             timestamp=datetime.now(timezone.utc).isoformat(),

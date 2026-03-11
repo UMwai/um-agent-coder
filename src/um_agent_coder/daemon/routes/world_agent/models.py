@@ -53,9 +53,7 @@ class Event(BaseModel):
     source: str = Field(..., description="Collector source_id, e.g. 'dev.github_events'")
     timestamp: datetime = Field(..., description="When the event occurred")
     category: EventCategory = Field(..., description="Event category")
-    severity: EventSeverity = Field(
-        default=EventSeverity.info, description="Event severity level"
-    )
+    severity: EventSeverity = Field(default=EventSeverity.info, description="Event severity level")
     title: str = Field(..., description="Human-readable summary")
     body: str = Field(default="", description="Full event data")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Source-specific metadata")
@@ -76,8 +74,12 @@ class GoalProject(BaseModel):
 
 
 class GoalSchedule(BaseModel):
-    active_hours: Optional[str] = Field(default=None, description="Active hours, e.g. '09:00-16:30 ET'")
-    frequency_active: str = Field(default="15min", description="Cycle frequency during active hours")
+    active_hours: Optional[str] = Field(
+        default=None, description="Active hours, e.g. '09:00-16:30 ET'"
+    )
+    frequency_active: str = Field(
+        default="15min", description="Cycle frequency during active hours"
+    )
     frequency_idle: str = Field(default="1h", description="Cycle frequency during idle hours")
 
 
@@ -90,7 +92,9 @@ class Goal(BaseModel):
     constraints: List[str] = Field(default_factory=list, description="Hard constraints")
     kpis: List[KPI] = Field(default_factory=list, description="Key performance indicators")
     projects: List[GoalProject] = Field(default_factory=list, description="Related projects")
-    event_sources: List[str] = Field(default_factory=list, description="Event source IDs to monitor")
+    event_sources: List[str] = Field(
+        default_factory=list, description="Event source IDs to monitor"
+    )
     schedule: Optional[GoalSchedule] = Field(default=None, description="Scheduling preferences")
     created_at: Optional[str] = Field(default=None)
     updated_at: Optional[str] = Field(default=None)
@@ -99,7 +103,9 @@ class Goal(BaseModel):
 class Signal(BaseModel):
     event_id: str = Field(..., description="Source event ID")
     goal_id: str = Field(default="", description="Related goal ID")
-    relevance_score: float = Field(default=0.0, ge=0.0, le=1.0, description="LLM-assessed relevance")
+    relevance_score: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="LLM-assessed relevance"
+    )
     interpretation: str = Field(default="", description="What this means for the goal")
     suggested_action: str = Field(default="", description="Suggested next action")
     urgency: SignalUrgency = Field(default=SignalUrgency.backlog)
@@ -189,7 +195,9 @@ class CreatePRRequest(BaseModel):
     body: str = Field(default="", description="PR description")
     head_branch: str = Field(..., description="Source branch")
     base_branch: str = Field(default="main", description="Target branch")
-    files: List[FileChange] = Field(default_factory=list, description="Files to push before opening PR")
+    files: List[FileChange] = Field(
+        default_factory=list, description="Files to push before opening PR"
+    )
 
 
 class PostCommentRequest(BaseModel):
@@ -234,7 +242,9 @@ class JournalEntry(BaseModel):
     events_collected: int = Field(default=0, description="Total events collected")
     signals_generated: int = Field(default=0, description="Total signals generated")
     tasks_created: int = Field(default=0, description="Tasks planned/created")
-    goals_progressed: List[str] = Field(default_factory=list, description="Goal IDs that saw progress")
+    goals_progressed: List[str] = Field(
+        default_factory=list, description="Goal IDs that saw progress"
+    )
     key_decisions: List[str] = Field(default_factory=list, description="Notable decisions made")
     errors: List[str] = Field(default_factory=list, description="Errors encountered")
     highlights: List[str] = Field(default_factory=list, description="Key accomplishments")
@@ -243,7 +253,9 @@ class JournalEntry(BaseModel):
 
 
 class JournalGenerateRequest(BaseModel):
-    date: Optional[str] = Field(default=None, description="Date to generate journal for (default: today)")
+    date: Optional[str] = Field(
+        default=None, description="Date to generate journal for (default: today)"
+    )
 
 
 class JournalResponse(BaseModel):

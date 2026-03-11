@@ -259,9 +259,7 @@ async def generate_goal_checklist(
     if req.kpis:
         prompt_parts.append("\n## KPIs\n" + "\n".join(f"- {k}" for k in req.kpis))
     if req.constraints:
-        prompt_parts.append(
-            "\n## CONSTRAINTS\n" + "\n".join(f"- {c}" for c in req.constraints)
-        )
+        prompt_parts.append("\n## CONSTRAINTS\n" + "\n".join(f"- {c}" for c in req.constraints))
     prompt_parts.append("\nGenerate the evaluation checklist.")
 
     user_prompt = "\n".join(prompt_parts)

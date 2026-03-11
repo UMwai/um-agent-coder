@@ -48,9 +48,7 @@ class GitHubWriteClient:
             r.raise_for_status()
             return r.json()
 
-    async def get_file(
-        self, repo: str, path: str, branch: str = "main"
-    ) -> Dict[str, Any]:
+    async def get_file(self, repo: str, path: str, branch: str = "main") -> Dict[str, Any]:
         """Get file content and metadata from a repo."""
         async with self._client() as c:
             r = await c.get(

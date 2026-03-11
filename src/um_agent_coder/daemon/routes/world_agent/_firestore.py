@@ -128,9 +128,12 @@ async def save_events(events: List[Dict[str, Any]]) -> int:
         batch = client.batch()
         for event in events:
             date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            doc_ref = client.collection(EVENTS_COLLECTION).document(date_str).collection(
-                "items"
-            ).document(event["id"])
+            doc_ref = (
+                client.collection(EVENTS_COLLECTION)
+                .document(date_str)
+                .collection("items")
+                .document(event["id"])
+            )
             batch.set(doc_ref, event)
             saved += 1
         await batch.commit()
@@ -292,7 +295,9 @@ async def list_cycle_records(
         return []
 
 
-async def get_cycle_record(cycle_id: str, date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
+async def get_cycle_record(
+    cycle_id: str, date_str: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """Get a single cycle record by ID."""
     client = _get_client()
     if not client:

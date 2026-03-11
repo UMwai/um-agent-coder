@@ -226,13 +226,9 @@ class RalphExecutor:
                         )
                         detection.found = False
 
-                        ralph_prompt = self._build_goal_failure_prompt(
-                            task, context, goal_result
-                        )
+                        ralph_prompt = self._build_goal_failure_prompt(task, context, goal_result)
                     else:
-                        logger.info(
-                            "Goal validation passed: score=%.2f", goal_result.score
-                        )
+                        logger.info("Goal validation passed: score=%.2f", goal_result.score)
 
                 # End iteration tracking with test info
                 tracker.end_iteration(

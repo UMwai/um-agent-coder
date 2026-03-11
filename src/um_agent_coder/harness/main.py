@@ -430,9 +430,7 @@ class Harness:
                 success_criteria=task.success_criteria,
             )
             if criteria:
-                logger.info(
-                    f"Goal decomposed into {len(criteria)} validation criteria"
-                )
+                logger.info(f"Goal decomposed into {len(criteria)} validation criteria")
             else:
                 logger.warning("Goal decomposition returned no criteria, disabling goal validation")
                 goal_validator = None

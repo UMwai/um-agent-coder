@@ -55,11 +55,7 @@ class GoalValidationResult:
 
     @property
     def breaking_failures(self) -> List[CriterionResult]:
-        return [
-            r
-            for r in self.criteria_results
-            if r.status == "fail" and r.severity == "breaking"
-        ]
+        return [r for r in self.criteria_results if r.status == "fail" and r.severity == "breaking"]
 
 
 class GoalValidator:
@@ -305,12 +301,12 @@ class GoalValidator:
         if len(self._progress_history) < 2:
             return {
                 "trend": "unknown",
-                "best_score": self._progress_history[-1]["score"]
-                if self._progress_history
-                else 0.0,
-                "current_score": self._progress_history[-1]["score"]
-                if self._progress_history
-                else 0.0,
+                "best_score": (
+                    self._progress_history[-1]["score"] if self._progress_history else 0.0
+                ),
+                "current_score": (
+                    self._progress_history[-1]["score"] if self._progress_history else 0.0
+                ),
             }
 
         recent = self._progress_history[-window:]

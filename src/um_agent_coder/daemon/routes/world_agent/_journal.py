@@ -53,10 +53,7 @@ async def _gather_day_data(date_str: str) -> Dict[str, Any]:
         "cycles": cycles,
         "cycle_stats": cycle_stats,
         "events": events,
-        "goals": [
-            {"id": g.id, "name": g.name, "status": g.status.value}
-            for g in goals
-        ],
+        "goals": [{"id": g.id, "name": g.name, "status": g.status.value} for g in goals],
     }
 
 
@@ -95,9 +92,7 @@ def _build_signals_section(cycles: List[Dict[str, Any]]) -> str:
             goal = s.get("goal_id", "")
             urgency = s.get("urgency", "")
             if interp or action:
-                all_signals.append(
-                    f"- [{urgency}] goal={goal}: {interp}. Action: {action}"
-                )
+                all_signals.append(f"- [{urgency}] goal={goal}: {interp}. Action: {action}")
 
     if not all_signals:
         return "(no signals)"
@@ -146,8 +141,7 @@ async def _synthesize_via_llm(day_data: Dict[str, Any]) -> Dict[str, Any]:
         stats = day_data.get("cycle_stats", {})
 
         goals_text = "\n".join(
-            f"- {g['id']}: {g['name']} ({g['status']})"
-            for g in day_data.get("goals", [])
+            f"- {g['id']}: {g['name']} ({g['status']})" for g in day_data.get("goals", [])
         )
 
         # Collect errors from failed cycles

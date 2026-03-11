@@ -78,7 +78,10 @@ class LocalRepoCollector(EventCollector):
         try:
             result = subprocess.run(
                 ["git", "status", "--porcelain"],
-                cwd=path, capture_output=True, text=True, timeout=10,
+                cwd=path,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
             if not lines:
@@ -91,17 +94,23 @@ class LocalRepoCollector(EventCollector):
             body = f"Modified: {len(modified)}, Untracked: {len(untracked)}, Staged: {len(staged)}"
             severity = EventSeverity.notable if len(lines) > 10 else EventSeverity.info
 
-            return [Event(
-                id=f"local-{uuid.uuid4().hex[:8]}",
-                source=self.source_id(),
-                timestamp=now,
-                category=EventCategory.dev,
-                severity=severity,
-                title=f"{name}: {len(lines)} uncommitted changes",
-                body=body + "\n" + "\n".join(lines[:20]),
-                metadata={"repo": name, "scan_type": "git_status",
-                          "modified": len(modified), "untracked": len(untracked)},
-            )]
+            return [
+                Event(
+                    id=f"local-{uuid.uuid4().hex[:8]}",
+                    source=self.source_id(),
+                    timestamp=now,
+                    category=EventCategory.dev,
+                    severity=severity,
+                    title=f"{name}: {len(lines)} uncommitted changes",
+                    body=body + "\n" + "\n".join(lines[:20]),
+                    metadata={
+                        "repo": name,
+                        "scan_type": "git_status",
+                        "modified": len(modified),
+                        "untracked": len(untracked),
+                    },
+                )
+            ]
         except Exception as e:
             logger.debug("git status failed for %s: %s", name, e)
             return []
@@ -109,24 +118,36 @@ class LocalRepoCollector(EventCollector):
     def _scan_todos(self, name: str, path: str, now: datetime) -> List[Event]:
         try:
             result = subprocess.run(
-                ["grep", "-rn", "--include=*.py", "--include=*.rs",
-                 "-E", r"TODO|FIXME|HACK|XXX", "."],
-                cwd=path, capture_output=True, text=True, timeout=15,
+                [
+                    "grep",
+                    "-rn",
+                    "--include=*.py",
+                    "--include=*.rs",
+                    "-E",
+                    r"TODO|FIXME|HACK|XXX",
+                    ".",
+                ],
+                cwd=path,
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
             if len(lines) < 5:
                 return []
 
-            return [Event(
-                id=f"local-{uuid.uuid4().hex[:8]}",
-                source=self.source_id(),
-                timestamp=now,
-                category=EventCategory.dev,
-                severity=EventSeverity.info,
-                title=f"{name}: {len(lines)} TODO/FIXME markers found",
-                body="\n".join(lines[:30]),
-                metadata={"repo": name, "scan_type": "todo_density", "count": len(lines)},
-            )]
+            return [
+                Event(
+                    id=f"local-{uuid.uuid4().hex[:8]}",
+                    source=self.source_id(),
+                    timestamp=now,
+                    category=EventCategory.dev,
+                    severity=EventSeverity.info,
+                    title=f"{name}: {len(lines)} TODO/FIXME markers found",
+                    body="\n".join(lines[:30]),
+                    metadata={"repo": name, "scan_type": "todo_density", "count": len(lines)},
+                )
+            ]
         except Exception as e:
             logger.debug("TODO scan failed for %s: %s", name, e)
             return []
@@ -151,21 +172,25 @@ class LocalRepoCollector(EventCollector):
                 if total > 0:
                     pct = (checked / total) * 100
                     severity = EventSeverity.notable if pct < 30 else EventSeverity.info
-                    events.append(Event(
-                        id=f"local-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.dev,
-                        severity=severity,
-                        title=f"{name}: roadmap {checked}/{total} tasks done ({pct:.0f}%)",
-                        body=f"Specs directory has {len(spec_files)} spec files. "
-                             f"Roadmap: {checked} complete, {unchecked} remaining.",
-                        metadata={
-                            "repo": name, "scan_type": "spec_gaps",
-                            "roadmap_done": checked, "roadmap_total": total,
-                            "spec_files": len(spec_files),
-                        },
-                    ))
+                    events.append(
+                        Event(
+                            id=f"local-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.dev,
+                            severity=severity,
+                            title=f"{name}: roadmap {checked}/{total} tasks done ({pct:.0f}%)",
+                            body=f"Specs directory has {len(spec_files)} spec files. "
+                            f"Roadmap: {checked} complete, {unchecked} remaining.",
+                            metadata={
+                                "repo": name,
+                                "scan_type": "spec_gaps",
+                                "roadmap_done": checked,
+                                "roadmap_total": total,
+                                "spec_files": len(spec_files),
+                            },
+                        )
+                    )
             except Exception:
                 pass
 
@@ -175,31 +200,38 @@ class LocalRepoCollector(EventCollector):
         try:
             result = subprocess.run(
                 ["git", "log", "--oneline", "-10", "--since=7 days ago"],
-                cwd=path, capture_output=True, text=True, timeout=10,
+                cwd=path,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
             if not lines:
-                return [Event(
+                return [
+                    Event(
+                        id=f"local-{uuid.uuid4().hex[:8]}",
+                        source=self.source_id(),
+                        timestamp=now,
+                        category=EventCategory.dev,
+                        severity=EventSeverity.notable,
+                        title=f"{name}: no commits in 7 days — stale repo",
+                        body="No recent git activity detected.",
+                        metadata={"repo": name, "scan_type": "recent_commits", "count": 0},
+                    )
+                ]
+
+            return [
+                Event(
                     id=f"local-{uuid.uuid4().hex[:8]}",
                     source=self.source_id(),
                     timestamp=now,
                     category=EventCategory.dev,
-                    severity=EventSeverity.notable,
-                    title=f"{name}: no commits in 7 days — stale repo",
-                    body="No recent git activity detected.",
-                    metadata={"repo": name, "scan_type": "recent_commits", "count": 0},
-                )]
-
-            return [Event(
-                id=f"local-{uuid.uuid4().hex[:8]}",
-                source=self.source_id(),
-                timestamp=now,
-                category=EventCategory.dev,
-                severity=EventSeverity.info,
-                title=f"{name}: {len(lines)} commits in last 7 days",
-                body="\n".join(lines),
-                metadata={"repo": name, "scan_type": "recent_commits", "count": len(lines)},
-            )]
+                    severity=EventSeverity.info,
+                    title=f"{name}: {len(lines)} commits in last 7 days",
+                    body="\n".join(lines),
+                    metadata={"repo": name, "scan_type": "recent_commits", "count": len(lines)},
+                )
+            ]
         except Exception as e:
             logger.debug("git log failed for %s: %s", name, e)
             return []
