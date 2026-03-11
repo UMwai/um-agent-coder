@@ -126,6 +126,7 @@ class DaemonSettings(BaseSettings):
     # World Agent
     world_agent_enabled: bool = False
     world_agent_github_repos: str = ""  # Comma-separated "owner/repo"
+    world_agent_local_repos: str = ""  # Comma-separated "name=/path" pairs
     world_agent_relevance_threshold: float = 0.3
     world_agent_goals_path: str = "goals/"
     world_agent_orientation_model: str = ""  # Empty = use gemini_model_flash

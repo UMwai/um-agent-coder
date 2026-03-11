@@ -15,14 +15,20 @@ from um_agent_coder.daemon.routes.world_agent import _goals as goal_store
 from um_agent_coder.daemon.routes.world_agent._collectors import GitHubEventsCollector
 from um_agent_coder.daemon.routes.world_agent._decide import decide
 from um_agent_coder.daemon.routes.world_agent._github_write import GitHubWriteClient
+from um_agent_coder.daemon.routes.world_agent._journal import generate_journal
+from um_agent_coder.daemon.routes.world_agent._local_repo_collector import LocalRepoCollector
 from um_agent_coder.daemon.routes.world_agent._orient import orient
 from um_agent_coder.daemon.routes.world_agent.models import (
     CreateBranchRequest,
     CreatePRRequest,
+    CycleRecord,
     CycleRequest,
     CycleResponse,
     Goal,
     GoalCreateRequest,
+    JournalEntry,
+    JournalGenerateRequest,
+    JournalResponse,
     PostCommentRequest,
     StatusResponse,
     WorldState,
@@ -50,6 +56,23 @@ def _build_github_collector() -> Optional[GitHubEventsCollector]:
     return GitHubEventsCollector(repos=repos, token=settings.github_token)
 
 
+def _build_local_collector() -> Optional[LocalRepoCollector]:
+    """Build local repo collector from settings."""
+    settings = _get_settings()
+    local_str = settings.world_agent_local_repos
+    if not local_str:
+        return None
+    repos = {}
+    for pair in local_str.split(","):
+        pair = pair.strip()
+        if "=" in pair:
+            name, path = pair.split("=", 1)
+            repos[name.strip()] = path.strip()
+    if not repos:
+        return None
+    return LocalRepoCollector(repos=repos)
+
+
 def _allowed_repos() -> list[str]:
     """Return the allowlist of repos from settings."""
     settings = _get_settings()
@@ -75,6 +98,37 @@ def _build_write_client() -> GitHubWriteClient:
     return GitHubWriteClient(token=settings.github_token)
 
 
+# --- Helpers ---
+
+
+async def _append_cycle_to_journal(
+    events_collected: int,
+    signals_generated: int,
+    tasks_created: int,
+) -> None:
+    """Increment today's journal counters after each cycle (no LLM call)."""
+    from um_agent_coder.daemon.routes.world_agent.models import JournalEntry
+
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    existing = await store.get_journal_entry(date_str)
+
+    if existing:
+        existing["cycles_run"] = existing.get("cycles_run", 0) + 1
+        existing["events_collected"] = existing.get("events_collected", 0) + events_collected
+        existing["signals_generated"] = existing.get("signals_generated", 0) + signals_generated
+        existing["tasks_created"] = existing.get("tasks_created", 0) + tasks_created
+        await store.save_journal_entry(existing)
+    else:
+        entry = JournalEntry(
+            date=date_str,
+            cycles_run=1,
+            events_collected=events_collected,
+            signals_generated=signals_generated,
+            tasks_created=tasks_created,
+        )
+        await store.save_journal_entry(entry.model_dump(mode="json"))
+
+
 # --- Cycle ---
 
 
@@ -95,6 +149,11 @@ async def run_cycle(request: CycleRequest):
         if gh_collector:
             gh_events = await gh_collector.collect()
             all_events.extend(gh_events)
+
+        local_collector = _build_local_collector()
+        if local_collector:
+            local_events = await local_collector.collect()
+            all_events.extend(local_events)
 
         # Cap events per batch
         max_events = settings.world_agent_max_events_per_batch
@@ -147,6 +206,40 @@ async def run_cycle(request: CycleRequest):
         })
 
         duration_ms = int((time.time() - start) * 1000)
+
+        # Persist full cycle record (append-only history)
+        goal_ids_touched = sorted({
+            s.goal_id for s in signals if s.goal_id
+        })
+        cycle_record = CycleRecord(
+            cycle_id=cycle_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            source=request.source.value,
+            events_collected=len(all_events),
+            signals_generated=len(signals),
+            tasks_created=tasks_created,
+            duration_ms=duration_ms,
+            summary=summary,
+            signals=signals,
+            planned_tasks=[t.model_dump(mode="json") for t in planned_tasks],
+            event_ids=[e.id for e in all_events],
+            goal_ids_touched=goal_ids_touched,
+        )
+        try:
+            await store.save_cycle_record(cycle_record.model_dump(mode="json"))
+        except Exception as ce:
+            logger.warning("Failed to save cycle record: %s", ce)
+
+        # Append cycle stats to today's journal (lightweight, no LLM)
+        try:
+            await _append_cycle_to_journal(
+                events_collected=len(all_events),
+                signals_generated=len(signals),
+                tasks_created=tasks_created,
+            )
+        except Exception as je:
+            logger.warning("Failed to update journal from cycle: %s", je)
+
         return CycleResponse(
             cycle_id=cycle_id,
             events_collected=len(all_events),
@@ -158,6 +251,20 @@ async def run_cycle(request: CycleRequest):
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
         logger.error("Cycle %s failed: %s", cycle_id, e)
+
+        # Save failed cycle record too
+        try:
+            failed_record = CycleRecord(
+                cycle_id=cycle_id,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                source=request.source.value,
+                duration_ms=duration_ms,
+                error=str(e),
+            )
+            await store.save_cycle_record(failed_record.model_dump(mode="json"))
+        except Exception:
+            pass
+
         return CycleResponse(
             cycle_id=cycle_id,
             duration_ms=duration_ms,
@@ -241,6 +348,40 @@ async def list_events(
     """Query collected events."""
     events = await store.list_events(since=since, source=source, limit=limit)
     return {"events": events, "count": len(events)}
+
+
+# --- Cycle History ---
+
+
+@router.get("/cycles")
+async def list_cycles(
+    date: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    """List cycle records for a date (default: today), newest first."""
+    records = await store.list_cycle_records(date_str=date, limit=limit)
+    return {"cycles": records, "count": len(records), "date": date}
+
+
+@router.get("/cycles/stats")
+async def get_cycles_stats(
+    date: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+):
+    """Get aggregate stats for all cycles on a given date."""
+    stats = await store.get_cycle_stats(date_str=date)
+    return stats
+
+
+@router.get("/cycles/{cycle_id}")
+async def get_cycle(
+    cycle_id: str,
+    date: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+):
+    """Get a single cycle record by ID."""
+    record = await store.get_cycle_record(cycle_id, date_str=date)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Cycle '{cycle_id}' not found")
+    return record
 
 
 # --- GitHub Write Endpoints ---
@@ -355,3 +496,43 @@ async def get_checks(owner: str, repo: str, ref: str):
         }
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
+
+
+# --- Journal ---
+
+
+@router.post("/journal/generate", response_model=JournalResponse)
+async def generate_journal_entry(request: JournalGenerateRequest):
+    """Generate a daily journal entry from the day's events and cycles.
+
+    Synthesizes events, signals, and world state into a narrative summary
+    via LLM, then persists to Firestore. Can be called manually or on a schedule.
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    try:
+        entry = await generate_journal(date_str=request.date)
+        return JournalResponse(entry=entry, generated=True)
+    except Exception as e:
+        logger.error("Failed to generate journal: %s", e)
+        raise HTTPException(status_code=500, detail=f"Journal generation failed: {e}")
+
+
+@router.get("/journal/{date}", response_model=JournalResponse)
+async def get_journal(date: str = Path(..., pattern=r"^\d{4}-\d{2}-\d{2}$")):
+    """Get a journal entry for a specific date."""
+    entry_data = await store.get_journal_entry(date)
+    if not entry_data:
+        raise HTTPException(status_code=404, detail=f"No journal entry for {date}")
+    return JournalResponse(entry=JournalEntry(**entry_data), generated=False)
+
+
+@router.get("/journal", response_model=list[JournalEntry])
+async def list_journal(
+    limit: int = Query(default=30, ge=1, le=365),
+):
+    """List recent journal entries, newest first."""
+    entries = await store.list_journal_entries(limit=limit)
+    return [JournalEntry(**e) for e in entries]

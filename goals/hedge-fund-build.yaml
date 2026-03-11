@@ -1,0 +1,47 @@
+goal:
+  id: "hedge-fund-build"
+  name: "Continuously Build UM AI Hedge Fund"
+  description: |
+    Autonomously develop and improve the um_ai-hedge-fund project.
+    Monitor GitHub activity, scan the local repo for gaps between specs and
+    implementation, and generate tasks to close them. Priorities:
+    1. Get equity options strategy backtesting to pass performance targets
+    2. Wire command center orchestrator to live strategy adapters
+    3. Build portfolio risk engine with circuit breakers
+    4. Implement crypto-arb funding rate harvester
+    5. Connect to adjacent repos (um-trading-assistance, ev_trading_platform)
+       for proven components instead of rewriting.
+    Target: 25-40% annual return, Sharpe >2.0, 100%+ SPY outperformance.
+  priority: 1
+  status: active
+  constraints:
+    - "All changes must pass CI / tests before merge"
+    - "Never commit secrets or API keys"
+    - "Follow existing architecture from specs/ARCHITECTURE.md"
+    - "Reuse proven code from adjacent repos before building new"
+    - "Risk-first: implement circuit breakers before live trading"
+  kpis:
+    - metric: "backtest_sharpe"
+      target: "> 2.0"
+      current: "not yet measured"
+    - metric: "backtest_annual_return"
+      target: "> 25%"
+      current: "not yet measured"
+    - metric: "test_coverage"
+      target: "> 80%"
+      current: "~30%"
+    - metric: "strategies_operational"
+      target: "2 (equity_options + crypto_arb)"
+      current: "0 (code exists, not wired)"
+  projects:
+    - repo: "UMwai/um_ai-hedge-fund"
+      role: "Target project — hedge fund platform"
+    - repo: "UMwai/um-agent-coder"
+      role: "Build harness — orchestrates development"
+  event_sources:
+    - "dev.github_events"
+    - "dev.local_repo_scan"
+  schedule:
+    active_hours: "06:00-23:00 CT"
+    frequency_active: "15min"
+    frequency_idle: "2h"

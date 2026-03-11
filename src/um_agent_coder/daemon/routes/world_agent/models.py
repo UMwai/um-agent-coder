@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
 # --- Enums ---
 
 
@@ -196,3 +195,57 @@ class CreatePRRequest(BaseModel):
 class PostCommentRequest(BaseModel):
     issue_number: int = Field(..., ge=1, description="Issue or PR number")
     body: str = Field(..., min_length=1, description="Comment body")
+
+
+# --- Cycle History Models ---
+
+
+class CycleRecord(BaseModel):
+    """Append-only record of a single OODA cycle run."""
+
+    cycle_id: str = Field(..., description="Unique cycle ID")
+    timestamp: str = Field(..., description="ISO timestamp when cycle started")
+    source: str = Field(default="manual", description="What triggered: heartbeat/manual/self")
+    events_collected: int = Field(default=0)
+    signals_generated: int = Field(default=0)
+    tasks_created: int = Field(default=0)
+    duration_ms: int = Field(default=0)
+    error: Optional[str] = Field(default=None, description="Error message if cycle failed")
+    summary: str = Field(default="", description="Orient summary from this cycle")
+    signals: List[Signal] = Field(default_factory=list, description="Signals produced this cycle")
+    planned_tasks: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Tasks planned this cycle"
+    )
+    event_ids: List[str] = Field(
+        default_factory=list, description="IDs of events collected this cycle"
+    )
+    goal_ids_touched: List[str] = Field(
+        default_factory=list, description="Goal IDs referenced by signals"
+    )
+
+
+# --- Journal Models ---
+
+
+class JournalEntry(BaseModel):
+    date: str = Field(..., description="ISO date string (YYYY-MM-DD)")
+    summary: str = Field(default="", description="LLM-generated narrative of the day's work")
+    cycles_run: int = Field(default=0, description="Number of OODA cycles run")
+    events_collected: int = Field(default=0, description="Total events collected")
+    signals_generated: int = Field(default=0, description="Total signals generated")
+    tasks_created: int = Field(default=0, description="Tasks planned/created")
+    goals_progressed: List[str] = Field(default_factory=list, description="Goal IDs that saw progress")
+    key_decisions: List[str] = Field(default_factory=list, description="Notable decisions made")
+    errors: List[str] = Field(default_factory=list, description="Errors encountered")
+    highlights: List[str] = Field(default_factory=list, description="Key accomplishments")
+    created_at: Optional[str] = Field(default=None)
+    updated_at: Optional[str] = Field(default=None)
+
+
+class JournalGenerateRequest(BaseModel):
+    date: Optional[str] = Field(default=None, description="Date to generate journal for (default: today)")
+
+
+class JournalResponse(BaseModel):
+    entry: JournalEntry
+    generated: bool = Field(default=False, description="Whether this was freshly generated")

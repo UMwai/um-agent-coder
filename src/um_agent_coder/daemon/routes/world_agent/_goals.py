@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import yaml
 
 from um_agent_coder.daemon.routes.world_agent import _firestore as store
-from um_agent_coder.daemon.routes.world_agent.models import Goal, GoalStatus
+from um_agent_coder.daemon.routes.world_agent.models import Goal
 
 logger = logging.getLogger(__name__)
 
