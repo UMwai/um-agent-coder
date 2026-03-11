@@ -1,0 +1,1743 @@
+{
+  "id": "gi-6a096cb9eda3",
+  "status": "threshold_met",
+  "original_prompt": "Build a smart budget alert and notification system for the um-cfo personal finance platform. The system should proactively monitor the user's financial state and send timely, actionable alerts through multiple channels.\n\n### Core Capabilities:\n\n1. **Budget Threshold Alerts** \u2014 Monitor spending against budgets and trigger alerts when approaching or exceeding thresholds. Use the existing `alert_threshold` field on the Budget model.\n\n2. **Bill Due Date Reminders** \u2014 Use the existing RecurringBill model's `alert_days_before` field to send reminders before bills are due. Handle different bill frequencies correctly.\n\n3. **Anomaly Detection** \u2014 Detect unusual spending patterns: large single transactions (>2x average for that category), sudden spending spikes (week-over-week), and new recurring charges.\n\n4. **Cash Flow Warnings** \u2014 Integrate with the existing CashFlowEngine to warn when projected balances will go negative within the next 14 days.\n\n5. **AI-Powered Insights** \u2014 Use the Anthropic API to generate a weekly digest with personalized financial insights and recommendations. Store these as Recommendation entries.\n\n6. **Multi-Channel Delivery** \u2014 Use the existing Notification model and NotificationChannel enum to log all sent notifications. Implement actual delivery for at least Telegram (via bot API) and Dashboard (via in-app storage).\n\n### Technical Requirements:\n- All code must be async Python using SQLAlchemy 2.0 patterns\n- Use the project's existing models, database patterns, and config \u2014 do NOT reinvent infrastructure\n- The alert engine should be runnable as a background task (asyncio task or periodic scheduler)\n- Include a FastAPI router for managing alert preferences and viewing alert history\n- Frontend: a React page for viewing alerts and configuring notification preferences\n- No TODOs, no stubs, no placeholders \u2014 fully working implementations\n- All files must include proper error handling and logging\n\n### What to Deliver:\nDesign the file structure yourself. Think about separation of concerns: monitoring logic, alert rules, notification dispatch, API layer, and frontend. The system should be production-ready, not a prototype.",
+  "best_score": 0.9606711915535445,
+  "best_iteration": 3,
+  "total_iterations": 3,
+  "total_tokens": 54062,
+  "duration_ms": 685576,
+  "config": {
+    "model": "pro-3.1",
+    "eval_models": null,
+    "max_iterations": 10,
+    "score_threshold": 0.95,
+    "temperature": 0.7,
+    "max_tokens": 65536,
+    "enable_enhancement": true,
+    "use_multi_turn": true,
+    "domain_hint": "code"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "generation_model": "gemini-3.1-pro-preview",
+      "generation_duration_ms": 138161,
+      "generation_tokens": 16357,
+      "evaluation": {
+        "score": 0.59375,
+        "accuracy": 0.59375,
+        "completeness": 0.0,
+        "clarity": 0.0,
+        "actionability": 0.0,
+        "fulfillment": 0.0,
+        "issues": [
+          "[ACCURACY:FOREIGN] Uses existing RecommendationType enum values for AI insights and anomalies.: Uses RecommendationType.BUDGET_ADVICE which does not exist in the provided enum (should be BUDGET_ADJUSTMENT or GENERAL_INSIGHT).",
+          "[ACCURACY:FOREIGN] Imports apiClient from './client' in the React frontend for API requests.: Uses a default import (import apiClient from './client') instead of the required named import (import { apiClient } from './client').",
+          "[ACCURACY:BREAKING] Calls CashFlowEngine functions with the correct signatures and arguments.: Incorrectly treats CashFlowEngine as a class and calls project_bills() and aggregate_daily_forecast() without the required arguments (bills, start_date, end_date, etc.).",
+          "[ACCURACY:BREAKING] Uses correct fields for the Notification model.: Invents 'user_id' and 'message' fields for the Notification model instead of using the actual fields like 'subject' and 'body'.",
+          "[ACCURACY:BREAKING] Does not invent a 'user_id' field on models.: Queries and assigns a non-existent 'user_id' field on Transaction, Budget, RecurringBill, Recommendation, and Notification models.",
+          "[ACCURACY:BREAKING] Uses the correct async_session import for background tasks.: Imports 'async_session_maker' from 'src.database' instead of using 'async_session' from 'src.db.engine' as specified in the reference.",
+          "[ACCURACY:BREAKING] Provides all required fields when creating Recommendation entries.: Omits the required 'title' field when creating Recommendation objects."
+        ],
+        "retry_count": 0,
+        "accuracy_passed": false,
+        "parse_failed": false,
+        "accuracy_checks": [
+          {
+            "check": "Uses Depends(get_db) from src.api.deps for database sessions in FastAPI routes.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Correctly uses Depends(get_db) for the db session in the FastAPI router."
+          },
+          {
+            "check": "Uses SQLAlchemy 2.0 async patterns (e.g., await db.execute(select(...))) for database queries.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Properly uses SQLAlchemy 2.0 async execution patterns throughout the code."
+          },
+          {
+            "check": "Calls CashFlowEngine functions (project_bills, aggregate_daily_forecast) synchronously without await.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Calls the functions synchronously as requested (though with incorrect signatures, which is addressed in a separate check)."
+          },
+          {
+            "check": "Formats or queries the Budget month field strictly as a 'YYYY-MM' string.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Correctly formats the current month as '%Y-%m' and queries the Budget model with it."
+          },
+          {
+            "check": "Uses settings.anthropic_api_key and settings.ai_model from src.config for Anthropic API calls.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Correctly imports and uses the Anthropic settings from src.config."
+          },
+          {
+            "check": "Uses settings.telegram_bot_token and settings.telegram_chat_id from src.config for Telegram notifications.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Correctly uses the Telegram settings from src.config."
+          },
+          {
+            "check": "Logs notifications using the existing Notification model and NotificationChannel enum without creating new tables.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Uses the existing Notification model and enum without defining new tables (though field usage is incorrect)."
+          },
+          {
+            "check": "Uses existing RecommendationType enum values for AI insights and anomalies.",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "Uses RecommendationType.BUDGET_ADVICE which does not exist in the provided enum (should be BUDGET_ADJUSTMENT or GENERAL_INSIGHT)."
+          },
+          {
+            "check": "Assigns lower numerical values to the priority field for higher priority recommendations.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Correctly assigns priority values 1, 2, 3, and 4."
+          },
+          {
+            "check": "Imports apiClient from './client' in the React frontend for API requests.",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "Uses a default import (import apiClient from './client') instead of the required named import (import { apiClient } from './client')."
+          },
+          {
+            "check": "Uses model_config = {'from_attributes': True} in Pydantic response schemas.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Correctly uses ConfigDict(from_attributes=True) in the response schemas."
+          },
+          {
+            "check": "Calls CashFlowEngine functions with the correct signatures and arguments.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "Incorrectly treats CashFlowEngine as a class and calls project_bills() and aggregate_daily_forecast() without the required arguments (bills, start_date, end_date, etc.)."
+          },
+          {
+            "check": "Uses correct fields for the Notification model.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "Invents 'user_id' and 'message' fields for the Notification model instead of using the actual fields like 'subject' and 'body'."
+          },
+          {
+            "check": "Does not invent a 'user_id' field on models.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "Queries and assigns a non-existent 'user_id' field on Transaction, Budget, RecurringBill, Recommendation, and Notification models."
+          },
+          {
+            "check": "Uses the correct async_session import for background tasks.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "Imports 'async_session_maker' from 'src.database' instead of using 'async_session' from 'src.db.engine' as specified in the reference."
+          },
+          {
+            "check": "Provides all required fields when creating Recommendation entries.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "Omits the required 'title' field when creating Recommendation objects."
+          }
+        ],
+        "fulfillment_checks": [],
+        "completeness_checks": [],
+        "clarity_checks": [],
+        "actionability_checks": [],
+        "pre_gen_checks": [
+          {
+            "dimension": "accuracy",
+            "check": "Uses Depends(get_db) from src.api.deps for database sessions in FastAPI routes.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses SQLAlchemy 2.0 async patterns (e.g., await db.execute(select(...))) for database queries.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Calls CashFlowEngine functions (project_bills, aggregate_daily_forecast) synchronously without await.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Formats or queries the Budget month field strictly as a 'YYYY-MM' string.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses settings.anthropic_api_key and settings.ai_model from src.config for Anthropic API calls.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses settings.telegram_bot_token and settings.telegram_chat_id from src.config for Telegram notifications.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Logs notifications using the existing Notification model and NotificationChannel enum without creating new tables.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses existing RecommendationType enum values for AI insights and anomalies.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Assigns lower numerical values to the priority field for higher priority recommendations.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Imports apiClient from './client' in the React frontend for API requests.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses model_config = {'from_attributes': True} in Pydantic response schemas.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements logic to trigger alerts when spending approaches or exceeds Budget.budgeted_amount * Budget.alert_threshold.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements logic to trigger reminders based on RecurringBill.next_due_date and alert_days_before.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects single transactions that are greater than 2x the average for their category.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects sudden week-over-week spending spikes.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects new recurring charges.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Warns when projected balances from CashFlowEngine go negative within the next 14 days.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Generates a weekly financial digest using the Anthropic API.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Stores the generated AI insights as Recommendation database entries.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements actual notification delivery to Telegram via the Telegram Bot API.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements actual notification delivery to the Dashboard via in-app storage.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the alert engine as a runnable async background task or periodic scheduler.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a FastAPI router for managing alert preferences.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a FastAPI router for viewing alert history.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a React page for viewing alerts and configuring notification preferences.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Contains no TODOs, stubs, or placeholders in the implementation.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes try/except blocks and error logging within the background alert engine.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes error handling for the Telegram API integration.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes error handling for the Anthropic API integration.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Defines Pydantic schemas for alert preferences (Create, Update, Response).",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Uses @tanstack/react-query for fetching alerts and preferences in the frontend.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Uses Tailwind CSS utility classes for styling the frontend components.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Connects the background task to the database to actively read transactions, budgets, and bills.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Handles different bill frequencies correctly when evaluating recurring bill reminders.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          }
+        ]
+      },
+      "eval_models_used": [
+        "gemini-3.1-pro-preview"
+      ],
+      "strategies_applied": [
+        "accuracy_checklist_fix",
+        "completeness_fix",
+        "clarity_fix",
+        "actionability_fix",
+        "fulfillment_fix"
+      ],
+      "finish_reason": "STOP",
+      "extracted_files": null,
+      "response_chars": 19141,
+      "prompt_sent_chars": 7452
+    },
+    {
+      "step": 2,
+      "generation_model": "gemini-3.1-pro-preview",
+      "generation_duration_ms": 97773,
+      "generation_tokens": 14234,
+      "evaluation": {
+        "score": 0.7907828282828283,
+        "accuracy": 0.9166666666666666,
+        "completeness": 0.5909090909090909,
+        "clarity": 0.5,
+        "actionability": 0.85,
+        "fulfillment": 0.8055555555555556,
+        "issues": [
+          "[ACCURACY:BREAKING] Implements all three anomaly detection rules: large single transactions, week-over-week spending spikes, and new recurring charges.: The check_anomalies function only implements the large single transaction check. It completely omits logic for week-over-week spending spikes and new recurring charges.",
+          "[COMPLETENESS:FOREIGN] Defines Pydantic schemas for alert preferences (Create, Update, Response).: Defines Update and Response schemas, but is missing the Create schema.",
+          "[COMPLETENESS:FOREIGN] Handles different bill frequencies correctly when evaluating recurring bill reminders.: The code only checks the next_due_date and completely ignores the bill frequency.",
+          "[COMPLETENESS:BREAKING] Implements anomaly detection for week-over-week spending spikes and new recurring charges.: The anomaly detection only checks for large single transactions, missing the week-over-week spikes and new recurring charges required by the prompt.",
+          "[COMPLETENESS:BREAKING] Stores alert preferences persistently in the database instead of using an in-memory stub.: Uses an in-memory dictionary `_PREFERENCES` to store preferences, violating the requirement for no stubs and production-ready code.",
+          "[COMPLETENESS:BREAKING] Implements deduplication or state tracking to prevent sending duplicate alerts.: The background task runs every 12 hours but does not track previously sent alerts, meaning it will spam the user with duplicate alerts for the same bill or budget threshold.",
+          "[ACTIONABILITY:FOREIGN] Dependencies and setup: The response fails to mention required dependencies like `httpx` for Python and `@tanstack/react-query` for the frontend.",
+          "[FULFILLMENT:FOREIGN] Detects sudden week-over-week spending spikes.: There is no logic implemented in check_anomalies or elsewhere to detect week-over-week spending spikes.",
+          "[FULFILLMENT:FOREIGN] Detects new recurring charges.: There is no logic implemented to detect new recurring charges.",
+          "[FULFILLMENT:BREAKING] Notification engine respects user alert preferences before dispatching alerts.: The notification engine does not read or respect the preferences (which are stored in an isolated in-memory dictionary in the API router) before sending notifications.",
+          "[FULFILLMENT:STYLE] Alert preferences are persisted to a database or persistent storage, suitable for production.: Preferences are stored in a global in-memory dictionary `_PREFERENCES`, which resets on server restart and is not production-ready.",
+          "[FULFILLMENT:STYLE] React frontend handles loading states for API queries.: The React component does not use the `isLoading` state from `useQuery`, potentially rendering empty states or causing issues before data is fetched."
+        ],
+        "retry_count": 0,
+        "accuracy_passed": true,
+        "parse_failed": true,
+        "accuracy_checks": [
+          {
+            "check": "Uses Depends(get_db) from src.api.deps for database sessions in FastAPI routes.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The get_alert_history route correctly uses Depends(get_db)."
+          },
+          {
+            "check": "Uses SQLAlchemy 2.0 async patterns (e.g., await db.execute(select(...))) for database queries.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "All database queries use await db.execute(select(...))."
+          },
+          {
+            "check": "Calls CashFlowEngine functions (project_bills, aggregate_daily_forecast) synchronously without await.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "project_bills and aggregate_daily_forecast are called synchronously."
+          },
+          {
+            "check": "Formats or queries the Budget month field strictly as a 'YYYY-MM' string.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The current_month is formatted as '%Y-%m' and used to query the Budget model."
+          },
+          {
+            "check": "Uses settings.anthropic_api_key and settings.ai_model from src.config for Anthropic API calls.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The Anthropic API call correctly uses settings.anthropic_api_key and settings.ai_model."
+          },
+          {
+            "check": "Uses settings.telegram_bot_token and settings.telegram_chat_id from src.config for Telegram notifications.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Telegram notifications correctly use the settings from src.config."
+          },
+          {
+            "check": "Logs notifications using the existing Notification model and NotificationChannel enum without creating new tables.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Notifications are logged using the Notification model and NotificationChannel enum."
+          },
+          {
+            "check": "Uses existing RecommendationType enum values for AI insights and anomalies.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "RecommendationType.CASHFLOW_WARNING and RecommendationType.GENERAL_INSIGHT are used."
+          },
+          {
+            "check": "Assigns lower numerical values to the priority field for higher priority recommendations.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Priority 1 is assigned to cashflow warnings and 2 to general insights."
+          },
+          {
+            "check": "Imports apiClient from './client' in the React frontend for API requests.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The React component imports apiClient from './client'."
+          },
+          {
+            "check": "Uses model_config = {'from_attributes': True} in Pydantic response schemas.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "ConfigDict(from_attributes=True) is used, which is the Pydantic V2 equivalent."
+          },
+          {
+            "check": "Implements all three anomaly detection rules: large single transactions, week-over-week spending spikes, and new recurring charges.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The check_anomalies function only implements the large single transaction check. It completely omits logic for week-over-week spending spikes and new recurring charges."
+          }
+        ],
+        "fulfillment_checks": [
+          {
+            "check": "Implements logic to trigger alerts when spending approaches or exceeds Budget.budgeted_amount * Budget.alert_threshold.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Correctly calculates the threshold and triggers an alert if spent amount is greater than or equal to it."
+          },
+          {
+            "check": "Implements logic to trigger reminders based on RecurringBill.next_due_date and alert_days_before.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Correctly calculates days until due and checks if it falls within the alert_days_before window."
+          },
+          {
+            "check": "Detects single transactions that are greater than 2x the average for their category.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Calculates the average for the category over the last 30 days and flags recent transactions exceeding 2x that average."
+          },
+          {
+            "check": "Detects sudden week-over-week spending spikes.",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "There is no logic implemented in check_anomalies or elsewhere to detect week-over-week spending spikes."
+          },
+          {
+            "check": "Detects new recurring charges.",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "There is no logic implemented to detect new recurring charges."
+          },
+          {
+            "check": "Warns when projected balances from CashFlowEngine go negative within the next 14 days.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Projects bills and aggregates daily forecast, triggering a warning if the running balance drops below zero."
+          },
+          {
+            "check": "Generates a weekly financial digest using the Anthropic API.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Successfully integrates with the Anthropic API to generate a financial insight based on recent transactions."
+          },
+          {
+            "check": "Stores the generated AI insights as Recommendation database entries.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Saves the Anthropic API response as a Recommendation entry with the correct type and status."
+          },
+          {
+            "check": "Implements actual notification delivery to Telegram via the Telegram Bot API.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Uses httpx to send a message to the Telegram Bot API."
+          },
+          {
+            "check": "Implements actual notification delivery to the Dashboard via in-app storage.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Saves notifications to the database using the Notification model."
+          },
+          {
+            "check": "Implements the alert engine as a runnable async background task or periodic scheduler.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Provides an asyncio background task (alert_engine_task) that runs checks periodically."
+          },
+          {
+            "check": "Includes a FastAPI router for managing alert preferences.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Includes GET and PUT endpoints for alert preferences."
+          },
+          {
+            "check": "Includes a FastAPI router for viewing alert history.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Includes a GET endpoint to fetch recent notifications."
+          },
+          {
+            "check": "Includes a React page for viewing alerts and configuring notification preferences.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Provides a React component using React Query to manage preferences and display alert history."
+          },
+          {
+            "check": "Contains no TODOs, stubs, or placeholders in the implementation.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The implementation is complete without TODOs or stubs."
+          },
+          {
+            "check": "Notification engine respects user alert preferences before dispatching alerts.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The notification engine does not read or respect the preferences (which are stored in an isolated in-memory dictionary in the API router) before sending notifications."
+          },
+          {
+            "check": "Alert preferences are persisted to a database or persistent storage, suitable for production.",
+            "status": "fail",
+            "severity": "style",
+            "detail": "Preferences are stored in a global in-memory dictionary `_PREFERENCES`, which resets on server restart and is not production-ready."
+          },
+          {
+            "check": "React frontend handles loading states for API queries.",
+            "status": "fail",
+            "severity": "style",
+            "detail": "The React component does not use the `isLoading` state from `useQuery`, potentially rendering empty states or causing issues before data is fetched."
+          }
+        ],
+        "completeness_checks": [
+          {
+            "check": "Includes try/except blocks and error logging within the background alert engine.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The background task and analyzer functions include try/except blocks with logging."
+          },
+          {
+            "check": "Includes error handling for the Telegram API integration.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The Telegram API call is wrapped in a try/except block that logs the error and sets sent_ok to False."
+          },
+          {
+            "check": "Includes error handling for the Anthropic API integration.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The Anthropic API call is wrapped in a try/except block that logs the error."
+          },
+          {
+            "check": "Defines Pydantic schemas for alert preferences (Create, Update, Response).",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "Defines Update and Response schemas, but is missing the Create schema."
+          },
+          {
+            "check": "Uses @tanstack/react-query for fetching alerts and preferences in the frontend.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The frontend uses useQuery and useMutation from @tanstack/react-query."
+          },
+          {
+            "check": "Uses Tailwind CSS utility classes for styling the frontend components.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The React component uses Tailwind CSS classes for styling."
+          },
+          {
+            "check": "Connects the background task to the database to actively read transactions, budgets, and bills.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The background task creates an async_session and passes it to the analyzer to query the database."
+          },
+          {
+            "check": "Handles different bill frequencies correctly when evaluating recurring bill reminders.",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "The code only checks the next_due_date and completely ignores the bill frequency."
+          },
+          {
+            "check": "Implements anomaly detection for week-over-week spending spikes and new recurring charges.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The anomaly detection only checks for large single transactions, missing the week-over-week spikes and new recurring charges required by the prompt."
+          },
+          {
+            "check": "Stores alert preferences persistently in the database instead of using an in-memory stub.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "Uses an in-memory dictionary `_PREFERENCES` to store preferences, violating the requirement for no stubs and production-ready code."
+          },
+          {
+            "check": "Implements deduplication or state tracking to prevent sending duplicate alerts.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The background task runs every 12 hours but does not track previously sent alerts, meaning it will spam the user with duplicate alerts for the same bill or budget threshold."
+          }
+        ],
+        "clarity_checks": [],
+        "actionability_checks": [
+          {
+            "check": "Stubs and TODOs",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "No stubs, placeholders, or TODOs were found in the code."
+          },
+          {
+            "check": "Import statements",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "All necessary imports are present for the provided code."
+          },
+          {
+            "check": "Configuration values",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Configuration values use the settings object rather than hardcoded dummy keys."
+          },
+          {
+            "check": "File paths",
+            "status": "pass",
+            "severity": "style",
+            "detail": "All code blocks are clearly labeled with their intended file paths."
+          },
+          {
+            "check": "Dependencies and setup",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "The response fails to mention required dependencies like `httpx` for Python and `@tanstack/react-query` for the frontend."
+          }
+        ],
+        "pre_gen_checks": [
+          {
+            "dimension": "accuracy",
+            "check": "Uses Depends(get_db) from src.api.deps for database sessions in FastAPI routes.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses SQLAlchemy 2.0 async patterns (e.g., await db.execute(select(...))) for database queries.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Calls CashFlowEngine functions (project_bills, aggregate_daily_forecast) synchronously without await.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Formats or queries the Budget month field strictly as a 'YYYY-MM' string.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses settings.anthropic_api_key and settings.ai_model from src.config for Anthropic API calls.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses settings.telegram_bot_token and settings.telegram_chat_id from src.config for Telegram notifications.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Logs notifications using the existing Notification model and NotificationChannel enum without creating new tables.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses existing RecommendationType enum values for AI insights and anomalies.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Assigns lower numerical values to the priority field for higher priority recommendations.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Imports apiClient from './client' in the React frontend for API requests.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses model_config = {'from_attributes': True} in Pydantic response schemas.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements logic to trigger alerts when spending approaches or exceeds Budget.budgeted_amount * Budget.alert_threshold.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements logic to trigger reminders based on RecurringBill.next_due_date and alert_days_before.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects single transactions that are greater than 2x the average for their category.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects sudden week-over-week spending spikes.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects new recurring charges.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Warns when projected balances from CashFlowEngine go negative within the next 14 days.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Generates a weekly financial digest using the Anthropic API.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Stores the generated AI insights as Recommendation database entries.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements actual notification delivery to Telegram via the Telegram Bot API.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements actual notification delivery to the Dashboard via in-app storage.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the alert engine as a runnable async background task or periodic scheduler.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a FastAPI router for managing alert preferences.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a FastAPI router for viewing alert history.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a React page for viewing alerts and configuring notification preferences.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Contains no TODOs, stubs, or placeholders in the implementation.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes try/except blocks and error logging within the background alert engine.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes error handling for the Telegram API integration.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes error handling for the Anthropic API integration.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Defines Pydantic schemas for alert preferences (Create, Update, Response).",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Uses @tanstack/react-query for fetching alerts and preferences in the frontend.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Uses Tailwind CSS utility classes for styling the frontend components.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Connects the background task to the database to actively read transactions, budgets, and bills.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Handles different bill frequencies correctly when evaluating recurring bill reminders.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          }
+        ]
+      },
+      "eval_models_used": [
+        "gemini-3.1-pro-preview"
+      ],
+      "strategies_applied": [
+        "completeness_checklist_fix",
+        "clarity_fix"
+      ],
+      "finish_reason": "STOP",
+      "extracted_files": null,
+      "response_chars": 16011,
+      "prompt_sent_chars": 19817
+    },
+    {
+      "step": 3,
+      "generation_model": "gemini-3.1-pro-preview",
+      "generation_duration_ms": 135204,
+      "generation_tokens": 16299,
+      "evaluation": {
+        "score": 0.9606711915535445,
+        "accuracy": 1.0,
+        "completeness": 0.9038461538461539,
+        "clarity": 0.9583333333333334,
+        "actionability": 1.0,
+        "fulfillment": 0.9411764705882353,
+        "issues": [
+          "[COMPLETENESS:STYLE] Avoids N+1 queries when checking budget thresholds and anomaly detection.: The analyzer executes a separate sum/avg query for each budget and each recent transaction inside a loop, causing N+1 query performance issues.",
+          "[COMPLETENESS:FOREIGN] Wires the background task to run on application startup.: The run_alert_engine task is defined but never scheduled or attached to the FastAPI app's lifespan events, meaning it will not run automatically.",
+          "[CLARITY:STYLE] Are function/class docstrings present for public APIs?: While some functions have docstrings, major public functions in the analyzer (e.g., check_budget_thresholds, check_anomalies) and API router endpoints lack docstrings.",
+          "[FULFILLMENT:STYLE] Avoids N+1 queries when calculating historical averages for anomaly detection.: The anomaly detection loops over recent transactions and executes a separate AVG query for each category, causing an N+1 query issue.",
+          "[FULFILLMENT:STYLE] Correctly propagates exceptions to the database dependency generator in the background task.: Manually stepping through the `get_db` generator with `anext` without using `athrow` on exceptions prevents the generator's context manager from detecting errors, potentially bypassing rollback logic."
+        ],
+        "retry_count": 0,
+        "accuracy_passed": true,
+        "parse_failed": false,
+        "accuracy_checks": [
+          {
+            "check": "Uses Depends(get_db) from src.api.deps for database sessions in FastAPI routes.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The FastAPI router correctly uses Depends(get_db) for injecting the database session."
+          },
+          {
+            "check": "Uses SQLAlchemy 2.0 async patterns (e.g., await db.execute(select(...))) for database queries.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "All database queries use SQLAlchemy 2.0 async patterns like await db.execute(select(...))."
+          },
+          {
+            "check": "Calls CashFlowEngine functions (project_bills, aggregate_daily_forecast) synchronously without await.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The CashFlowEngine functions are correctly called synchronously without await."
+          },
+          {
+            "check": "Formats or queries the Budget month field strictly as a 'YYYY-MM' string.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The budget month is correctly formatted and queried as a 'YYYY-MM' string."
+          },
+          {
+            "check": "Uses settings.anthropic_api_key and settings.ai_model from src.config for Anthropic API calls.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The Anthropic API call correctly uses settings.anthropic_api_key and settings.ai_model."
+          },
+          {
+            "check": "Uses settings.telegram_bot_token and settings.telegram_chat_id from src.config for Telegram notifications.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The Telegram notification dispatch correctly uses settings.telegram_bot_token and settings.telegram_chat_id."
+          },
+          {
+            "check": "Logs notifications using the existing Notification model and NotificationChannel enum without creating new tables.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Notifications are logged using the existing Notification model and NotificationChannel enum."
+          },
+          {
+            "check": "Uses existing RecommendationType enum values for AI insights and anomalies.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The code correctly uses RecommendationType.GENERAL_INSIGHT and RecommendationType.CASHFLOW_WARNING."
+          },
+          {
+            "check": "Assigns lower numerical values to the priority field for higher priority recommendations.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The priority field is correctly assigned lower numerical values for higher priority recommendations (e.g., priority=1 for Cash Flow Warning)."
+          },
+          {
+            "check": "Imports apiClient from './client' in the React frontend for API requests.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The React frontend correctly imports apiClient from './client'."
+          },
+          {
+            "check": "Uses model_config = {'from_attributes': True} in Pydantic response schemas.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The Pydantic response schemas correctly use ConfigDict(from_attributes=True)."
+          },
+          {
+            "check": "Models MUST inherit from project's BaseModel, NOT SQLAlchemy's DeclarativeBase directly.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The AlertPreference model correctly inherits from BaseModel."
+          },
+          {
+            "check": "Router prefix: no API version prefix.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The FastAPI router correctly uses prefix='/alerts' without an API version prefix."
+          },
+          {
+            "check": "The alert engine should be runnable as a background task (asyncio task or periodic scheduler).",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The alert engine is implemented as an asyncio background task with a while True loop and sleep."
+          },
+          {
+            "check": "All files must include proper error handling and logging.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The code includes proper error handling and logging using the logging module and try/except blocks."
+          },
+          {
+            "check": "No TODOs, no stubs, no placeholders \u2014 fully working implementations.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The implementation is fully working without any TODOs, stubs, or placeholders."
+          }
+        ],
+        "fulfillment_checks": [
+          {
+            "check": "Implements logic to trigger alerts when spending approaches or exceeds Budget.budgeted_amount * Budget.alert_threshold.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Correctly calculates the limit using budgeted_amount * alert_threshold and dispatches an alert if spent >= limit."
+          },
+          {
+            "check": "Implements logic to trigger reminders based on RecurringBill.next_due_date and alert_days_before.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Advances the due date based on frequency and correctly checks if the days until due is within the alert_days_before threshold."
+          },
+          {
+            "check": "Detects single transactions that are greater than 2x the average for their category.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Queries the historical average for the transaction's category and alerts if the amount is > 2x the average."
+          },
+          {
+            "check": "Detects sudden week-over-week spending spikes.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Compares the sum of expenses from the last 7 days to the previous 7 days and alerts if there is a >1.5x spike."
+          },
+          {
+            "check": "Detects new recurring charges.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Groups recent non-recurring transactions by merchant and checks for repeated charges approximately 30 days apart with similar amounts."
+          },
+          {
+            "check": "Warns when projected balances from CashFlowEngine go negative within the next 14 days.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Integrates with CashFlowEngine to project balances and dispatches an alert and recommendation if the running balance drops below zero."
+          },
+          {
+            "check": "Generates a weekly financial digest using the Anthropic API.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Successfully formats recent transactions and calls the Anthropic Messages API to generate an insight."
+          },
+          {
+            "check": "Stores the generated AI insights as Recommendation database entries.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Saves the Anthropic API response as a Recommendation entry in the database."
+          },
+          {
+            "check": "Implements actual notification delivery to Telegram via the Telegram Bot API.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Makes an HTTP POST request to the Telegram Bot API to deliver the notification."
+          },
+          {
+            "check": "Implements actual notification delivery to the Dashboard via in-app storage.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Saves the notification to the database, which serves as the dashboard delivery mechanism."
+          },
+          {
+            "check": "Implements the alert engine as a runnable async background task or periodic scheduler.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Provides an infinite loop background task `run_alert_engine` with a 12-hour sleep interval."
+          },
+          {
+            "check": "Includes a FastAPI router for managing alert preferences.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Includes GET and PUT endpoints for retrieving and updating alert preferences."
+          },
+          {
+            "check": "Includes a FastAPI router for viewing alert history.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Includes a GET endpoint that fetches recent notifications from the database."
+          },
+          {
+            "check": "Includes a React page for viewing alerts and configuring notification preferences.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Provides a complete React component using React Query to manage preferences and display alert history."
+          },
+          {
+            "check": "Contains no TODOs, stubs, or placeholders in the implementation.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The implementation is complete and production-ready without placeholders."
+          },
+          {
+            "check": "Avoids N+1 queries when calculating historical averages for anomaly detection.",
+            "status": "fail",
+            "severity": "style",
+            "detail": "The anomaly detection loops over recent transactions and executes a separate AVG query for each category, causing an N+1 query issue."
+          },
+          {
+            "check": "Correctly propagates exceptions to the database dependency generator in the background task.",
+            "status": "fail",
+            "severity": "style",
+            "detail": "Manually stepping through the `get_db` generator with `anext` without using `athrow` on exceptions prevents the generator's context manager from detecting errors, potentially bypassing rollback logic."
+          }
+        ],
+        "completeness_checks": [
+          {
+            "check": "Includes try/except blocks and error logging within the background alert engine.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The run_alert_engine task includes a try/except block that catches and logs critical errors."
+          },
+          {
+            "check": "Includes error handling for the Telegram API integration.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The Telegram API call is wrapped in a try/except block that sets sent_ok to False and logs the error on failure."
+          },
+          {
+            "check": "Includes error handling for the Anthropic API integration.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The Anthropic API call is wrapped in a try/except block that logs the error if the generation fails."
+          },
+          {
+            "check": "Defines Pydantic schemas for alert preferences (Create, Update, Response).",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "AlertPreferenceCreate, AlertPreferenceUpdate, and AlertPreferenceResponse schemas are properly defined."
+          },
+          {
+            "check": "Uses @tanstack/react-query for fetching alerts and preferences in the frontend.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The frontend uses useQuery and useMutation from @tanstack/react-query to manage API state."
+          },
+          {
+            "check": "Uses Tailwind CSS utility classes for styling the frontend components.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Tailwind CSS classes are used extensively for styling the React components."
+          },
+          {
+            "check": "Connects the background task to the database to actively read transactions, budgets, and bills.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The background task correctly instantiates a database session using the get_db dependency generator and passes it to the analyzer functions."
+          },
+          {
+            "check": "Handles different bill frequencies correctly when evaluating recurring bill reminders.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The advance_due_date helper correctly advances past due dates based on WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, SEMIANNUAL, and ANNUAL frequencies."
+          },
+          {
+            "check": "Avoids N+1 queries when checking budget thresholds and anomaly detection.",
+            "status": "fail",
+            "severity": "style",
+            "detail": "The analyzer executes a separate sum/avg query for each budget and each recent transaction inside a loop, causing N+1 query performance issues."
+          },
+          {
+            "check": "Wires the background task to run on application startup.",
+            "status": "fail",
+            "severity": "foreign",
+            "detail": "The run_alert_engine task is defined but never scheduled or attached to the FastAPI app's lifespan events, meaning it will not run automatically."
+          },
+          {
+            "check": "Frontend correctly handles loading and error states for the alerts history and preferences.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The frontend uses isLoading from useQuery to show loading skeletons and handles empty states gracefully."
+          },
+          {
+            "check": "AI prompt includes sufficient context (transactions) to generate meaningful financial insights.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The prompt includes a summary of the last 7 days of transactions with dates, merchants, and amounts."
+          },
+          {
+            "check": "Correctly integrates with CashFlowEngine to project balances and detect negative cash flow.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The analyzer correctly calls project_bills and aggregate_daily_forecast and checks for running balances dropping below zero."
+          }
+        ],
+        "clarity_checks": [
+          {
+            "check": "Are code blocks clearly delimited with file paths?",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "All code blocks are clearly introduced with bolded file paths."
+          },
+          {
+            "check": "Are sections logically ordered (models before usage, base before derived)?",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The response follows a logical progression from database models to core engines, API routes, and finally the frontend."
+          },
+          {
+            "check": "Is there a clear overview/summary before diving into code?",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "A comprehensive overview explaining the approach, design decisions, and dependencies is provided at the beginning."
+          },
+          {
+            "check": "Are related pieces grouped together?",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Code is well-grouped into logical sections (Models, Core Engines, API, Frontend)."
+          },
+          {
+            "check": "Are variable/function names descriptive and consistent?",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Variables and functions use clear, descriptive, and consistent naming conventions."
+          },
+          {
+            "check": "Are complex logic blocks commented or explained?",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Complex logic, such as anomaly detection rules and deduplication steps, are clearly numbered and commented."
+          },
+          {
+            "check": "Is indentation and formatting consistent?",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Code formatting and indentation are clean and consistent across all files."
+          },
+          {
+            "check": "Are magic numbers or strings explained?",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Magic numbers are explained via inline comments (e.g., `# 12 hours` for 43200, `# Check if approx 1 month apart` for 25-35 days)."
+          },
+          {
+            "check": "Are function/class docstrings present for public APIs?",
+            "status": "fail",
+            "severity": "style",
+            "detail": "While some functions have docstrings, major public functions in the analyzer (e.g., check_budget_thresholds, check_anomalies) and API router endpoints lack docstrings."
+          },
+          {
+            "check": "Are non-obvious design decisions explained?",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Design decisions like the deduplication key strategy and handling of sync/async boundaries are explicitly explained in the overview."
+          },
+          {
+            "check": "Are usage examples provided when helpful?",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The background task implementation serves as a clear usage example of how the analyzer functions are orchestrated."
+          },
+          {
+            "check": "Is terminology consistent throughout?",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Terminology aligns well with the prompt and remains consistent across the backend and frontend code."
+          }
+        ],
+        "actionability_checks": [
+          {
+            "check": "Stubs and TODOs",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "No stubs, pass statements, or TODOs found; all logic is fully implemented."
+          },
+          {
+            "check": "Imports",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "All necessary imports for SQLAlchemy, FastAPI, React, and standard libraries are present."
+          },
+          {
+            "check": "Configuration Values",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Uses settings object for API keys and configuration instead of hardcoded placeholders."
+          },
+          {
+            "check": "File Paths",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Files are clearly labeled with appropriate paths for backend and frontend placement."
+          },
+          {
+            "check": "Dependencies",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Required dependencies for both backend and frontend are explicitly listed."
+          },
+          {
+            "check": "Error Handling and Logging",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Proper try-except blocks and logging are implemented for API calls and background tasks."
+          }
+        ],
+        "pre_gen_checks": [
+          {
+            "dimension": "accuracy",
+            "check": "Uses Depends(get_db) from src.api.deps for database sessions in FastAPI routes.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses SQLAlchemy 2.0 async patterns (e.g., await db.execute(select(...))) for database queries.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Calls CashFlowEngine functions (project_bills, aggregate_daily_forecast) synchronously without await.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Formats or queries the Budget month field strictly as a 'YYYY-MM' string.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses settings.anthropic_api_key and settings.ai_model from src.config for Anthropic API calls.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses settings.telegram_bot_token and settings.telegram_chat_id from src.config for Telegram notifications.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Logs notifications using the existing Notification model and NotificationChannel enum without creating new tables.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses existing RecommendationType enum values for AI insights and anomalies.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Assigns lower numerical values to the priority field for higher priority recommendations.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Imports apiClient from './client' in the React frontend for API requests.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Uses model_config = {'from_attributes': True} in Pydantic response schemas.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements logic to trigger alerts when spending approaches or exceeds Budget.budgeted_amount * Budget.alert_threshold.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements logic to trigger reminders based on RecurringBill.next_due_date and alert_days_before.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects single transactions that are greater than 2x the average for their category.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects sudden week-over-week spending spikes.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Detects new recurring charges.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Warns when projected balances from CashFlowEngine go negative within the next 14 days.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Generates a weekly financial digest using the Anthropic API.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Stores the generated AI insights as Recommendation database entries.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements actual notification delivery to Telegram via the Telegram Bot API.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements actual notification delivery to the Dashboard via in-app storage.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the alert engine as a runnable async background task or periodic scheduler.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a FastAPI router for managing alert preferences.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a FastAPI router for viewing alert history.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Includes a React page for viewing alerts and configuring notification preferences.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Contains no TODOs, stubs, or placeholders in the implementation.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes try/except blocks and error logging within the background alert engine.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes error handling for the Telegram API integration.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Includes error handling for the Anthropic API integration.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Defines Pydantic schemas for alert preferences (Create, Update, Response).",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Uses @tanstack/react-query for fetching alerts and preferences in the frontend.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Uses Tailwind CSS utility classes for styling the frontend components.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Connects the background task to the database to actively read transactions, budgets, and bills.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Handles different bill frequencies correctly when evaluating recurring bill reminders.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          }
+        ]
+      },
+      "eval_models_used": [
+        "gemini-3.1-pro-preview"
+      ],
+      "strategies_applied": [],
+      "finish_reason": "STOP",
+      "extracted_files": null,
+      "response_chars": 25676,
+      "prompt_sent_chars": 21178
+    }
+  ],
+  "error": null,
+  "created_at": "2026-03-09T05:09:50.610664+00:00",
+  "best_response_chars": 25676
+}

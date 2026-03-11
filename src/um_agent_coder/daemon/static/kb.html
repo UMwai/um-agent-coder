@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WFH – Knowledge Base</title>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #1c2129;
+      --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+      --yellow: #d29922; --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+
+    /* Header */
+    .header {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .header h1 { font-size: 1.2rem; font-weight: 600; }
+    .header h1 span { color: var(--accent); }
+    .header nav { margin-left: auto; display: flex; gap: 0.5rem; }
+    .header .nav-link {
+      color: var(--muted); text-decoration: none; font-size: 0.85rem;
+      padding: 0.3rem 0.6rem; border-radius: 6px;
+    }
+    .header .nav-link:hover { color: var(--text); background: var(--surface2); }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;
+      padding: 1rem 1.5rem; border-bottom: 1px solid var(--border);
+    }
+    .toolbar input, .toolbar select {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 0.85rem;
+    }
+    .toolbar input:focus, .toolbar select:focus { outline: none; border-color: var(--accent); }
+    .toolbar input { flex: 1; min-width: 200px; }
+    .btn {
+      background: #238636; color: white; border: none;
+      padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 500;
+    }
+    .btn:hover { background: #2ea043; }
+    .btn-secondary {
+      background: transparent; color: var(--accent); border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+
+    /* Items grid */
+    .items { padding: 1rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .item-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.25rem; cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .item-card:hover { border-color: var(--accent); }
+    .item-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .item-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+    .badge {
+      display: inline-block; padding: 0.1rem 0.45rem; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    }
+    .badge-idea { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .badge-task { background: rgba(63,185,80,0.15); color: var(--green); }
+    .badge-insight { background: rgba(188,140,255,0.15); color: var(--purple); }
+    .badge-decision { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge-low { background: rgba(139,148,158,0.15); color: var(--muted); }
+    .badge-medium { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .badge-high { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge-critical { background: rgba(248,81,73,0.15); color: var(--red); }
+    .item-content {
+      color: var(--muted); font-size: 0.85rem; line-height: 1.5;
+      max-height: 3rem; overflow: hidden;
+    }
+    .item-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .tag {
+      background: var(--surface2); color: var(--muted); font-size: 0.7rem;
+      padding: 0.1rem 0.4rem; border-radius: 4px;
+    }
+    .item-meta {
+      display: flex; gap: 0.75rem; margin-top: 0.5rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    .empty-state {
+      text-align: center; color: var(--muted); padding: 3rem;
+      font-size: 0.95rem;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.5rem; width: 560px; max-width: 95vw;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .form-group { margin-bottom: 0.75rem; }
+    .form-group label {
+      display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); padding: 0.5rem 0.6rem;
+      border-radius: 6px; font-size: 0.9rem; font-family: inherit;
+    }
+    .form-group textarea { resize: vertical; min-height: 120px; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .modal-actions {
+      display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;
+    }
+    .btn-danger { background: #da3633; }
+    .btn-danger:hover { background: #f85149; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><span>WFH</span> · Knowledge Base</h1>
+    <nav>
+      <a href="/ui" class="nav-link">Dashboard</a>
+      <a href="/ui/chat" class="nav-link">Chat</a>
+      <a href="/ui/kb" class="nav-link" style="color:var(--accent)">KB</a>
+      <a href="/docs" class="nav-link">API</a>
+    </nav>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="searchInput" placeholder="Search knowledge base..." oninput="debounceLoad()">
+    <select id="filterType" onchange="loadItems()">
+      <option value="">All types</option>
+      <option value="idea">Ideas</option>
+      <option value="task">Tasks</option>
+      <option value="insight">Insights</option>
+      <option value="decision">Decisions</option>
+    </select>
+    <select id="filterStatus" onchange="loadItems()">
+      <option value="active">Active</option>
+      <option value="archived">Archived</option>
+      <option value="">All</option>
+    </select>
+    <button class="btn" onclick="openModal()">+ New Item</button>
+  </div>
+
+  <div class="items" id="items"></div>
+
+  <!-- Add/Edit Modal -->
+  <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <h2 id="modalTitle">New KB Item</h2>
+      <input type="hidden" id="editId">
+      <div class="form-group">
+        <label>Type</label>
+        <select id="fType">
+          <option value="idea">Idea</option>
+          <option value="task">Task</option>
+          <option value="insight">Insight</option>
+          <option value="decision">Decision</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="fTitle" maxlength="200" placeholder="Concise title...">
+      </div>
+      <div class="form-group">
+        <label>Content (Markdown)</label>
+        <textarea id="fContent" placeholder="Detailed content..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Tags (comma-separated)</label>
+        <input type="text" id="fTags" placeholder="finance, portfolio, risk">
+      </div>
+      <div class="form-group">
+        <label>Priority</label>
+        <select id="fPriority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" id="deleteBtn" style="display:none;margin-right:auto" onclick="deleteItem()">Archive</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn" onclick="saveItem()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let debounceTimer = null;
+
+    function debounceLoad() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(loadItems, 300);
+    }
+
+    async function loadItems() {
+      const search = document.getElementById('searchInput').value.trim();
+      const type = document.getElementById('filterType').value;
+      const status = document.getElementById('filterStatus').value;
+      const container = document.getElementById('items');
+
+      // Use search endpoint if search text provided
+      if (search.length >= 2) {
+        try {
+          const resp = await fetch('/api/kb/search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query: search, limit: 20}),
+          });
+          if (!resp.ok) throw new Error('Search failed');
+          const data = await resp.json();
+          renderItems(data.items);
+        } catch (e) {
+          container.innerHTML = `<div class="empty-state">Search error: ${e.message}</div>`;
+        }
+        return;
+      }
+
+      // List with filters
+      const params = new URLSearchParams();
+      if (type) params.set('type', type);
+      if (status) params.set('status', status);
+      params.set('limit', '100');
+
+      try {
+        const resp = await fetch(`/api/kb/items?${params}`);
+        if (!resp.ok) throw new Error('Failed to load');
+        const items = await resp.json();
+        renderItems(items);
+      } catch (e) {
+        container.innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+      }
+    }
+
+    function renderItems(items) {
+      const container = document.getElementById('items');
+      if (!items.length) {
+        container.innerHTML = '<div class="empty-state">No items found. Create one to get started.</div>';
+        return;
+      }
+
+      container.innerHTML = items.map(item => `
+        <div class="item-card" onclick="openModal('${item.id}')">
+          <div class="item-header">
+            <span class="badge badge-${item.type}">${item.type}</span>
+            <span class="item-title">${esc(item.title)}</span>
+            <span class="badge badge-${item.priority}">${item.priority}</span>
+          </div>
+          <div class="item-content">${esc(item.content)}</div>
+          ${item.tags.length ? `<div class="item-tags">${item.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          <div class="item-meta">
+            <span>${item.source}</span>
+            <span>${formatDate(item.updated_at)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openModal(id) {
+      const overlay = document.getElementById('modalOverlay');
+      const title = document.getElementById('modalTitle');
+      const deleteBtn = document.getElementById('deleteBtn');
+      document.getElementById('editId').value = id || '';
+
+      if (id) {
+        title.textContent = 'Edit KB Item';
+        deleteBtn.style.display = 'block';
+        // Load item data
+        fetch(`/api/kb/items/${id}`).then(r => r.json()).then(item => {
+          document.getElementById('fType').value = item.type;
+          document.getElementById('fTitle').value = item.title;
+          document.getElementById('fContent').value = item.content;
+          document.getElementById('fTags').value = (item.tags || []).join(', ');
+          document.getElementById('fPriority').value = item.priority;
+        });
+      } else {
+        title.textContent = 'New KB Item';
+        deleteBtn.style.display = 'none';
+        document.getElementById('fType').value = 'idea';
+        document.getElementById('fTitle').value = '';
+        document.getElementById('fContent').value = '';
+        document.getElementById('fTags').value = '';
+        document.getElementById('fPriority').value = 'medium';
+      }
+      overlay.classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+
+    async function saveItem() {
+      const id = document.getElementById('editId').value;
+      const tags = document.getElementById('fTags').value
+        .split(',').map(t => t.trim()).filter(Boolean);
+
+      const body = {
+        type: document.getElementById('fType').value,
+        title: document.getElementById('fTitle').value.trim(),
+        content: document.getElementById('fContent').value,
+        tags,
+        priority: document.getElementById('fPriority').value,
+      };
+
+      if (!body.title) { alert('Title is required'); return; }
+
+      try {
+        let resp;
+        if (id) {
+          resp = await fetch(`/api/kb/items/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+          });
+        } else {
+          body.source = 'manual';
+          resp = await fetch('/api/kb/items', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+          });
+        }
+        if (!resp.ok) throw new Error('Save failed');
+        closeModal();
+        loadItems();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function deleteItem() {
+      const id = document.getElementById('editId').value;
+      if (!id || !confirm('Archive this item?')) return;
+
+      try {
+        const resp = await fetch(`/api/kb/items/${id}`, {method: 'DELETE'});
+        if (!resp.ok) throw new Error('Delete failed');
+        closeModal();
+        loadItems();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    function esc(text) {
+      if (!text) return '';
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                 .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '';
+      try { return iso.slice(0, 19).replace('T', ' '); } catch { return iso; }
+    }
+
+    // Load on page ready
+    loadItems();
+  </script>
+</body>
+</html>

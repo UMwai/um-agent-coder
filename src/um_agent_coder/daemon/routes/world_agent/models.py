@@ -169,3 +169,30 @@ class EventsQueryParams(BaseModel):
     since: Optional[str] = Field(default=None, description="ISO timestamp to query events from")
     source: Optional[str] = Field(default=None, description="Filter by event source")
     limit: int = Field(default=50, ge=1, le=500)
+
+
+# --- GitHub Write Models ---
+
+
+class CreateBranchRequest(BaseModel):
+    branch_name: str = Field(..., min_length=1, max_length=200, description="New branch name")
+    base_branch: str = Field(default="main", description="Branch to fork from")
+
+
+class FileChange(BaseModel):
+    path: str = Field(..., min_length=1, description="File path in the repo")
+    content: str = Field(..., description="Full file content")
+    message: str = Field(default="", description="Commit message for this file")
+
+
+class CreatePRRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500, description="PR title")
+    body: str = Field(default="", description="PR description")
+    head_branch: str = Field(..., description="Source branch")
+    base_branch: str = Field(default="main", description="Target branch")
+    files: List[FileChange] = Field(default_factory=list, description="Files to push before opening PR")
+
+
+class PostCommentRequest(BaseModel):
+    issue_number: int = Field(..., ge=1, description="Issue or PR number")
+    body: str = Field(..., min_length=1, description="Comment body")

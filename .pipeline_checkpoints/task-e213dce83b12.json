@@ -1,0 +1,115 @@
+{
+  "task_id": "task-e213dce83b12",
+  "status": "completed",
+  "current_step_index": 3,
+  "total_steps": 4,
+  "decomposed_task": {
+    "original_prompt": "test task",
+    "clarified_goal": "test task",
+    "subtasks": [
+      {
+        "id": "clarify",
+        "description": "Clarify requirements and scope",
+        "type": "research",
+        "model": "claude",
+        "prompt": "Analyze this request and identify: 1) Key objectives, 2) Implicit requirements, 3) Success criteria, 4) Potential ambiguities to resolve.\n\nRequest: test task",
+        "depends_on": [],
+        "data_sources": [],
+        "input_from": [],
+        "status": "completed",
+        "priority": 5
+      },
+      {
+        "id": "research",
+        "description": "Gather relevant information",
+        "type": "research",
+        "model": "gemini",
+        "prompt": "Research and gather comprehensive information about: test task\n\nFocus on facts, data, and authoritative sources.",
+        "depends_on": [
+          "clarify"
+        ],
+        "data_sources": [],
+        "input_from": [
+          "clarify"
+        ],
+        "status": "completed",
+        "priority": 5
+      },
+      {
+        "id": "analyze",
+        "description": "Analyze gathered information",
+        "type": "analysis",
+        "model": "codex",
+        "prompt": "Given the research findings, analyze the data and identify patterns, insights, and actionable conclusions.\n\nOriginal request: test task",
+        "depends_on": [
+          "research"
+        ],
+        "data_sources": [],
+        "input_from": [
+          "research"
+        ],
+        "status": "completed",
+        "priority": 5
+      },
+      {
+        "id": "synthesize",
+        "description": "Synthesize findings into report",
+        "type": "report",
+        "model": "claude",
+        "prompt": "Synthesize all findings into a comprehensive report addressing: test task\n\nInclude: executive summary, key findings, recommendations, and next steps.",
+        "depends_on": [
+          "analyze"
+        ],
+        "data_sources": [],
+        "input_from": [
+          "clarify",
+          "research",
+          "analyze"
+        ],
+        "status": "completed",
+        "priority": 5
+      }
+    ],
+    "execution_order": [
+      "clarify",
+      "research",
+      "analyze",
+      "synthesize"
+    ],
+    "data_sources": [],
+    "estimated_total_tokens": 4000,
+    "created_at": "2026-03-03T11:17:29.762436"
+  },
+  "steps": [
+    {
+      "subtask_id": "clarify",
+      "status": "completed",
+      "started_at": "2026-03-03T11:17:29.762761",
+      "completed_at": "2026-03-03T11:17:29.841293",
+      "error": null
+    },
+    {
+      "subtask_id": "research",
+      "status": "completed",
+      "started_at": "2026-03-03T11:17:29.841618",
+      "completed_at": "2026-03-03T11:18:45.608008",
+      "error": null
+    },
+    {
+      "subtask_id": "analyze",
+      "status": "completed",
+      "started_at": "2026-03-03T11:18:45.608339",
+      "completed_at": "2026-03-03T11:18:46.934353",
+      "error": null
+    },
+    {
+      "subtask_id": "synthesize",
+      "status": "completed",
+      "started_at": "2026-03-03T11:18:46.934680",
+      "completed_at": "2026-03-03T11:18:47.021685",
+      "error": null
+    }
+  ],
+  "created_at": "2026-03-03T11:17:29.762494",
+  "updated_at": "2026-03-03T11:18:47.022018"
+}

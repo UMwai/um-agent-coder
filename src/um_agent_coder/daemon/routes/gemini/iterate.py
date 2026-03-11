@@ -1118,10 +1118,84 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
 # --- Helper: build response from DB ---
 
 
+def _build_response_from_firestore(fs_data: dict) -> IterateResponse:
+    """Build an IterateResponse from Firestore data (no subcollection steps detail)."""
+    duration_ms = 0
+    if fs_data.get("started_at") and fs_data.get("completed_at"):
+        try:
+            started = datetime.fromisoformat(fs_data["started_at"])
+            completed = datetime.fromisoformat(fs_data["completed_at"])
+            duration_ms = int((completed - started).total_seconds() * 1000)
+        except (ValueError, TypeError):
+            pass
+
+    # Build simplified steps from Firestore subcollection data
+    steps = []
+    for s in fs_data.get("steps", []):
+        eval_scores = s.get("eval_scores") or {}
+        evaluation = (
+            EvalInfo(
+                score=eval_scores.get("score", 0.0),
+                accuracy=eval_scores.get("accuracy", 0.0),
+                completeness=eval_scores.get("completeness", 0.0),
+                clarity=eval_scores.get("clarity", 0.0),
+                actionability=eval_scores.get("actionability", 0.0),
+                fulfillment=eval_scores.get("fulfillment", 0.0),
+                issues=eval_scores.get("issues", []),
+            )
+            if eval_scores
+            else None
+        )
+        steps.append(
+            IterationStepInfo(
+                step=s.get("step_number", 0),
+                response=s.get("response") or "",
+                generation_model=s.get("generation_model") or "",
+                generation_duration_ms=s.get("generation_duration_ms", 0),
+                generation_tokens=s.get("generation_tokens", 0),
+                evaluation=evaluation,
+                strategies_applied=s.get("strategies_applied") or [],
+                finish_reason=s.get("finish_reason") or "",
+            )
+        )
+
+    return IterateResponse(
+        id=fs_data["id"],
+        status=fs_data.get("status", "completed"),
+        original_prompt=fs_data.get("original_prompt", ""),
+        best_response=fs_data.get("best_response"),
+        best_score=fs_data.get("best_score", 0.0),
+        best_iteration=fs_data.get("best_iteration", 0),
+        total_iterations=fs_data.get("total_iterations", 0),
+        total_tokens=fs_data.get("total_tokens", 0),
+        duration_ms=duration_ms,
+        config=fs_data.get("config"),
+        steps=steps,
+        error=fs_data.get("error"),
+        created_at=fs_data.get("created_at"),
+    )
+
+
 async def _build_iterate_response(iteration_id: str) -> IterateResponse:
     db = _get_db()
     iteration = await db.get_gemini_iteration(iteration_id)
     if not iteration:
+        # Fall back to Firestore for historical iterations
+        from um_agent_coder.daemon.app import get_settings
+
+        settings = get_settings()
+        if settings.gemini_firestore_enabled:
+            from um_agent_coder.daemon.routes.gemini._firestore import (
+                get_iteration_from_firestore,
+            )
+
+            fs_data = await get_iteration_from_firestore(
+                iteration_id,
+                collection=settings.gemini_firestore_collection,
+                include_steps=True,
+            )
+            if fs_data:
+                return _build_response_from_firestore(fs_data)
         raise HTTPException(status_code=404, detail="Iteration not found")
 
     steps_rows = await db.get_gemini_iteration_steps(iteration_id)
@@ -1525,6 +1599,7 @@ async def list_iterations(
             IterationSummaryResponse(
                 id=it["id"],
                 status=it["status"],
+                original_prompt=it.get("original_prompt", ""),
                 best_score=it.get("best_score", 0.0),
                 total_iterations=it.get("total_iterations", 0),
                 total_tokens=it.get("total_tokens", 0),

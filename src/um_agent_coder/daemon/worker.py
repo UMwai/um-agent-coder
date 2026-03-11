@@ -7,7 +7,7 @@ import logging
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Dict, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, Dict, Optional, Set
 
 if TYPE_CHECKING:
     from um_agent_coder.daemon.config import DaemonSettings
@@ -29,6 +29,7 @@ class TaskWorker:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._running_tasks: Set[str] = set()
         self._cancelled: Set[str] = set()
+        self._completion_callbacks: Dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
         self._consumer_task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -47,7 +48,13 @@ class TaskWorker:
         self._executor.shutdown(wait=False)
         logger.info("TaskWorker stopped")
 
-    async def enqueue(self, task_id: str):
+    async def enqueue(
+        self,
+        task_id: str,
+        on_complete: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+    ):
+        if on_complete:
+            self._completion_callbacks[task_id] = on_complete
         await self._queue.put(task_id)
         logger.info("Task %s enqueued (queue size: %d)", task_id, self._queue.qsize())
 
@@ -122,6 +129,15 @@ class TaskWorker:
 
             # Send notifications
             self._send_notifications(task_id, task, result)
+
+            # Fire completion callback if registered
+            cb = self._completion_callbacks.pop(task_id, None)
+            if cb:
+                try:
+                    output = result.get("output", result.get("error", ""))
+                    await cb(task_id, output)
+                except Exception as cb_err:
+                    logger.error("Completion callback failed for %s: %s", task_id, cb_err)
 
         except Exception as e:
             logger.exception("Unhandled error processing task %s", task_id)

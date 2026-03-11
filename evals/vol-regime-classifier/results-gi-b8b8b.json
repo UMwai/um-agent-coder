@@ -1,0 +1,1023 @@
+{
+  "id": "gi-b8b8beeac540",
+  "status": "threshold_met",
+  "original_prompt": "Build a **Volatility Regime Classifier** for the um-hf (AI Hedge Fund) platform. This module classifies the current market volatility environment into regimes that drive position sizing, strategy selection, and risk limits across the platform.\n\nThe current `_detect_regime()` in `market_monitor.py` uses simplistic VIX/SPY thresholds (4 regimes). Replace it with a proper multi-signal regime classifier that integrates into both the Autopilot decision pipeline and the Delta-Neutral options strategy.\n\n### Core Capabilities:\n\n1. **Multi-Signal Regime Detection** \u2014 Classify into 5 regimes (low_vol, normal, elevated, high_vol, crisis) using:\n   - VIX level and rate of change (VIX velocity)\n   - VIX term structure (contango/backwardation slope, not just > or < threshold)\n   - IV rank for SPY (percentile over trailing 252 days)\n   - Put/call ratio (from OptionsSnapshot)\n   - SPY realized volatility vs implied (vol risk premium)\n   - Credit spread widths (HYG-IEF spread as proxy)\n\n2. **Regime Transition Detection** \u2014 Track regime history and detect transitions:\n   - Maintain a rolling window of regime classifications (last 20 snapshots)\n   - Detect regime shifts (e.g., normal \u2192 elevated) vs noise (single-snapshot spikes)\n   - Require 2+ consecutive snapshots in new regime before confirming transition\n   - Emit regime transition events with metadata (from_regime, to_regime, confidence, trigger_signals)\n\n3. **Strategy Parameter Adjustment** \u2014 Output regime-specific parameter overrides:\n   - For DecisionEngine: `regime_scale` (position sizing multiplier), `min_confidence` override, `max_open_decisions` override\n   - For DeltaNeutralStrategy: `iv_hv_zscore_threshold` override, `max_position_pct` override, `max_total_exposure_pct` override\n   - For UnifiedRiskEngine: `max_daily_loss_pct` override, `warning_drawdown_pct` override\n   - Return as a `RegimeParameters` dataclass that consumers can apply\n\n4. **Historical Regime Analysis** \u2014 Provide lookback analytics:\n   - `regime_distribution(lookback_days)` \u2014 percentage of time in each regime\n   - `avg_regime_duration()` \u2014 average duration of each regime in snapshots\n   - `current_regime_age()` \u2014 how many snapshots the current regime has persisted\n   - `transition_matrix()` \u2014 probability matrix of regime-to-regime transitions\n\n5. **Integration with MarketMonitor** \u2014 Replace `_detect_regime()`:\n   - `VolRegimeClassifier` takes a `MarketSnapshot` and returns `RegimeResult`\n   - `RegimeResult` includes: regime, confidence, sub_scores (per signal), parameters, transition info\n   - MarketMonitor.snapshot() calls classifier and sets `snap.regime` + attaches full `RegimeResult`\n   - Backward compatible: `snap.regime` remains a string (\"low_vol\", \"normal\", etc.)\n\n### Technical Requirements:\n- Pure Python with numpy/scipy (already in requirements.txt)\n- Async-compatible but the classifier itself is synchronous (CPU-bound math)\n- All dataclasses, same patterns as existing codebase (from __future__ import annotations, dataclass, field)\n- No external API calls \u2014 works entirely from the MarketSnapshot data already collected\n- Store regime history in-memory (no database dependency)\n- Full implementations only \u2014 no TODOs, no stubs, no placeholders\n\n### What to Deliver:\n- `command/autopilot/vol_regime.py` \u2014 Main module with VolRegimeClassifier, RegimeResult, RegimeParameters, all dataclasses\n- `command/autopilot/test_vol_regime.py` \u2014 Tests covering all 5 regimes, transitions, parameter generation, and edge cases\n- Updated `command/autopilot/market_monitor.py` \u2014 Show the integration changes (updated `_detect_regime` using the classifier)\n- Updated `command/autopilot/decision_engine.py` \u2014 Show how DecisionEngine consumes RegimeParameters",
+  "best_score": 0.9055555555555556,
+  "best_iteration": 2,
+  "total_iterations": 2,
+  "total_tokens": 50935,
+  "duration_ms": 462925,
+  "config": {
+    "model": "pro-3.1",
+    "eval_models": null,
+    "max_iterations": 5,
+    "score_threshold": 0.85,
+    "temperature": 0.7,
+    "max_tokens": 65536,
+    "enable_enhancement": true,
+    "use_multi_turn": true,
+    "domain_hint": "code"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "generation_model": "gemini-3.1-pro-preview",
+      "generation_duration_ms": 105714,
+      "generation_tokens": 13262,
+      "evaluation": {
+        "score": 0.6153846153846154,
+        "accuracy": 0.6153846153846154,
+        "completeness": 0.0,
+        "clarity": 0.0,
+        "actionability": 0.0,
+        "fulfillment": 0.0,
+        "issues": [
+          "[ACCURACY:BREAKING] Correct import of dataclasses module: The code uses 'from dataclass import dataclass, field' instead of 'from dataclasses import dataclass, field', which will raise a ModuleNotFoundError.",
+          "[ACCURACY:BREAKING] Preserve existing MarketSnapshot nested structure: The code completely redefines MarketSnapshot with flat fields (e.g., vix, spy_iv_rank) instead of using the existing nested structure (volatility.vix, quotes) from the reference material.",
+          "[ACCURACY:BREAKING] Extract put/call ratio from OptionsSnapshot: The prompt explicitly requires using the put/call ratio from OptionsSnapshot, but the code ignores OptionsSnapshot entirely and uses a non-existent flat field.",
+          "[ACCURACY:BREAKING] Preserve DecisionEngine.decide API: The code replaces the existing DecisionEngine.decide(signals, market) method with a new process_snapshot method, breaking the established API.",
+          "[ACCURACY:BREAKING] Import VolatilitySnapshot and OptionsSnapshot: The code fails to import VolatilitySnapshot and OptionsSnapshot from command.autopilot.market_monitor, violating CRITICAL CHECK #8."
+        ],
+        "retry_count": 0,
+        "accuracy_passed": false,
+        "parse_failed": false,
+        "accuracy_checks": [
+          {
+            "check": "MarketSnapshot.regime remains a plain string type for backward compatibility.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "MarketSnapshot.regime is defined as a string and updated accordingly in _detect_regime."
+          },
+          {
+            "check": "DecisionConfig.regime_scale keys are updated to exactly match the 5 new regime string values.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "DecisionConfig.regime_scale uses the 5 new regime keys (low_vol, normal, elevated, high_vol, crisis)."
+          },
+          {
+            "check": "All dataclasses use 'from __future__ import annotations'.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The __future__ import is present at the top of all files."
+          },
+          {
+            "check": "All dataclasses use 'field(default_factory=...)' for mutable default arguments like dicts or lists.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Lists and dicts in dataclasses correctly use field(default_factory=...)."
+          },
+          {
+            "check": "The test file uses pytest with plain functions rather than unittest.TestCase classes.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "Tests are written as plain functions compatible with pytest."
+          },
+          {
+            "check": "Imports correctly include 'from command.autopilot.market_monitor import MarketSnapshot'.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The import statement is present in the relevant files."
+          },
+          {
+            "check": "VolRegimeClassifier methods are synchronous (not async def).",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "The classify method and its helpers are synchronous."
+          },
+          {
+            "check": "MarketMonitor._detect_regime remains an async def method but calls the synchronous classifier.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "_detect_regime is async and calls the synchronous classify method."
+          },
+          {
+            "check": "Correct import of dataclasses module",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The code uses 'from dataclass import dataclass, field' instead of 'from dataclasses import dataclass, field', which will raise a ModuleNotFoundError."
+          },
+          {
+            "check": "Preserve existing MarketSnapshot nested structure",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The code completely redefines MarketSnapshot with flat fields (e.g., vix, spy_iv_rank) instead of using the existing nested structure (volatility.vix, quotes) from the reference material."
+          },
+          {
+            "check": "Extract put/call ratio from OptionsSnapshot",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The prompt explicitly requires using the put/call ratio from OptionsSnapshot, but the code ignores OptionsSnapshot entirely and uses a non-existent flat field."
+          },
+          {
+            "check": "Preserve DecisionEngine.decide API",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The code replaces the existing DecisionEngine.decide(signals, market) method with a new process_snapshot method, breaking the established API."
+          },
+          {
+            "check": "Import VolatilitySnapshot and OptionsSnapshot",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "The code fails to import VolatilitySnapshot and OptionsSnapshot from command.autopilot.market_monitor, violating CRITICAL CHECK #8."
+          }
+        ],
+        "fulfillment_checks": [],
+        "completeness_checks": [],
+        "clarity_checks": [],
+        "actionability_checks": [],
+        "pre_gen_checks": [
+          {
+            "dimension": "accuracy",
+            "check": "MarketSnapshot.regime remains a plain string type for backward compatibility.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "DecisionConfig.regime_scale keys are updated to exactly match the 5 new regime string values.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "All dataclasses use 'from __future__ import annotations'.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "All dataclasses use 'field(default_factory=...)' for mutable default arguments like dicts or lists.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "The test file uses pytest with plain functions rather than unittest.TestCase classes.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Imports correctly include 'from command.autopilot.market_monitor import MarketSnapshot'.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "VolRegimeClassifier methods are synchronous (not async def).",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "MarketMonitor._detect_regime remains an async def method but calls the synchronous classifier.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements exactly 5 regimes: low_vol, normal, elevated, high_vol, crisis.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates VIX level and rate of change (velocity).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates VIX term structure slope (contango/backwardation).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates IV rank for SPY.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates Put/call ratio.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates SPY realized volatility vs implied volatility.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates Credit spread widths (HYG-IEF spread).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Maintains an in-memory rolling window of the last 20 snapshots.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Requires 2 or more consecutive snapshots in a new regime to confirm a transition.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Emits regime transition events containing from_regime, to_regime, confidence, and trigger_signals.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Outputs a RegimeParameters dataclass.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeParameters includes regime_scale, min_confidence, and max_open_decisions overrides for DecisionEngine.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeParameters includes iv_hv_zscore_threshold, max_position_pct, and max_total_exposure_pct overrides for DeltaNeutralStrategy.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeParameters includes max_daily_loss_pct and warning_drawdown_pct overrides for UnifiedRiskEngine.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the regime_distribution(lookback_days) historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the avg_regime_duration() historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the current_regime_age() historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the transition_matrix() historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeResult dataclass includes regime, confidence, sub_scores, parameters, and transition info.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Makes no external API calls, relying entirely on MarketSnapshot data.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Contains no TODOs, stubs, or placeholders (full implementation only).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers the command/autopilot/vol_regime.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers the command/autopilot/test_vol_regime.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers updated command/autopilot/market_monitor.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers updated command/autopilot/decision_engine.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Tests explicitly cover all 5 regimes.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Tests explicitly cover regime transitions and the 2-snapshot confirmation rule.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Tests explicitly cover parameter generation for the different regimes.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "MarketMonitor.snapshot() is updated to attach the full RegimeResult object to the snapshot.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "DecisionEngine is updated to actively consume the RegimeParameters overrides.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          }
+        ]
+      },
+      "eval_models_used": [
+        "gemini-3.1-pro-preview"
+      ],
+      "strategies_applied": [
+        "accuracy_checklist_fix",
+        "completeness_fix",
+        "clarity_fix",
+        "actionability_fix",
+        "fulfillment_fix"
+      ],
+      "finish_reason": "STOP",
+      "extracted_files": null,
+      "response_chars": 21060,
+      "prompt_sent_chars": 7911
+    },
+    {
+      "step": 2,
+      "generation_model": "gemini-3.1-pro-preview",
+      "generation_duration_ms": 174914,
+      "generation_tokens": 30239,
+      "evaluation": {
+        "score": 0.9055555555555556,
+        "accuracy": 1.0,
+        "completeness": 0.5,
+        "clarity": 0.5,
+        "actionability": 0.8,
+        "fulfillment": 0.9166666666666666,
+        "issues": [
+          "[ACTIONABILITY:BREAKING] No stubs or placeholders: market_monitor.py contains placeholders ('# ... fetch data operations go here ...') and stubbed methods ('pass' in _extract_volatility and _fetch_news) that would overwrite and break existing code if copy-pasted.",
+          "[FULFILLMENT:BREAKING] Contains no TODOs, stubs, or placeholders (full implementation only).: MarketMonitor contains stubs with 'pass' for _extract_volatility and _fetch_news, and a placeholder comment '# ... fetch data operations go here ...'.",
+          "[FULFILLMENT:BREAKING] MarketMonitor._detect_regime is called safely without race conditions against data extraction.: In MarketMonitor.snapshot(), _detect_regime is called concurrently with _extract_volatility via asyncio.gather. Since _detect_regime is synchronous and reads snap.volatility, it will execute before _extract_volatility has a chance to yield and populate the volatility data, leading to a race condition."
+        ],
+        "retry_count": 0,
+        "accuracy_passed": true,
+        "parse_failed": true,
+        "accuracy_checks": [
+          {
+            "check": "MarketSnapshot.regime remains a plain string type for backward compatibility.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "MarketSnapshot.regime is defined as a string and assigned the string value of the regime result."
+          },
+          {
+            "check": "DecisionConfig.regime_scale keys are updated to exactly match the 5 new regime string values.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "DecisionConfig.regime_scale correctly uses the 5 new regime keys: low_vol, normal, elevated, high_vol, crisis."
+          },
+          {
+            "check": "All dataclasses use 'from __future__ import annotations'.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "All files containing dataclasses include the __future__ import."
+          },
+          {
+            "check": "All dataclasses use 'field(default_factory=...)' for mutable default arguments like dicts or lists.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "All mutable defaults in dataclasses correctly use field(default_factory=...)."
+          },
+          {
+            "check": "The test file uses pytest with plain functions rather than unittest.TestCase classes.",
+            "status": "pass",
+            "severity": "style",
+            "detail": "The test file uses pytest and plain test functions."
+          },
+          {
+            "check": "Imports correctly include 'from command.autopilot.market_monitor import MarketSnapshot'.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Imports are correct across all modules."
+          },
+          {
+            "check": "VolRegimeClassifier methods are synchronous (not async def).",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "All methods in VolRegimeClassifier are synchronous as required for CPU-bound math."
+          },
+          {
+            "check": "MarketMonitor._detect_regime remains an async def method but calls the synchronous classifier.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "MarketMonitor._detect_regime is async and correctly calls the synchronous classify method."
+          }
+        ],
+        "fulfillment_checks": [
+          {
+            "check": "Implements exactly 5 regimes: low_vol, normal, elevated, high_vol, crisis.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The classifier correctly implements and maps scores to the 5 specified regimes."
+          },
+          {
+            "check": "Classifier logic incorporates VIX level and rate of change (velocity).",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "VIX level and vix_change are both scored in _calculate_sub_scores."
+          },
+          {
+            "check": "Classifier logic incorporates VIX term structure slope (contango/backwardation).",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "VIX term structure is evaluated and scored appropriately."
+          },
+          {
+            "check": "Classifier logic incorporates IV rank for SPY.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "IV rank for SPY is included in the sub-scores."
+          },
+          {
+            "check": "Classifier logic incorporates Put/call ratio.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Put/call ratio is extracted from OptionsSnapshot and scored."
+          },
+          {
+            "check": "Classifier logic incorporates SPY realized volatility vs implied volatility.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Vol risk premium is calculated using implied vs realized volatility."
+          },
+          {
+            "check": "Classifier logic incorporates Credit spread widths (HYG-IEF spread).",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "Credit spread proxy using HYG and IEF change percentages is implemented."
+          },
+          {
+            "check": "Maintains an in-memory rolling window of the last 20 snapshots.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "A history window of 20 is maintained for both raw and result histories."
+          },
+          {
+            "check": "Requires 2 or more consecutive snapshots in a new regime to confirm a transition.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The confirmation_count logic correctly requires consecutive snapshots to confirm a transition."
+          },
+          {
+            "check": "Emits regime transition events containing from_regime, to_regime, confidence, and trigger_signals.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "TransitionEvent dataclass is populated and emitted on confirmed transitions."
+          },
+          {
+            "check": "Outputs a RegimeParameters dataclass.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "RegimeParameters dataclass is defined and returned as part of the result."
+          },
+          {
+            "check": "RegimeParameters includes regime_scale, min_confidence, and max_open_decisions overrides for DecisionEngine.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "DecisionEngine overrides are present in RegimeParameters."
+          },
+          {
+            "check": "RegimeParameters includes iv_hv_zscore_threshold, max_position_pct, and max_total_exposure_pct overrides for DeltaNeutralStrategy.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "DeltaNeutralStrategy overrides are present in RegimeParameters."
+          },
+          {
+            "check": "RegimeParameters includes max_daily_loss_pct and warning_drawdown_pct overrides for UnifiedRiskEngine.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "UnifiedRiskEngine overrides are present in RegimeParameters."
+          },
+          {
+            "check": "Implements the regime_distribution(lookback_days) historical analysis method.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "regime_distribution is implemented and calculates the correct percentages."
+          },
+          {
+            "check": "Implements the avg_regime_duration() historical analysis method.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "avg_regime_duration is implemented and calculates the average duration correctly."
+          },
+          {
+            "check": "Implements the current_regime_age() historical analysis method.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "current_regime_age is implemented and counts the consecutive snapshots of the current regime."
+          },
+          {
+            "check": "Implements the transition_matrix() historical analysis method.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "transition_matrix is implemented and calculates transition probabilities."
+          },
+          {
+            "check": "RegimeResult dataclass includes regime, confidence, sub_scores, parameters, and transition info.",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "RegimeResult contains all the required fields."
+          },
+          {
+            "check": "Makes no external API calls, relying entirely on MarketSnapshot data.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "No external API calls are made; all data is derived from the snapshot."
+          },
+          {
+            "check": "Contains no TODOs, stubs, or placeholders (full implementation only).",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "MarketMonitor contains stubs with 'pass' for _extract_volatility and _fetch_news, and a placeholder comment '# ... fetch data operations go here ...'."
+          },
+          {
+            "check": "MarketMonitor._detect_regime is called safely without race conditions against data extraction.",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "In MarketMonitor.snapshot(), _detect_regime is called concurrently with _extract_volatility via asyncio.gather. Since _detect_regime is synchronous and reads snap.volatility, it will execute before _extract_volatility has a chance to yield and populate the volatility data, leading to a race condition."
+          },
+          {
+            "check": "Classifier gracefully handles missing SPY options data.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The classifier checks if 'SPY' is in vol.options before accessing its put/call ratio and IV, falling back to defaults."
+          },
+          {
+            "check": "Classifier gracefully handles missing HYG or IEF quotes.",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "The classifier checks if both HYG and IEF quotes exist before calculating the credit spread proxy, falling back to a neutral score."
+          }
+        ],
+        "completeness_checks": [],
+        "clarity_checks": [],
+        "actionability_checks": [
+          {
+            "check": "No stubs or placeholders",
+            "status": "fail",
+            "severity": "breaking",
+            "detail": "market_monitor.py contains placeholders ('# ... fetch data operations go here ...') and stubbed methods ('pass' in _extract_volatility and _fetch_news) that would overwrite and break existing code if copy-pasted."
+          },
+          {
+            "check": "Complete imports",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "All necessary modules and types are properly imported."
+          },
+          {
+            "check": "Valid configuration values",
+            "status": "pass",
+            "severity": "breaking",
+            "detail": "No dummy API keys or placeholder configuration values are used."
+          },
+          {
+            "check": "Clear file paths",
+            "status": "pass",
+            "severity": "style",
+            "detail": "All code blocks are clearly labeled with their target file paths."
+          },
+          {
+            "check": "Dependencies mentioned",
+            "status": "pass",
+            "severity": "foreign",
+            "detail": "Uses standard library and numpy as specified in the requirements."
+          }
+        ],
+        "pre_gen_checks": [
+          {
+            "dimension": "accuracy",
+            "check": "MarketSnapshot.regime remains a plain string type for backward compatibility.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "DecisionConfig.regime_scale keys are updated to exactly match the 5 new regime string values.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "All dataclasses use 'from __future__ import annotations'.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "All dataclasses use 'field(default_factory=...)' for mutable default arguments like dicts or lists.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "The test file uses pytest with plain functions rather than unittest.TestCase classes.",
+            "status": "",
+            "severity": "style",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "Imports correctly include 'from command.autopilot.market_monitor import MarketSnapshot'.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "VolRegimeClassifier methods are synchronous (not async def).",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "accuracy",
+            "check": "MarketMonitor._detect_regime remains an async def method but calls the synchronous classifier.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements exactly 5 regimes: low_vol, normal, elevated, high_vol, crisis.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates VIX level and rate of change (velocity).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates VIX term structure slope (contango/backwardation).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates IV rank for SPY.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates Put/call ratio.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates SPY realized volatility vs implied volatility.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Classifier logic incorporates Credit spread widths (HYG-IEF spread).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Maintains an in-memory rolling window of the last 20 snapshots.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Requires 2 or more consecutive snapshots in a new regime to confirm a transition.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Emits regime transition events containing from_regime, to_regime, confidence, and trigger_signals.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Outputs a RegimeParameters dataclass.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeParameters includes regime_scale, min_confidence, and max_open_decisions overrides for DecisionEngine.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeParameters includes iv_hv_zscore_threshold, max_position_pct, and max_total_exposure_pct overrides for DeltaNeutralStrategy.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeParameters includes max_daily_loss_pct and warning_drawdown_pct overrides for UnifiedRiskEngine.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the regime_distribution(lookback_days) historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the avg_regime_duration() historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the current_regime_age() historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Implements the transition_matrix() historical analysis method.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "RegimeResult dataclass includes regime, confidence, sub_scores, parameters, and transition info.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Makes no external API calls, relying entirely on MarketSnapshot data.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "fulfillment",
+            "check": "Contains no TODOs, stubs, or placeholders (full implementation only).",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers the command/autopilot/vol_regime.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers the command/autopilot/test_vol_regime.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers updated command/autopilot/market_monitor.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Delivers updated command/autopilot/decision_engine.py file.",
+            "status": "",
+            "severity": "breaking",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Tests explicitly cover all 5 regimes.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Tests explicitly cover regime transitions and the 2-snapshot confirmation rule.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "Tests explicitly cover parameter generation for the different regimes.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "MarketMonitor.snapshot() is updated to attach the full RegimeResult object to the snapshot.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          },
+          {
+            "dimension": "completeness",
+            "check": "DecisionEngine is updated to actively consume the RegimeParameters overrides.",
+            "status": "",
+            "severity": "foreign",
+            "detail": "",
+            "source": "pre_gen"
+          }
+        ]
+      },
+      "eval_models_used": [
+        "gemini-3.1-pro-preview"
+      ],
+      "strategies_applied": [
+        "completeness_fix",
+        "clarity_fix"
+      ],
+      "finish_reason": "STOP",
+      "extracted_files": null,
+      "response_chars": 26667,
+      "prompt_sent_chars": 23491
+    }
+  ],
+  "error": null,
+  "created_at": "2026-03-08T17:15:10.804410+00:00",
+  "best_response_chars": 26667
+}

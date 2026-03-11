@@ -221,6 +221,60 @@
     }
     .welcome .example-btn:hover { border-color: var(--accent); }
 
+    /* KB context badge */
+    .kb-badge {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      background: rgba(188,140,255,0.12); color: var(--purple);
+      font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px;
+      cursor: pointer; margin-bottom: 0.4rem;
+    }
+    .kb-badge:hover { background: rgba(188,140,255,0.2); }
+    .kb-context-detail {
+      display: none; font-size: 0.8rem; color: var(--muted);
+      background: var(--surface2); border-radius: 6px; padding: 0.5rem 0.75rem;
+      margin-bottom: 0.5rem; line-height: 1.5;
+    }
+    .kb-context-detail.open { display: block; }
+
+    /* Extraction bar */
+    .extract-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 0.75rem 1.5rem; z-index: 50;
+      display: none; max-height: 40vh; overflow-y: auto;
+    }
+    .extract-bar.open { display: block; }
+    .extract-bar-header {
+      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+    }
+    .extract-bar-header strong { font-size: 0.85rem; }
+    .extract-bar-close {
+      margin-left: auto; background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 1.1rem;
+    }
+    .extract-candidate {
+      display: flex; align-items: flex-start; gap: 0.6rem;
+      padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+    }
+    .extract-candidate:last-child { border-bottom: none; }
+    .extract-info { flex: 1; }
+    .extract-info .title { font-size: 0.85rem; font-weight: 600; }
+    .extract-info .content { font-size: 0.8rem; color: var(--muted); }
+    .extract-info .type-badge {
+      display: inline-block; font-size: 0.65rem; font-weight: 600;
+      text-transform: uppercase; padding: 0.05rem 0.3rem; border-radius: 3px;
+      margin-right: 0.3rem;
+    }
+    .extract-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
+    .extract-actions button {
+      background: none; border: 1px solid var(--border); color: var(--text);
+      padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;
+    }
+    .extract-actions .approve { border-color: var(--green); color: var(--green); }
+    .extract-actions .approve:hover { background: rgba(63,185,80,0.15); }
+    .extract-actions .dismiss { border-color: var(--border); color: var(--muted); }
+    .extract-actions .dismiss:hover { background: var(--surface2); }
+
     @media (max-width: 768px) {
       .message { max-width: 95%; }
       .input-area { padding: 0.75rem; }
@@ -233,6 +287,7 @@
     <nav>
       <a href="/ui" class="nav-link">Dashboard</a>
       <a href="/ui/chat" class="nav-link" style="color:var(--accent)">Chat</a>
+      <a href="/ui/kb" class="nav-link">KB</a>
       <a href="/docs" class="nav-link">API</a>
     </nav>
   </div>
@@ -260,6 +315,15 @@
       <button class="send-btn" id="sendBtn" onclick="send()">Send</button>
     </div>
     <div class="input-hint" id="hint">Quick Q&A — single Gemini response</div>
+  </div>
+
+  <!-- Extraction candidates bar -->
+  <div class="extract-bar" id="extractBar">
+    <div class="extract-bar-header">
+      <strong>Extracted ideas from response</strong>
+      <button class="extract-bar-close" onclick="closeExtractBar()">&times;</button>
+    </div>
+    <div id="extractCandidates"></div>
   </div>
 
   <script>
@@ -449,13 +513,122 @@
       promptEl.focus();
     }
 
+    async function searchKB(text) {
+      try {
+        const resp = await fetch('/api/kb/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: text, limit: 5 }),
+        });
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch { return null; }
+    }
+
+    function buildKBSystemPrompt(kbResult) {
+      if (!kbResult || !kbResult.items || !kbResult.items.length) return '';
+      let block = '\n\n---\n**Relevant Knowledge Base Context:**\n';
+      for (const item of kbResult.items) {
+        block += `\n- **[${item.type}] ${item.title}** (${item.priority}): ${item.content.slice(0, 500)}`;
+        if (item.tags.length) block += ` [tags: ${item.tags.join(', ')}]`;
+      }
+      block += '\n---\n';
+      return block;
+    }
+
+    function addKBBadge(parentMsg, kbResult) {
+      if (!kbResult || !kbResult.items || !kbResult.items.length) return;
+      const count = kbResult.items.length;
+      const id = 'kb-detail-' + Date.now();
+      const badge = document.createElement('div');
+      badge.innerHTML = `
+        <div class="kb-badge" onclick="document.getElementById('${id}').classList.toggle('open')">
+          KB ${count} item${count !== 1 ? 's' : ''} referenced
+        </div>
+        <div class="kb-context-detail" id="${id}">
+          ${kbResult.items.map(i => `<div><strong>[${i.type}]</strong> ${esc(i.title)}</div>`).join('')}
+        </div>`;
+      parentMsg.insertBefore(badge, parentMsg.firstChild);
+    }
+
+    function esc(t) {
+      return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function triggerExtraction(responseText) {
+      try {
+        const resp = await fetch('/api/kb/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: responseText }),
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.candidates && data.candidates.length) showExtractCandidates(data.candidates);
+      } catch {}
+    }
+
+    function showExtractCandidates(candidates) {
+      const container = document.getElementById('extractCandidates');
+      container.innerHTML = candidates.map((c, i) => `
+        <div class="extract-candidate" id="extract-${i}">
+          <div class="extract-info">
+            <span class="type-badge" style="background:rgba(88,166,255,0.15);color:var(--accent)">${c.type}</span>
+            <span class="title">${esc(c.title)}</span>
+            <div class="content">${esc(c.content).slice(0, 200)}</div>
+          </div>
+          <div class="extract-actions">
+            <button class="approve" onclick="approveCandidate(${i})">Approve</button>
+            <button class="dismiss" onclick="dismissCandidate(${i})">Dismiss</button>
+          </div>
+        </div>
+      `).join('');
+      document.getElementById('extractBar').classList.add('open');
+      // Store candidates for approval
+      window._extractCandidates = candidates;
+    }
+
+    async function approveCandidate(idx) {
+      const c = window._extractCandidates[idx];
+      if (!c) return;
+      try {
+        await fetch('/api/kb/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: c.type, title: c.title, content: c.content,
+            tags: c.tags || [], priority: 'medium', source: 'auto_extracted',
+          }),
+        });
+      } catch {}
+      dismissCandidate(idx);
+    }
+
+    function dismissCandidate(idx) {
+      const el = document.getElementById(`extract-${idx}`);
+      if (el) el.remove();
+      const remaining = document.querySelectorAll('.extract-candidate');
+      if (!remaining.length) closeExtractBar();
+    }
+
+    function closeExtractBar() {
+      document.getElementById('extractBar').classList.remove('open');
+    }
+
     async function doAsk(prompt) {
       addTyping();
       try {
+        // Search KB for relevant context
+        const kbResult = await searchKB(prompt);
+        const kbPrompt = buildKBSystemPrompt(kbResult);
+
+        const body = { prompt, model: 'auto' };
+        if (kbPrompt) body.system_prompt = kbPrompt;
+
         const resp = await fetch('/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, model: 'auto' }),
+          body: JSON.stringify(body),
         });
         removeTyping();
         if (!resp.ok) {
@@ -464,7 +637,11 @@
           return;
         }
         const data = await resp.json();
-        addMessage('assistant', data.response);
+        const msgEl = addMessage('assistant', data.response);
+        addKBBadge(msgEl, kbResult);
+
+        // Background extraction
+        triggerExtraction(data.response);
       } catch (e) {
         removeTyping();
         addMessage('error', `Network error: ${e.message}`);
@@ -476,14 +653,21 @@
       addProgressCard(maxIter);
 
       try {
+        // Search KB for relevant context
+        const kbResult = await searchKB(prompt);
+        const kbPrompt = buildKBSystemPrompt(kbResult);
+
+        const body = {
+          prompt,
+          max_iterations: maxIter,
+          score_threshold: 0.85,
+        };
+        if (kbPrompt) body.system_prompt = kbPrompt;
+
         const resp = await fetch('/api/gemini/iterate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt,
-            max_iterations: maxIter,
-            score_threshold: 0.85,
-          }),
+          body: JSON.stringify(body),
         });
         if (!resp.ok) {
           removeProgressCard();
@@ -493,6 +677,10 @@
         }
 
         const initial = await resp.json();
+        // Store kbResult to use when rendering final message
+        window._lastKBResult = kbResult;
+        // Persist iteration ID in URL hash
+        location.hash = '#iter=' + initial.id;
         await pollIteration(initial.id, maxIter);
       } catch (e) {
         removeProgressCard();
@@ -533,6 +721,10 @@
           // Check if done
           if (data.status !== 'running') {
             removeProgressCard();
+            // Clear hash now that iteration is done
+            if (location.hash.startsWith('#iter=')) {
+              history.replaceState(null, '', location.pathname);
+            }
 
             if (data.best_response) {
               // Build summary header
@@ -553,7 +745,9 @@
               }
 
               addMessage('system', header, true);
-              addMessage('assistant', data.best_response);
+              const iterMsg = addMessage('assistant', data.best_response);
+              addKBBadge(iterMsg, window._lastKBResult);
+              triggerExtraction(data.best_response);
             } else {
               addMessage('system', `Iteration ${data.status}: ${data.error || 'no response'}`);
             }
@@ -574,6 +768,73 @@
     }
 
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // Restore iteration from URL hash on page load
+    async function restoreFromHash() {
+      const match = location.hash.match(/^#iter=(.+)$/);
+      if (!match) return;
+      const id = match[1];
+
+      try {
+        const resp = await fetch(`/api/gemini/iterate/${id}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        // Hide welcome
+        if (welcome) welcome.style.display = 'none';
+
+        if (data.status === 'running') {
+          // Show progress card and resume polling
+          const maxSteps = (data.config && data.config.max_iterations) || 5;
+          addProgressCard(maxSteps);
+          busy = true;
+          sendBtn.disabled = true;
+
+          // Catch up on completed steps
+          if (data.steps) {
+            for (let i = 0; i < data.steps.length; i++) {
+              const step = data.steps[i];
+              const ev = step.evaluation;
+              const score = ev ? ev.score : null;
+              updateProgress(step.step, maxSteps, 'evaluating', score);
+            }
+          }
+
+          await pollIteration(id, maxSteps);
+          busy = false;
+          sendBtn.disabled = false;
+        } else {
+          // Completed or failed — render result immediately
+          if (data.best_response) {
+            let header = '<strong>Iteration complete</strong> — ';
+            if (data.best_score != null) header += `Score: ${scoreBadge(data.best_score)} `;
+            header += `(${data.total_iterations} iteration${data.total_iterations !== 1 ? 's' : ''})`;
+            header += ` · ${formatElapsed(data.duration_ms)}`;
+
+            const bestStep = data.steps && data.steps[data.best_iteration - 1];
+            if (bestStep && bestStep.evaluation) {
+              const ev = bestStep.evaluation;
+              const dimNames = ['accuracy', 'completeness', 'clarity', 'actionability', 'fulfillment'];
+              const parts = dimNames
+                .filter(d => typeof ev[d] === 'number' && ev[d] > 0)
+                .map(d => `<strong>${d}</strong>: ${ev[d].toFixed(2)}`);
+              if (parts.length) header += `<br>${parts.join(' · ')}`;
+            }
+
+            addMessage('system', header, true);
+            addMessage('assistant', data.best_response);
+          } else {
+            addMessage('system', `Iteration ${data.status}: ${data.error || 'no response'}`);
+          }
+          // Clear hash for completed iterations
+          history.replaceState(null, '', location.pathname);
+        }
+      } catch (e) {
+        // Silently fail — user can start fresh
+      }
+    }
+
+    restoreFromHash();
 
     // Focus input on load
     promptEl.focus();

@@ -9,6 +9,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 
 from um_agent_coder.daemon.auth import verify_github_signature
+from um_agent_coder.daemon.routes.world_agent._github_write import GitHubWriteClient
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,25 @@ async def _handle_issue_comment(payload: dict):
         task_id,
         f"Created from GitHub issue comment by {source_meta.get('user')}",
     )
-    await worker.enqueue(task_id)
+
+    # Register completion callback to post result back as a GitHub comment
+    async def _post_result_callback(tid: str, result: str):
+        try:
+            settings = get_settings()
+            if not settings.github_token:
+                logger.warning("No GitHub token; skipping comment feedback for %s", tid)
+                return
+            gh = GitHubWriteClient(token=settings.github_token)
+            repo_name = source_meta.get("repo", "")
+            issue_num = source_meta.get("issue_number")
+            if repo_name and issue_num:
+                body = f"**Agent result** (task `{tid}`):\n\n{result[:60000]}"
+                await gh.post_comment(repo_name, issue_num, body)
+                logger.info("Posted result for %s back to %s#%s", tid, repo_name, issue_num)
+        except Exception as e:
+            logger.error("Failed to post GitHub comment for %s: %s", tid, e)
+
+    await worker.enqueue(task_id, on_complete=_post_result_callback)
 
     return {"status": "accepted", "task_id": task_id}
 

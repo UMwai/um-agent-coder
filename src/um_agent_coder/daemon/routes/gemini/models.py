@@ -443,6 +443,7 @@ class IterateResponse(BaseModel):
 class IterationSummaryResponse(BaseModel):
     id: str
     status: IterationStatus
+    original_prompt: str = ""
     best_score: float = 0.0
     total_iterations: int = 0
     total_tokens: int = 0
