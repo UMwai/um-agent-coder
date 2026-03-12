@@ -81,18 +81,23 @@ async def get_goal(goal_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def list_goals(status: Optional[str] = None) -> List[Dict[str, Any]]:
-    """List all goals, optionally filtered by status."""
+    """List all goals, optionally filtered by status.
+
+    Note: Firestore compound queries (where + order_by on different fields)
+    require composite indexes. We fetch all goals and filter in Python to
+    avoid the missing-index silent failure.
+    """
     client = _get_client()
     if not client:
         return []
     try:
-        query = client.collection(GOALS_COLLECTION)
-        if status:
-            query = query.where("status", "==", status)
-        query = query.order_by("priority")
+        query = client.collection(GOALS_COLLECTION).order_by("priority")
         results = []
         async for doc in query.stream():
-            results.append(doc.to_dict())
+            data = doc.to_dict()
+            if status and data.get("status") != status:
+                continue
+            results.append(data)
         return results
     except Exception as e:
         logger.error("Failed to list goals: %s", e)
