@@ -768,7 +768,7 @@ class CreditStressCollector(EventCollector):
                               + (f", avg P/B {avg_pb:.2f}" if avg_pb > 0 else ""),
                         body=f"Broad BDC selloff indicates systemic private credit concern. "
                              f"Monitor for: dividend cuts, non-accrual spikes, warehouse margin calls. "
-                             f"Components: {', '.join(b['symbol'] + ' ' + f'{b[\"change_pct\"]:+.1f}%' for b in bdc_moves)}",
+                             f"Components: {', '.join(b['symbol'] + ' ' + str(round(b['change_pct'], 1)) + '%' for b in bdc_moves)}",
                         metadata={
                             "avg_change_pct": round(avg_change, 2),
                             "near_52w_lows": near_lows,
