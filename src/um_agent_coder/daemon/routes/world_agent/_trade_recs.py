@@ -103,15 +103,21 @@ def _build_market_context(events: List[Event]) -> str:
             vol_ratio = e.metadata.get("vol_ratio", 0)
             scan_type = e.metadata.get("scan_type", "")
             if scan_type == "price_move":
-                sections.append(f"- {symbol}: ${price:.2f} ({change:+.1f}%) — SIGNIFICANT MOVE — vol {vol_ratio:.1f}x avg")
+                sections.append(
+                    f"- {symbol}: ${price:.2f} ({change:+.1f}%) — SIGNIFICANT MOVE — vol {vol_ratio:.1f}x avg"
+                )
             elif scan_type == "volume_spike":
-                sections.append(f"- {symbol}: ${price:.2f} ({change:+.1f}%) — VOLUME SPIKE {vol_ratio:.1f}x avg ({volume:,})")
+                sections.append(
+                    f"- {symbol}: ${price:.2f} ({change:+.1f}%) — VOLUME SPIKE {vol_ratio:.1f}x avg ({volume:,})"
+                )
             else:
                 sections.append(f"- {symbol}: ${price:.2f} ({change:+.1f}%)")
 
     # All quotes (even non-movers, from metadata)
     # Include raw quote data if available
-    quote_events = [e for e in events if e.source == "market.movers" and e.metadata.get("scan_type") == "quote"]
+    quote_events = [
+        e for e in events if e.source == "market.movers" and e.metadata.get("scan_type") == "quote"
+    ]
     if quote_events:
         for e in quote_events:
             symbol = e.metadata.get("symbol", "?")
@@ -128,7 +134,9 @@ def _build_market_context(events: List[Event]) -> str:
             rate = e.metadata.get("funding_rate", 0)
             apr = e.metadata.get("apr", 0)
             mark = e.metadata.get("mark_price", 0)
-            sections.append(f"- {symbol}: funding {rate*100:.4f}% ({apr:.1f}% APR) | mark ${mark:,.2f}")
+            sections.append(
+                f"- {symbol}: funding {rate*100:.4f}% ({apr:.1f}% APR) | mark ${mark:,.2f}"
+            )
 
     # News
     news_events = by_source.get("market.news", [])
@@ -235,8 +243,15 @@ def format_trade_recs_discord(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
         return embeds
 
     regime = recs.get("market_regime", "unknown")
-    regime_emoji = {"risk-on": "🟢", "neutral": "⚪", "risk-off": "🟡", "crisis": "🔴"}.get(regime, "❓")
-    regime_color = {"risk-on": 0x28a745, "neutral": 0x6c757d, "risk-off": 0xffc107, "crisis": 0xdc3545}.get(regime, 0x6c757d)
+    regime_emoji = {"risk-on": "🟢", "neutral": "⚪", "risk-off": "🟡", "crisis": "🔴"}.get(
+        regime, "❓"
+    )
+    regime_color = {
+        "risk-on": 0x28A745,
+        "neutral": 0x6C757D,
+        "risk-off": 0xFFC107,
+        "crisis": 0xDC3545,
+    }.get(regime, 0x6C757D)
 
     recommendations = recs.get("recommendations", [])[:6]
 
@@ -280,12 +295,14 @@ def format_trade_recs_discord(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
             )
         desc_parts.append("\n".join(table_lines))
 
-    embeds.append({
-        "title": f"📊 Trade Recommendations ({len(recommendations)} plays)",
-        "description": "\n".join(desc_parts),
-        "color": regime_color,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    embeds.append(
+        {
+            "title": f"📊 Trade Recommendations ({len(recommendations)} plays)",
+            "description": "\n".join(desc_parts),
+            "color": regime_color,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
     # --- Embeds 2..N: Detail card per trade ---
     for i, rec in enumerate(recommendations):
@@ -305,7 +322,9 @@ def format_trade_recs_discord(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         dir_emoji = "🟢" if direction == "LONG" else "🔴"
         conv_emoji = {"HIGH": "🔥", "MEDIUM": "⚡", "LOW": "💡"}.get(conviction, "❓")
-        conv_color = {"HIGH": 0x28a745, "MEDIUM": 0xfd7e14, "LOW": 0x6c757d}.get(conviction, 0x6c757d)
+        conv_color = {"HIGH": 0x28A745, "MEDIUM": 0xFD7E14, "LOW": 0x6C757D}.get(
+            conviction, 0x6C757D
+        )
 
         # Compact key stats line
         stats_line = (
@@ -326,21 +345,25 @@ def format_trade_recs_discord(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
         if risks:
             detail_parts.append(f"\n⚠️ **Risks**\n{risks[:500]}")
 
-        embeds.append({
-            "title": f"{i+1}. {symbol}",
-            "description": "\n".join(detail_parts),
-            "color": conv_color,
-        })
+        embeds.append(
+            {
+                "title": f"{i+1}. {symbol}",
+                "description": "\n".join(detail_parts),
+                "color": conv_color,
+            }
+        )
 
     # --- Watchlist ---
     watchlist = recs.get("watchlist", [])
     if watchlist:
         watch_lines = [f"**{w.get('symbol', '?')}** — {w.get('note', '')}" for w in watchlist[:8]]
-        embeds.append({
-            "title": "👀 Watchlist",
-            "description": "\n".join(watch_lines),
-            "color": 0x17a2b8,
-        })
+        embeds.append(
+            {
+                "title": "👀 Watchlist",
+                "description": "\n".join(watch_lines),
+                "color": 0x17A2B8,
+            }
+        )
 
     return embeds
 
@@ -356,8 +379,18 @@ def format_trade_recs_slack(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
         return attachments
 
     regime = recs.get("market_regime", "unknown")
-    regime_emoji = {"risk-on": ":large_green_circle:", "neutral": ":white_circle:", "risk-off": ":warning:", "crisis": ":red_circle:"}.get(regime, ":question:")
-    regime_color = {"risk-on": "#28a745", "neutral": "#6c757d", "risk-off": "#ffc107", "crisis": "#dc3545"}.get(regime, "#6c757d")
+    regime_emoji = {
+        "risk-on": ":large_green_circle:",
+        "neutral": ":white_circle:",
+        "risk-off": ":warning:",
+        "crisis": ":red_circle:",
+    }.get(regime, ":question:")
+    regime_color = {
+        "risk-on": "#28a745",
+        "neutral": "#6c757d",
+        "risk-off": "#ffc107",
+        "crisis": "#dc3545",
+    }.get(regime, "#6c757d")
 
     recommendations = recs.get("recommendations", [])[:6]
 
@@ -382,7 +415,11 @@ def format_trade_recs_slack(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
             rr = rec.get("risk_reward", "?")
             conviction = rec.get("conviction", "?")
             dir_emoji = ":arrow_up:" if direction == "LONG" else ":arrow_down:"
-            conv_dot = {"HIGH": ":large_green_circle:", "MEDIUM": ":yellow_circle:", "LOW": ":white_circle:"}.get(conviction, ":white_circle:")
+            conv_dot = {
+                "HIGH": ":large_green_circle:",
+                "MEDIUM": ":yellow_circle:",
+                "LOW": ":white_circle:",
+            }.get(conviction, ":white_circle:")
             conv_letter = conviction[0] if conviction else "?"
 
             def _p(v: float) -> str:
@@ -399,12 +436,14 @@ def format_trade_recs_slack(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
             )
         overview_parts.append("\n".join(table_lines))
 
-    attachments.append({
-        "color": regime_color,
-        "pretext": f":chart_with_upwards_trend: *Trade Recommendations ({len(recommendations)} plays)*",
-        "text": "\n".join(overview_parts),
-        "footer": "world-agent | trade-recs",
-    })
+    attachments.append(
+        {
+            "color": regime_color,
+            "pretext": f":chart_with_upwards_trend: *Trade Recommendations ({len(recommendations)} plays)*",
+            "text": "\n".join(overview_parts),
+            "footer": "world-agent | trade-recs",
+        }
+    )
 
     # --- Detail per trade ---
     for i, rec in enumerate(recommendations):
@@ -424,7 +463,9 @@ def format_trade_recs_slack(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         dir_emoji = ":arrow_up:" if direction == "LONG" else ":arrow_down:"
         conv_emoji = {"HIGH": ":fire:", "MEDIUM": ":zap:", "LOW": ":bulb:"}.get(conviction, "")
-        conv_color = {"HIGH": "#28a745", "MEDIUM": "#fd7e14", "LOW": "#6c757d"}.get(conviction, "#6c757d")
+        conv_color = {"HIGH": "#28a745", "MEDIUM": "#fd7e14", "LOW": "#6c757d"}.get(
+            conviction, "#6c757d"
+        )
 
         stats_line = (
             f"{dir_emoji} *{direction}* · {conv_emoji} {conviction} · "
@@ -439,20 +480,26 @@ def format_trade_recs_slack(recs: Dict[str, Any]) -> List[Dict[str, Any]]:
         if risks:
             detail_parts.append(f"\n:warning: *Risks*\n{risks[:300]}")
 
-        attachments.append({
-            "color": conv_color,
-            "title": f"{i+1}. {symbol} — {strategy}",
-            "text": "\n".join(detail_parts),
-        })
+        attachments.append(
+            {
+                "color": conv_color,
+                "title": f"{i+1}. {symbol} — {strategy}",
+                "text": "\n".join(detail_parts),
+            }
+        )
 
     # --- Watchlist ---
     watchlist = recs.get("watchlist", [])
     if watchlist:
-        watch_text = "\n".join(f"*{w.get('symbol', '?')}* — {w.get('note', '')}" for w in watchlist[:8])
-        attachments.append({
-            "color": "#17a2b8",
-            "title": ":eyes: Watchlist",
-            "text": watch_text,
-        })
+        watch_text = "\n".join(
+            f"*{w.get('symbol', '?')}* — {w.get('note', '')}" for w in watchlist[:8]
+        )
+        attachments.append(
+            {
+                "color": "#17a2b8",
+                "title": ":eyes: Watchlist",
+                "text": watch_text,
+            }
+        )
 
     return attachments

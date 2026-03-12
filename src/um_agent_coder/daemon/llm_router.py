@@ -69,12 +69,16 @@ class LLMRouter:
         if any(k in m for k in ("gpt", "o1", "o3", "o4", "codex")):
             if self._openai_key:
                 return "openai"
-            logger.warning("Model %s looks like OpenAI but no API key set, falling back to gemini", model)
+            logger.warning(
+                "Model %s looks like OpenAI but no API key set, falling back to gemini", model
+            )
             return "gemini"
         if any(k in m for k in ("claude", "sonnet", "opus", "haiku")):
             if self._anthropic_key:
                 return "anthropic"
-            logger.warning("Model %s looks like Anthropic but no API key set, falling back to gemini", model)
+            logger.warning(
+                "Model %s looks like Anthropic but no API key set, falling back to gemini", model
+            )
             return "gemini"
         return "gemini"
 
@@ -99,23 +103,34 @@ class LLMRouter:
 
         if provider == "openai":
             return await self._generate_openai(
-                prompt, model or self._openai_model,
-                system_prompt=system_prompt, temperature=temperature,
-                max_tokens=max_tokens, timeout=timeout,
+                prompt,
+                model or self._openai_model,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
             )
         elif provider == "anthropic":
             return await self._generate_anthropic(
-                prompt, model or self._anthropic_model,
-                system_prompt=system_prompt, temperature=temperature,
-                max_tokens=max_tokens, timeout=timeout,
+                prompt,
+                model or self._anthropic_model,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
             )
         else:
             if not self._gemini:
-                raise RuntimeError("Gemini client not available and no fallback provider configured")
+                raise RuntimeError(
+                    "Gemini client not available and no fallback provider configured"
+                )
             return await self._gemini.generate(
-                prompt, model or "gemini-3-flash-preview",
-                system_prompt=system_prompt, temperature=temperature,
-                max_tokens=max_tokens, timeout=timeout,
+                prompt,
+                model or "gemini-3-flash-preview",
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
             )
 
     async def _generate_openai(

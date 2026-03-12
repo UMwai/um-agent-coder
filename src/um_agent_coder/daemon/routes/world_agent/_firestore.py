@@ -539,11 +539,7 @@ async def list_trade_recs(
     try:
         if not date_str:
             date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        query = (
-            client.collection(TRADE_RECS_COLLECTION)
-            .document(date_str)
-            .collection("recs")
-        )
+        query = client.collection(TRADE_RECS_COLLECTION).document(date_str).collection("recs")
         if symbol:
             query = query.where("symbol", "==", symbol.upper())
         query = query.order_by("timestamp", direction="DESCENDING").limit(limit)
@@ -577,12 +573,14 @@ async def update_trade_rec_outcome(
             .collection("recs")
             .document(rec_id)
         )
-        await doc_ref.update({
-            "outcome": outcome,
-            "outcome_pnl_pct": pnl_pct,
-            "outcome_notes": notes,
-            "reviewed_at": _now_iso(),
-        })
+        await doc_ref.update(
+            {
+                "outcome": outcome,
+                "outcome_pnl_pct": pnl_pct,
+                "outcome_notes": notes,
+                "reviewed_at": _now_iso(),
+            }
+        )
         logger.info("Updated trade rec %s outcome: %s", rec_id, outcome)
         return True
     except Exception as e:

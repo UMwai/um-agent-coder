@@ -33,9 +33,21 @@ logger = logging.getLogger(__name__)
 
 # Symbols to monitor
 EQUITY_WATCHLIST = [
-    "SPY", "QQQ", "IWM", "DIA",
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",
-    "AMD", "AVGO", "CRM", "NFLX",
+    "SPY",
+    "QQQ",
+    "IWM",
+    "DIA",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "TSLA",
+    "AMD",
+    "AVGO",
+    "CRM",
+    "NFLX",
 ]
 CRYPTO_WATCHLIST = ["bitcoin", "ethereum", "solana"]
 VOL_SYMBOLS = ["^VIX"]
@@ -72,39 +84,49 @@ class MarketMoversCollector(EventCollector):
                 # Large price move
                 if abs(change_pct) >= self._move_threshold:
                     direction = "up" if change_pct > 0 else "down"
-                    severity = EventSeverity.urgent if abs(change_pct) >= 5 else EventSeverity.notable
-                    events.append(Event(
-                        id=f"mkt-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=severity,
-                        title=f"{symbol} {direction} {abs(change_pct):.1f}% to ${price:.2f}",
-                        body=f"Volume: {volume:,} ({vol_ratio:.1f}x avg)",
-                        metadata={
-                            "symbol": symbol, "change_pct": round(change_pct, 2),
-                            "price": price, "volume": volume,
-                            "vol_ratio": round(vol_ratio, 1),
-                            "scan_type": "price_move",
-                        },
-                    ))
+                    severity = (
+                        EventSeverity.urgent if abs(change_pct) >= 5 else EventSeverity.notable
+                    )
+                    events.append(
+                        Event(
+                            id=f"mkt-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=severity,
+                            title=f"{symbol} {direction} {abs(change_pct):.1f}% to ${price:.2f}",
+                            body=f"Volume: {volume:,} ({vol_ratio:.1f}x avg)",
+                            metadata={
+                                "symbol": symbol,
+                                "change_pct": round(change_pct, 2),
+                                "price": price,
+                                "volume": volume,
+                                "vol_ratio": round(vol_ratio, 1),
+                                "scan_type": "price_move",
+                            },
+                        )
+                    )
 
                 # Volume spike (>2x average)
                 if vol_ratio >= 2.0 and abs(change_pct) < self._move_threshold:
-                    events.append(Event(
-                        id=f"mkt-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=EventSeverity.notable,
-                        title=f"{symbol} volume spike: {vol_ratio:.1f}x average ({volume:,})",
-                        body=f"Price: ${price:.2f} ({change_pct:+.1f}%)",
-                        metadata={
-                            "symbol": symbol, "vol_ratio": round(vol_ratio, 1),
-                            "volume": volume, "change_pct": round(change_pct, 2),
-                            "scan_type": "volume_spike",
-                        },
-                    ))
+                    events.append(
+                        Event(
+                            id=f"mkt-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.notable,
+                            title=f"{symbol} volume spike: {vol_ratio:.1f}x average ({volume:,})",
+                            body=f"Price: ${price:.2f} ({change_pct:+.1f}%)",
+                            metadata={
+                                "symbol": symbol,
+                                "vol_ratio": round(vol_ratio, 1),
+                                "volume": volume,
+                                "change_pct": round(change_pct, 2),
+                                "scan_type": "volume_spike",
+                            },
+                        )
+                    )
 
         except Exception as e:
             logger.warning("MarketMovers collection failed: %s", e)
@@ -129,14 +151,18 @@ class MarketMoversCollector(EventCollector):
                     price = meta.get("regularMarketPrice", 0)
                     volume = meta.get("regularMarketVolume", 0)
                     change_pct = ((price - prev) / prev * 100) if prev else 0
-                    quotes.append({
-                        "symbol": symbol,
-                        "regularMarketPrice": price,
-                        "regularMarketChangePercent": change_pct,
-                        "regularMarketVolume": volume,
-                        "averageDailyVolume3Month": meta.get("averageDailyVolume3Month", volume),
-                        "regularMarketPreviousClose": prev,
-                    })
+                    quotes.append(
+                        {
+                            "symbol": symbol,
+                            "regularMarketPrice": price,
+                            "regularMarketChangePercent": change_pct,
+                            "regularMarketVolume": volume,
+                            "averageDailyVolume3Month": meta.get(
+                                "averageDailyVolume3Month", volume
+                            ),
+                            "regularMarketPreviousClose": prev,
+                        }
+                    )
                 except Exception:
                     continue
         return quotes
@@ -199,26 +225,34 @@ class NewsCollector(EventCollector):
                         # Classify severity by keywords
                         severity = EventSeverity.info
                         lower = title.lower()
-                        if any(w in lower for w in ["crash", "plunge", "surge", "halt", "emergency", "crisis"]):
+                        if any(
+                            w in lower
+                            for w in ["crash", "plunge", "surge", "halt", "emergency", "crisis"]
+                        ):
                             severity = EventSeverity.urgent
-                        elif any(w in lower for w in ["beat", "miss", "downgrade", "upgrade", "cut", "hike"]):
+                        elif any(
+                            w in lower
+                            for w in ["beat", "miss", "downgrade", "upgrade", "cut", "hike"]
+                        ):
                             severity = EventSeverity.notable
 
-                        events.append(Event(
-                            id=f"news-{uuid.uuid4().hex[:8]}",
-                            source=self.source_id(),
-                            timestamp=now,
-                            category=EventCategory.news,
-                            severity=severity,
-                            title=title[:200],
-                            body=f"Query: {query}",
-                            metadata={
-                                "url": link_m.group(1) if link_m else "",
-                                "published": pub_m.group(1) if pub_m else "",
-                                "query": query,
-                                "scan_type": "news",
-                            },
-                        ))
+                        events.append(
+                            Event(
+                                id=f"news-{uuid.uuid4().hex[:8]}",
+                                source=self.source_id(),
+                                timestamp=now,
+                                category=EventCategory.news,
+                                severity=severity,
+                                title=title[:200],
+                                body=f"Query: {query}",
+                                metadata={
+                                    "url": link_m.group(1) if link_m else "",
+                                    "published": pub_m.group(1) if pub_m else "",
+                                    "query": query,
+                                    "scan_type": "news",
+                                },
+                            )
+                        )
                 except Exception as e:
                     logger.debug("News fetch failed for '%s': %s", query, e)
 
@@ -268,19 +302,23 @@ class VolatilityCollector(EventCollector):
                     severity = EventSeverity.info
                     regime = "risk-on"
 
-                events.append(Event(
-                    id=f"vol-{uuid.uuid4().hex[:8]}",
-                    source=self.source_id(),
-                    timestamp=now,
-                    category=EventCategory.financial,
-                    severity=severity,
-                    title=f"VIX at {level:.1f} ({change:+.1f}%) — regime: {regime}",
-                    body=f"Previous close: {prev:.1f}",
-                    metadata={
-                        "vix": level, "change_pct": round(change, 2),
-                        "regime": regime, "scan_type": "volatility",
-                    },
-                ))
+                events.append(
+                    Event(
+                        id=f"vol-{uuid.uuid4().hex[:8]}",
+                        source=self.source_id(),
+                        timestamp=now,
+                        category=EventCategory.financial,
+                        severity=severity,
+                        title=f"VIX at {level:.1f} ({change:+.1f}%) — regime: {regime}",
+                        body=f"Previous close: {prev:.1f}",
+                        metadata={
+                            "vix": level,
+                            "change_pct": round(change, 2),
+                            "regime": regime,
+                            "scan_type": "volatility",
+                        },
+                    )
+                )
 
         except Exception as e:
             logger.warning("Volatility collection failed: %s", e)
@@ -341,42 +379,46 @@ class CryptoFundingCollector(EventCollector):
                     if abs(funding_rate) >= self._threshold:
                         direction = "positive" if funding_rate > 0 else "negative"
                         severity = EventSeverity.urgent if abs(apr) > 50 else EventSeverity.notable
-                        events.append(Event(
-                            id=f"fund-{uuid.uuid4().hex[:8]}",
-                            source=self.source_id(),
-                            timestamp=now,
-                            category=EventCategory.financial,
-                            severity=severity,
-                            title=f"{symbol} funding {direction}: {funding_rate*100:.3f}% ({apr:.0f}% APR)",
-                            body=f"Mark price: ${mark_price:,.2f}. "
-                                 f"{'Basis trade opportunity: long spot, short perp.' if funding_rate > 0 else 'Reverse basis: short spot, long perp.'}",
-                            metadata={
-                                "symbol": symbol,
-                                "funding_rate": funding_rate,
-                                "apr": round(apr, 1),
-                                "mark_price": mark_price,
-                                "direction": direction,
-                                "scan_type": "funding_rate",
-                            },
-                        ))
+                        events.append(
+                            Event(
+                                id=f"fund-{uuid.uuid4().hex[:8]}",
+                                source=self.source_id(),
+                                timestamp=now,
+                                category=EventCategory.financial,
+                                severity=severity,
+                                title=f"{symbol} funding {direction}: {funding_rate*100:.3f}% ({apr:.0f}% APR)",
+                                body=f"Mark price: ${mark_price:,.2f}. "
+                                f"{'Basis trade opportunity: long spot, short perp.' if funding_rate > 0 else 'Reverse basis: short spot, long perp.'}",
+                                metadata={
+                                    "symbol": symbol,
+                                    "funding_rate": funding_rate,
+                                    "apr": round(apr, 1),
+                                    "mark_price": mark_price,
+                                    "direction": direction,
+                                    "scan_type": "funding_rate",
+                                },
+                            )
+                        )
                     else:
                         # Still report rates for awareness
-                        events.append(Event(
-                            id=f"fund-{uuid.uuid4().hex[:8]}",
-                            source=self.source_id(),
-                            timestamp=now,
-                            category=EventCategory.financial,
-                            severity=EventSeverity.info,
-                            title=f"{symbol} funding: {funding_rate*100:.4f}% ({apr:.1f}% APR) at ${mark_price:,.0f}",
-                            body="Normal range — no immediate opportunity.",
-                            metadata={
-                                "symbol": symbol,
-                                "funding_rate": funding_rate,
-                                "apr": round(apr, 1),
-                                "mark_price": mark_price,
-                                "scan_type": "funding_rate",
-                            },
-                        ))
+                        events.append(
+                            Event(
+                                id=f"fund-{uuid.uuid4().hex[:8]}",
+                                source=self.source_id(),
+                                timestamp=now,
+                                category=EventCategory.financial,
+                                severity=EventSeverity.info,
+                                title=f"{symbol} funding: {funding_rate*100:.4f}% ({apr:.1f}% APR) at ${mark_price:,.0f}",
+                                body="Normal range — no immediate opportunity.",
+                                metadata={
+                                    "symbol": symbol,
+                                    "funding_rate": funding_rate,
+                                    "apr": round(apr, 1),
+                                    "mark_price": mark_price,
+                                    "scan_type": "funding_rate",
+                                },
+                            )
+                        )
 
         except Exception as e:
             logger.warning("Crypto funding collection failed: %s", e)
@@ -415,23 +457,31 @@ class SECFilingsCollector(EventCollector):
                 data = resp.json()
                 for filing in data.get("hits", {}).get("hits", [])[:10]:
                     source = filing.get("_source", {})
-                    company = source.get("display_names", ["Unknown"])[0] if source.get("display_names") else "Unknown"
+                    company = (
+                        source.get("display_names", ["Unknown"])[0]
+                        if source.get("display_names")
+                        else "Unknown"
+                    )
                     form = source.get("form_type", "8-K")
                     filed = source.get("file_date", "")
 
-                    events.append(Event(
-                        id=f"sec-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=EventSeverity.notable,
-                        title=f"{company} filed {form}",
-                        body=f"Filed: {filed}",
-                        metadata={
-                            "company": company, "form_type": form,
-                            "filed_date": filed, "scan_type": "sec_filing",
-                        },
-                    ))
+                    events.append(
+                        Event(
+                            id=f"sec-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.notable,
+                            title=f"{company} filed {form}",
+                            body=f"Filed: {filed}",
+                            metadata={
+                                "company": company,
+                                "form_type": form,
+                                "filed_date": filed,
+                                "scan_type": "sec_filing",
+                            },
+                        )
+                    )
 
         except Exception as e:
             logger.warning("SEC filings collection failed: %s", e)
@@ -459,16 +509,18 @@ class SECFilingsCollector(EventCollector):
                 entry = match.group(1)
                 title_m = title_pat.search(entry)
                 if title_m:
-                    events.append(Event(
-                        id=f"sec-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=EventSeverity.info,
-                        title=title_m.group(1)[:200],
-                        body="",
-                        metadata={"scan_type": "sec_rss"},
-                    ))
+                    events.append(
+                        Event(
+                            id=f"sec-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.info,
+                            title=title_m.group(1)[:200],
+                            body="",
+                            metadata={"scan_type": "sec_rss"},
+                        )
+                    )
         except Exception as e:
             logger.debug("SEC RSS fallback failed: %s", e)
 

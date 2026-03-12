@@ -138,9 +138,7 @@ def _build_reflection_prompt(data: Dict[str, Any], existing_lessons: List[Dict[s
         f"  {g}: {c} signals, {data['tasks_by_goal'].get(g, 0)} tasks"
         for g, c in sorted(data.get("signals_by_goal", {}).items(), key=lambda x: -x[1])
     )
-    cli_dist = "\n".join(
-        f"  {c}: {n} tasks" for c, n in data.get("tasks_by_cli", {}).items()
-    )
+    cli_dist = "\n".join(f"  {c}: {n} tasks" for c, n in data.get("tasks_by_cli", {}).items())
 
     # Existing lessons
     existing_text = ""
@@ -229,15 +227,17 @@ async def reflect(days: int = 7) -> Dict[str, Any]:
         if "decide-lesson" not in tags:
             tags.insert(0, "decide-lesson")
 
-        item = await kb_store.create_item({
-            "type": "lesson",
-            "title": lesson.get("title", "Untitled lesson"),
-            "content": lesson.get("content", ""),
-            "tags": tags,
-            "priority": lesson.get("priority", "medium"),
-            "source": "world-agent-learner",
-            "source_ref": f"reflection-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
-        })
+        item = await kb_store.create_item(
+            {
+                "type": "lesson",
+                "title": lesson.get("title", "Untitled lesson"),
+                "content": lesson.get("content", ""),
+                "tags": tags,
+                "priority": lesson.get("priority", "medium"),
+                "source": "world-agent-learner",
+                "source_ref": f"reflection-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+            }
+        )
         if item:
             lessons_created += 1
 

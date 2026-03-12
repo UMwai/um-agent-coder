@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 # Discord channel IDs in UM Trades server
 DISCORD_CHANNELS = {
-    "signals": "1481636924023373884",     # #trading-signals
-    "regime": "1448055533935530044",       # #regime
-    "daytrading": "1448706889742553272",   # #daytrading
+    "signals": "1481636924023373884",  # #trading-signals
+    "regime": "1448055533935530044",  # #regime
+    "daytrading": "1448706889742553272",  # #daytrading
 }
 
 
@@ -45,9 +45,21 @@ async def dispatch_signals(
 
     # Classify events by type
     regime_events = [e for e in events if e.metadata.get("scan_type") == "volatility"]
-    mover_events = [e for e in events if e.metadata.get("scan_type") in ("price_move", "volume_spike")]
-    funding_events = [e for e in events if e.metadata.get("scan_type") == "funding_rate" and e.metadata.get("apr", 0) and abs(e.metadata.get("apr", 0)) > 10]
-    news_events = [e for e in events if e.source == "market.news" and e.severity.value in ("urgent", "critical")]
+    mover_events = [
+        e for e in events if e.metadata.get("scan_type") in ("price_move", "volume_spike")
+    ]
+    funding_events = [
+        e
+        for e in events
+        if e.metadata.get("scan_type") == "funding_rate"
+        and e.metadata.get("apr", 0)
+        and abs(e.metadata.get("apr", 0)) > 10
+    ]
+    news_events = [
+        e
+        for e in events
+        if e.source == "market.news" and e.severity.value in ("urgent", "critical")
+    ]
     [e for e in events if e.source == "market.sec_filings"]
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -64,35 +76,64 @@ async def dispatch_signals(
 
                 if slack_webhook:
                     try:
-                        await _post_slack(client, slack_webhook, {
-                            "attachments": [{
-                                "color": color,
-                                "pretext": f"{emoji} *Regime Alert*",
-                                "fields": [
-                                    {"title": "VIX", "value": f"{vix:.1f} ({change:+.1f}%)", "short": True},
-                                    {"title": "Regime", "value": regime.upper(), "short": True},
-                                ],
-                                "footer": "world-agent | market.volatility",
-                            }]
-                        })
+                        await _post_slack(
+                            client,
+                            slack_webhook,
+                            {
+                                "attachments": [
+                                    {
+                                        "color": color,
+                                        "pretext": f"{emoji} *Regime Alert*",
+                                        "fields": [
+                                            {
+                                                "title": "VIX",
+                                                "value": f"{vix:.1f} ({change:+.1f}%)",
+                                                "short": True,
+                                            },
+                                            {
+                                                "title": "Regime",
+                                                "value": regime.upper(),
+                                                "short": True,
+                                            },
+                                        ],
+                                        "footer": "world-agent | market.volatility",
+                                    }
+                                ]
+                            },
+                        )
                         stats["slack"] += 1
                     except Exception as e:
                         logger.debug("Slack regime alert failed: %s", e)
 
                 if discord_bot_token:
                     try:
-                        await _post_discord(client, discord_bot_token, DISCORD_CHANNELS["regime"], {
-                            "embeds": [{
-                                "title": f"{emoji} Regime Alert",
-                                "color": _hex_to_int(color),
-                                "fields": [
-                                    {"name": "VIX", "value": f"{vix:.1f} ({change:+.1f}%)", "inline": True},
-                                    {"name": "Regime", "value": regime.upper(), "inline": True},
-                                ],
-                                "footer": {"text": "world-agent | market.volatility"},
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }]
-                        })
+                        await _post_discord(
+                            client,
+                            discord_bot_token,
+                            DISCORD_CHANNELS["regime"],
+                            {
+                                "embeds": [
+                                    {
+                                        "title": f"{emoji} Regime Alert",
+                                        "color": _hex_to_int(color),
+                                        "fields": [
+                                            {
+                                                "name": "VIX",
+                                                "value": f"{vix:.1f} ({change:+.1f}%)",
+                                                "inline": True,
+                                            },
+                                            {
+                                                "name": "Regime",
+                                                "value": regime.upper(),
+                                                "inline": True,
+                                            },
+                                        ],
+                                        "footer": {"text": "world-agent | market.volatility"},
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    }
+                                ]
+                            },
+                        )
                         stats["discord"] += 1
                     except Exception as e:
                         logger.debug("Discord regime alert failed: %s", e)
@@ -115,7 +156,11 @@ async def dispatch_signals(
                 vol_ratio = ev.metadata.get("vol_ratio", 0)
                 scan_type = ev.metadata.get("scan_type", "")
                 arrow = "📈" if change_pct > 0 else "📉"
-                vol_flag = f" ⚡{vol_ratio:.0f}x" if scan_type == "volume_spike" or vol_ratio >= 2.0 else ""
+                vol_flag = (
+                    f" ⚡{vol_ratio:.0f}x"
+                    if scan_type == "volume_spike" or vol_ratio >= 2.0
+                    else ""
+                )
                 lines.append(f"{arrow} **{symbol}** `{change_pct:+.1f}%` ${price:,.2f}{vol_flag}")
 
             table_text = "\n".join(lines)
@@ -123,7 +168,9 @@ async def dispatch_signals(
             # Count gainers/losers
             gainers = sum(1 for e in sorted_movers if e.metadata.get("change_pct", 0) > 0)
             losers = len(sorted_movers) - gainers
-            net_color = "#28a745" if gainers > losers else "#dc3545" if losers > gainers else "#6c757d"
+            net_color = (
+                "#28a745" if gainers > losers else "#dc3545" if losers > gainers else "#6c757d"
+            )
 
             if slack_webhook:
                 try:
@@ -135,32 +182,55 @@ async def dispatch_signals(
                         price = ev.metadata.get("price", 0)
                         vol_ratio = ev.metadata.get("vol_ratio", 0)
                         scan_type = ev.metadata.get("scan_type", "")
-                        arrow = ":chart_with_upwards_trend:" if change_pct > 0 else ":chart_with_downwards_trend:"
-                        vol_flag = f" :zap:{vol_ratio:.0f}x" if scan_type == "volume_spike" or vol_ratio >= 2.0 else ""
-                        slack_lines.append(f"{arrow} *{symbol}* `{change_pct:+.1f}%` ${price:,.2f}{vol_flag}")
-                    await _post_slack(client, slack_webhook, {
-                        "attachments": [{
-                            "color": net_color,
-                            "pretext": f":bar_chart: *Market Movers* ({gainers} up / {losers} down)",
-                            "text": "\n".join(slack_lines),
-                            "footer": "world-agent | market.movers",
-                        }]
-                    })
+                        arrow = (
+                            ":chart_with_upwards_trend:"
+                            if change_pct > 0
+                            else ":chart_with_downwards_trend:"
+                        )
+                        vol_flag = (
+                            f" :zap:{vol_ratio:.0f}x"
+                            if scan_type == "volume_spike" or vol_ratio >= 2.0
+                            else ""
+                        )
+                        slack_lines.append(
+                            f"{arrow} *{symbol}* `{change_pct:+.1f}%` ${price:,.2f}{vol_flag}"
+                        )
+                    await _post_slack(
+                        client,
+                        slack_webhook,
+                        {
+                            "attachments": [
+                                {
+                                    "color": net_color,
+                                    "pretext": f":bar_chart: *Market Movers* ({gainers} up / {losers} down)",
+                                    "text": "\n".join(slack_lines),
+                                    "footer": "world-agent | market.movers",
+                                }
+                            ]
+                        },
+                    )
                     stats["slack"] += 1
                 except Exception:
                     pass
 
             if discord_bot_token:
                 try:
-                    await _post_discord(client, discord_bot_token, DISCORD_CHANNELS["signals"], {
-                        "embeds": [{
-                            "title": f"📊 Market Movers ({gainers} up / {losers} down)",
-                            "description": table_text,
-                            "color": _hex_to_int(net_color),
-                            "footer": {"text": "world-agent | market.movers"},
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }]
-                    })
+                    await _post_discord(
+                        client,
+                        discord_bot_token,
+                        DISCORD_CHANNELS["signals"],
+                        {
+                            "embeds": [
+                                {
+                                    "title": f"📊 Market Movers ({gainers} up / {losers} down)",
+                                    "description": table_text,
+                                    "color": _hex_to_int(net_color),
+                                    "footer": {"text": "world-agent | market.movers"},
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ]
+                        },
+                    )
                     stats["discord"] += 1
                 except Exception:
                     pass
@@ -179,10 +249,16 @@ async def dispatch_signals(
                 mark = ev.metadata.get("mark_price", 0)
                 emoji = "🟢" if apr > 0 else "🔴"
                 trade = "basis" if apr > 0 else "rev basis"
-                lines.append(f"{emoji} **{symbol}** `{rate*100:.3f}%` ({apr:.0f}% APR) — ${mark:,.0f} [{trade}]")
+                lines.append(
+                    f"{emoji} **{symbol}** `{rate*100:.3f}%` ({apr:.0f}% APR) — ${mark:,.0f} [{trade}]"
+                )
 
             table_text = "\n".join(lines)
-            color = "#28a745" if any(e.metadata.get("apr", 0) > 30 for e in actionable_funding) else "#ffc107"
+            color = (
+                "#28a745"
+                if any(e.metadata.get("apr", 0) > 30 for e in actionable_funding)
+                else "#ffc107"
+            )
 
             if slack_webhook:
                 try:
@@ -194,30 +270,45 @@ async def dispatch_signals(
                         mark = ev.metadata.get("mark_price", 0)
                         emoji = ":large_green_circle:" if apr > 0 else ":red_circle:"
                         trade = "basis" if apr > 0 else "rev basis"
-                        slack_lines.append(f"{emoji} *{symbol}* `{rate*100:.3f}%` ({apr:.0f}% APR) — ${mark:,.0f} [{trade}]")
-                    await _post_slack(client, slack_webhook, {
-                        "attachments": [{
-                            "color": color,
-                            "pretext": f":money_with_wings: *Crypto Funding* ({len(actionable_funding)} opportunities)",
-                            "text": "\n".join(slack_lines),
-                            "footer": "world-agent | market.crypto_funding",
-                        }]
-                    })
+                        slack_lines.append(
+                            f"{emoji} *{symbol}* `{rate*100:.3f}%` ({apr:.0f}% APR) — ${mark:,.0f} [{trade}]"
+                        )
+                    await _post_slack(
+                        client,
+                        slack_webhook,
+                        {
+                            "attachments": [
+                                {
+                                    "color": color,
+                                    "pretext": f":money_with_wings: *Crypto Funding* ({len(actionable_funding)} opportunities)",
+                                    "text": "\n".join(slack_lines),
+                                    "footer": "world-agent | market.crypto_funding",
+                                }
+                            ]
+                        },
+                    )
                     stats["slack"] += 1
                 except Exception:
                     pass
 
             if discord_bot_token:
                 try:
-                    await _post_discord(client, discord_bot_token, DISCORD_CHANNELS["signals"], {
-                        "embeds": [{
-                            "title": f"💰 Crypto Funding ({len(actionable_funding)} opportunities)",
-                            "description": table_text,
-                            "color": _hex_to_int(color),
-                            "footer": {"text": "world-agent | market.crypto_funding"},
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }]
-                    })
+                    await _post_discord(
+                        client,
+                        discord_bot_token,
+                        DISCORD_CHANNELS["signals"],
+                        {
+                            "embeds": [
+                                {
+                                    "title": f"💰 Crypto Funding ({len(actionable_funding)} opportunities)",
+                                    "description": table_text,
+                                    "color": _hex_to_int(color),
+                                    "footer": {"text": "world-agent | market.crypto_funding"},
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ]
+                        },
+                    )
                     stats["discord"] += 1
                 except Exception:
                     pass
@@ -237,29 +328,45 @@ async def dispatch_signals(
 
             if slack_webhook:
                 try:
-                    await _post_slack(client, slack_webhook, {
-                        "attachments": [{
-                            "color": "#e83e8c",
-                            "pretext": f"📰 *Breaking Market News* ({len(news_events)} stories)",
-                            "text": news_text.replace("[", "").replace("]", " ").replace("(", "<").replace(")", ">"),
-                            "footer": "world-agent | market.news",
-                        }]
-                    })
+                    await _post_slack(
+                        client,
+                        slack_webhook,
+                        {
+                            "attachments": [
+                                {
+                                    "color": "#e83e8c",
+                                    "pretext": f"📰 *Breaking Market News* ({len(news_events)} stories)",
+                                    "text": news_text.replace("[", "")
+                                    .replace("]", " ")
+                                    .replace("(", "<")
+                                    .replace(")", ">"),
+                                    "footer": "world-agent | market.news",
+                                }
+                            ]
+                        },
+                    )
                     stats["slack"] += 1
                 except Exception:
                     pass
 
             if discord_bot_token:
                 try:
-                    await _post_discord(client, discord_bot_token, DISCORD_CHANNELS["daytrading"], {
-                        "embeds": [{
-                            "title": f"📰 Breaking Market News ({len(news_events)})",
-                            "description": news_text,
-                            "color": _hex_to_int("#e83e8c"),
-                            "footer": {"text": "world-agent | market.news"},
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }]
-                    })
+                    await _post_discord(
+                        client,
+                        discord_bot_token,
+                        DISCORD_CHANNELS["daytrading"],
+                        {
+                            "embeds": [
+                                {
+                                    "title": f"📰 Breaking Market News ({len(news_events)})",
+                                    "description": news_text,
+                                    "color": _hex_to_int("#e83e8c"),
+                                    "footer": {"text": "world-agent | market.news"},
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ]
+                        },
+                    )
                     stats["discord"] += 1
                 except Exception:
                     pass
@@ -269,7 +376,9 @@ async def dispatch_signals(
             signal_lines = []
             for s in signals[:10]:
                 urgency = s.urgency.value
-                urgency_emoji = {"immediate": "🔴", "today": "🟡", "this_week": "🔵"}.get(urgency, "⚪")
+                urgency_emoji = {"immediate": "🔴", "today": "🟡", "this_week": "🔵"}.get(
+                    urgency, "⚪"
+                )
                 signal_lines.append(
                     f"{urgency_emoji} **{s.goal_id}** (relevance: {s.relevance_score:.0%})\n"
                     f"   {s.interpretation[:150]}\n"
@@ -284,35 +393,52 @@ async def dispatch_signals(
                     slack_lines = []
                     for s in signals[:10]:
                         urgency = s.urgency.value
-                        urgency_emoji = {"immediate": ":red_circle:", "today": ":yellow_circle:", "this_week": ":blue_circle:"}.get(urgency, ":white_circle:")
+                        urgency_emoji = {
+                            "immediate": ":red_circle:",
+                            "today": ":yellow_circle:",
+                            "this_week": ":blue_circle:",
+                        }.get(urgency, ":white_circle:")
                         slack_lines.append(
                             f"{urgency_emoji} *{s.goal_id}* (relevance: {s.relevance_score:.0%})\n"
                             f"   {s.interpretation[:150]}\n"
                             f"   → _{s.suggested_action[:120]}_"
                         )
-                    await _post_slack(client, slack_webhook, {
-                        "attachments": [{
-                            "color": "#6f42c1",
-                            "pretext": f"🎯 *{len(signals)} Actionable Signals*",
-                            "text": "\n\n".join(slack_lines),
-                            "footer": f"world-agent | cycle {cycle_id}",
-                        }]
-                    })
+                    await _post_slack(
+                        client,
+                        slack_webhook,
+                        {
+                            "attachments": [
+                                {
+                                    "color": "#6f42c1",
+                                    "pretext": f"🎯 *{len(signals)} Actionable Signals*",
+                                    "text": "\n\n".join(slack_lines),
+                                    "footer": f"world-agent | cycle {cycle_id}",
+                                }
+                            ]
+                        },
+                    )
                     stats["slack"] += 1
                 except Exception:
                     pass
 
             if discord_bot_token:
                 try:
-                    await _post_discord(client, discord_bot_token, DISCORD_CHANNELS["signals"], {
-                        "embeds": [{
-                            "title": f"🎯 {len(signals)} Actionable Signals",
-                            "description": signal_text[:4000],
-                            "color": _hex_to_int("#6f42c1"),
-                            "footer": {"text": f"world-agent | cycle {cycle_id}"},
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }]
-                    })
+                    await _post_discord(
+                        client,
+                        discord_bot_token,
+                        DISCORD_CHANNELS["signals"],
+                        {
+                            "embeds": [
+                                {
+                                    "title": f"🎯 {len(signals)} Actionable Signals",
+                                    "description": signal_text[:4000],
+                                    "color": _hex_to_int("#6f42c1"),
+                                    "footer": {"text": f"world-agent | cycle {cycle_id}"},
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ]
+                        },
+                    )
                     stats["discord"] += 1
                 except Exception:
                     pass
@@ -323,7 +449,9 @@ async def dispatch_signals(
             pr_lines = []
             for r in pr_results:
                 pr = r["pr"]
-                pr_lines.append(f"• [PR #{pr['pr_number']}]({pr['html_url']}) — `{r.get('task_id', '?')}`")
+                pr_lines.append(
+                    f"• [PR #{pr['pr_number']}]({pr['html_url']}) — `{r.get('task_id', '?')}`"
+                )
 
             if slack_webhook:
                 try:
@@ -331,41 +459,56 @@ async def dispatch_signals(
                         f"• <{r['pr']['html_url']}|PR #{r['pr']['pr_number']}> — `{r.get('task_id', '?')}`"
                         for r in pr_results
                     )
-                    await _post_slack(client, slack_webhook, {
-                        "attachments": [{
-                            "color": "#28a745",
-                            "pretext": f"🚀 *{len(pr_results)} PRs Opened by World Agent*",
-                            "text": slack_pr,
-                            "footer": f"world-agent | cycle {cycle_id}",
-                        }]
-                    })
+                    await _post_slack(
+                        client,
+                        slack_webhook,
+                        {
+                            "attachments": [
+                                {
+                                    "color": "#28a745",
+                                    "pretext": f"🚀 *{len(pr_results)} PRs Opened by World Agent*",
+                                    "text": slack_pr,
+                                    "footer": f"world-agent | cycle {cycle_id}",
+                                }
+                            ]
+                        },
+                    )
                     stats["slack"] += 1
                 except Exception:
                     pass
 
             if discord_bot_token:
                 try:
-                    await _post_discord(client, discord_bot_token, DISCORD_CHANNELS["signals"], {
-                        "embeds": [{
-                            "title": f"🚀 {len(pr_results)} PRs Opened",
-                            "description": "\n".join(pr_lines),
-                            "color": _hex_to_int("#28a745"),
-                            "footer": {"text": f"world-agent | cycle {cycle_id}"},
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }]
-                    })
+                    await _post_discord(
+                        client,
+                        discord_bot_token,
+                        DISCORD_CHANNELS["signals"],
+                        {
+                            "embeds": [
+                                {
+                                    "title": f"🚀 {len(pr_results)} PRs Opened",
+                                    "description": "\n".join(pr_lines),
+                                    "color": _hex_to_int("#28a745"),
+                                    "footer": {"text": f"world-agent | cycle {cycle_id}"},
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ]
+                        },
+                    )
                     stats["discord"] += 1
                 except Exception:
                     pass
 
     logger.info(
         "Signal dispatch: %d Slack, %d Discord messages",
-        stats["slack"], stats["discord"],
+        stats["slack"],
+        stats["discord"],
     )
     return stats
 
 
 # --- Helpers ---
+
 
 async def _post_slack(client: httpx.AsyncClient, webhook_url: str, payload: dict):
     resp = await client.post(webhook_url, json=payload)

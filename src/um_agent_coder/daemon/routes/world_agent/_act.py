@@ -37,11 +37,13 @@ def _build_iterate_prompt(task: PlannedTask) -> str:
     ]
 
     if task.success_criteria:
-        parts.extend([
-            "## Success Criteria",
-            task.success_criteria,
-            "",
-        ])
+        parts.extend(
+            [
+                "## Success Criteria",
+                task.success_criteria,
+                "",
+            ]
+        )
 
     if task.context:
         parts.extend(["## Context"])
@@ -49,16 +51,18 @@ def _build_iterate_prompt(task: PlannedTask) -> str:
             parts.append(f"- **{k}:** {v}")
         parts.append("")
 
-    parts.extend([
-        "## Output Requirements",
-        "Generate complete, production-ready code that:",
-        "1. Implements exactly what is described above",
-        "2. Includes necessary imports and dependencies",
-        "3. Follows existing project conventions",
-        "4. Includes inline comments for non-obvious logic",
-        "",
-        "Return all files with their full paths and complete content.",
-    ])
+    parts.extend(
+        [
+            "## Output Requirements",
+            "Generate complete, production-ready code that:",
+            "1. Implements exactly what is described above",
+            "2. Includes necessary imports and dependencies",
+            "3. Follows existing project conventions",
+            "4. Includes inline comments for non-obvious logic",
+            "",
+            "Return all files with their full paths and complete content.",
+        ]
+    )
 
     return "\n".join(parts)
 
@@ -141,7 +145,9 @@ async def _execute_single_task(
 
     logger.info(
         "Act: executing task %s (%s) as iteration %s",
-        task.id, task.title, iteration_id,
+        task.id,
+        task.title,
+        iteration_id,
     )
 
     try:
@@ -272,11 +278,13 @@ async def act(
     final_results = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            final_results.append({
-                "task_id": planned_tasks[i].id,
-                "status": "error",
-                "error": str(result),
-            })
+            final_results.append(
+                {
+                    "task_id": planned_tasks[i].id,
+                    "status": "error",
+                    "error": str(result),
+                }
+            )
         else:
             final_results.append(result)
 
@@ -302,14 +310,17 @@ async def act(
                             ]
                             if file_dicts:
                                 pr_info = await _push_result_to_github(
-                                    planned_tasks[i], iteration_id, file_dicts,
+                                    planned_tasks[i],
+                                    iteration_id,
+                                    file_dicts,
                                 )
                                 if pr_info:
                                     result["pr"] = pr_info
             except Exception as e:
                 logger.warning(
                     "Act: failed to push results for %s: %s",
-                    result.get("task_id"), e,
+                    result.get("task_id"),
+                    e,
                 )
 
     logger.info(
