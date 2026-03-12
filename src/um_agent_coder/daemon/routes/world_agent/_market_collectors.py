@@ -49,8 +49,42 @@ EQUITY_WATCHLIST = [
     "CRM",
     "NFLX",
 ]
+CREDIT_WATCHLIST = [
+    # BDCs (private credit public window)
+    "ARCC",   # Ares Capital — largest BDC
+    "BXSL",   # Blackstone Secured Lending
+    "OBDC",   # Blue Owl Capital
+    "FSK",    # FS KKR Capital
+    "MAIN",   # Main Street Capital
+    "HTGC",   # Hercules Capital (tech lending)
+    # CLO equity (first to break)
+    "ECC",    # Eagle Point Credit
+    "OXLC",   # Oxford Lane Capital
+    # Leveraged loans
+    "BKLN",   # Invesco Senior Loan ETF
+    "SRLN",   # SPDR Blackstone Senior Loan ETF
+    # High yield
+    "HYG",    # iShares HY Corporate Bond
+    "JNK",    # SPDR HY Bond
+    # Alt managers (contagion transmitters)
+    "APO",    # Apollo
+    "BX",     # Blackstone
+    "ARES",   # Ares Management
+    "OWL",    # Blue Owl Capital (manager)
+]
 CRYPTO_WATCHLIST = ["bitcoin", "ethereum", "solana"]
 VOL_SYMBOLS = ["^VIX"]
+
+# Credit stress thresholds
+CREDIT_STRESS_THRESHOLDS = {
+    # BDC discount to book: >10% = warning, >20% = danger
+    "bdc_pb_warning": 0.90,    # P/B below 0.90
+    "bdc_pb_danger": 0.80,     # P/B below 0.80
+    # Price drops
+    "credit_move_pct": 1.5,    # Lower threshold for credit instruments
+    # Yield spikes (signals distress)
+    "yield_spike_pct": 12.0,   # BDC yield above 12% = stress
+}
 
 
 class MarketMoversCollector(EventCollector):
@@ -179,6 +213,10 @@ class NewsCollector(EventCollector):
             "IPO market",
             "options unusual activity",
             "crypto funding rates",
+            "private credit default",
+            "CLO market stress",
+            "leveraged loan defaults",
+            "commercial real estate debt",
         ]
         self._max = max_articles
 
@@ -525,3 +563,285 @@ class SECFilingsCollector(EventCollector):
             logger.debug("SEC RSS fallback failed: %s", e)
 
         return events
+
+
+class CreditStressCollector(EventCollector):
+    """Monitor private credit stress via BDC prices, CLO equity, HY spreads.
+
+    Tracks:
+    - BDC price-to-book ratios (discount = market calling BS on private marks)
+    - CLO equity fund performance (first tranche to break)
+    - Leveraged loan ETF discounts to NAV
+    - HY bond ETF price action
+    - Alt manager stock prices (contagion transmitters)
+
+    Thresholds:
+    - BDC P/B < 0.90 → warning
+    - BDC P/B < 0.80 → contagion imminent
+    - CLO equity yield > 30% → tranche impairment
+    - BKLN NAV discount > 2% → loan market liquidity stress
+    """
+
+    def __init__(self, symbols: List[str] | None = None):
+        self._symbols = symbols or CREDIT_WATCHLIST
+
+    def source_id(self) -> str:
+        return "market.credit_stress"
+
+    async def collect(self, since: Optional[datetime] = None) -> List[Event]:
+        events: List[Event] = []
+        now = datetime.now(timezone.utc)
+
+        try:
+            quotes = await self._fetch_quotes()
+
+            bdcs = ["ARCC", "BXSL", "OBDC", "FSK", "MAIN", "HTGC"]
+            clo_equity = ["ECC", "OXLC"]
+            loan_etfs = ["BKLN", "SRLN"]
+            hy_etfs = ["HYG", "JNK"]
+            alt_mgrs = ["APO", "BX", "ARES", "OWL"]
+
+            # Aggregate BDC stress
+            bdc_moves = []
+            for q in quotes:
+                sym = q.get("symbol", "")
+                change_pct = q.get("regularMarketChangePercent", 0)
+                price = q.get("regularMarketPrice", 0)
+                pb = q.get("priceToBook", 0)
+                div_yield = q.get("dividendYield", 0)
+                fifty_two_low = q.get("fiftyTwoWeekLow", 0)
+
+                if sym in bdcs:
+                    bdc_moves.append({
+                        "symbol": sym,
+                        "change_pct": change_pct,
+                        "price": price,
+                        "pb": pb,
+                        "div_yield": div_yield,
+                        "near_52w_low": (
+                            price <= fifty_two_low * 1.05 if fifty_two_low > 0 else False
+                        ),
+                    })
+
+                    # Individual BDC stress signals
+                    if pb > 0 and pb < CREDIT_STRESS_THRESHOLDS["bdc_pb_danger"]:
+                        events.append(Event(
+                            id=f"cred-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.critical,
+                            title=f"DANGER: {sym} P/B at {pb:.2f} — market rejecting private marks",
+                            body=f"Price ${price:.2f} ({change_pct:+.1f}%). "
+                                 f"Yield {div_yield*100:.1f}%. "
+                                 f"BDC trading >20% below book = contagion signal.",
+                            metadata={
+                                "symbol": sym,
+                                "price_to_book": round(pb, 3),
+                                "change_pct": round(change_pct, 2),
+                                "price": price,
+                                "div_yield": round(div_yield * 100, 2) if div_yield else 0,
+                                "scan_type": "bdc_stress",
+                                "stress_level": "danger",
+                            },
+                        ))
+                    elif pb > 0 and pb < CREDIT_STRESS_THRESHOLDS["bdc_pb_warning"]:
+                        events.append(Event(
+                            id=f"cred-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.urgent,
+                            title=f"WARNING: {sym} P/B at {pb:.2f} — discount widening",
+                            body=f"Price ${price:.2f} ({change_pct:+.1f}%). "
+                                 f"Yield {div_yield*100:.1f}%. "
+                                 f"BDC discount >10% = private credit stress.",
+                            metadata={
+                                "symbol": sym,
+                                "price_to_book": round(pb, 3),
+                                "change_pct": round(change_pct, 2),
+                                "price": price,
+                                "div_yield": round(div_yield * 100, 2) if div_yield else 0,
+                                "scan_type": "bdc_stress",
+                                "stress_level": "warning",
+                            },
+                        ))
+
+                # CLO equity — the canary
+                if sym in clo_equity:
+                    severity = EventSeverity.critical if change_pct <= -3 else (
+                        EventSeverity.urgent if change_pct <= -1.5 else EventSeverity.notable
+                    )
+                    events.append(Event(
+                        id=f"cred-{uuid.uuid4().hex[:8]}",
+                        source=self.source_id(),
+                        timestamp=now,
+                        category=EventCategory.financial,
+                        severity=severity,
+                        title=f"CLO equity {sym}: ${price:.2f} ({change_pct:+.1f}%)"
+                              + (" — NEAR 52W LOW" if price <= fifty_two_low * 1.05 and fifty_two_low > 0 else ""),
+                        body=f"Yield {div_yield*100:.1f}%. "
+                             f"CLO equity is first tranche to absorb loan defaults. "
+                             f"Sustained decline = underlying loan book deteriorating.",
+                        metadata={
+                            "symbol": sym,
+                            "change_pct": round(change_pct, 2),
+                            "price": price,
+                            "div_yield": round(div_yield * 100, 2) if div_yield else 0,
+                            "near_52w_low": price <= fifty_two_low * 1.05 if fifty_two_low > 0 else False,
+                            "scan_type": "clo_equity",
+                        },
+                    ))
+
+                # Loan ETFs — liquidity proxy
+                if sym in loan_etfs and abs(change_pct) >= CREDIT_STRESS_THRESHOLDS["credit_move_pct"]:
+                    events.append(Event(
+                        id=f"cred-{uuid.uuid4().hex[:8]}",
+                        source=self.source_id(),
+                        timestamp=now,
+                        category=EventCategory.financial,
+                        severity=EventSeverity.urgent,
+                        title=f"Loan market stress: {sym} {change_pct:+.1f}% to ${price:.2f}",
+                        body="Leveraged loan ETF decline signals credit market liquidity withdrawal.",
+                        metadata={
+                            "symbol": sym,
+                            "change_pct": round(change_pct, 2),
+                            "price": price,
+                            "scan_type": "loan_stress",
+                        },
+                    ))
+
+                # HY ETFs
+                if sym in hy_etfs and abs(change_pct) >= CREDIT_STRESS_THRESHOLDS["credit_move_pct"]:
+                    events.append(Event(
+                        id=f"cred-{uuid.uuid4().hex[:8]}",
+                        source=self.source_id(),
+                        timestamp=now,
+                        category=EventCategory.financial,
+                        severity=EventSeverity.urgent,
+                        title=f"HY spread widening: {sym} {change_pct:+.1f}% to ${price:.2f}",
+                        body="High yield bond decline = credit spreads blowing out.",
+                        metadata={
+                            "symbol": sym,
+                            "change_pct": round(change_pct, 2),
+                            "price": price,
+                            "scan_type": "hy_stress",
+                        },
+                    ))
+
+                # Alt managers — contagion pathway
+                if sym in alt_mgrs and abs(change_pct) >= 2.0:
+                    events.append(Event(
+                        id=f"cred-{uuid.uuid4().hex[:8]}",
+                        source=self.source_id(),
+                        timestamp=now,
+                        category=EventCategory.financial,
+                        severity=EventSeverity.urgent,
+                        title=f"Alt manager selloff: {sym} {change_pct:+.1f}% to ${price:.2f}",
+                        body=f"Alt manager stock decline signals market concern about "
+                             f"private credit / PE exposure. Watch for fund redemption risk.",
+                        metadata={
+                            "symbol": sym,
+                            "change_pct": round(change_pct, 2),
+                            "price": price,
+                            "scan_type": "alt_mgr_stress",
+                        },
+                    ))
+
+            # Composite BDC stress score
+            if bdc_moves:
+                avg_change = sum(b["change_pct"] for b in bdc_moves) / len(bdc_moves)
+                near_lows = sum(1 for b in bdc_moves if b["near_52w_low"])
+                avg_pb = sum(b["pb"] for b in bdc_moves if b["pb"] > 0)
+                pb_count = sum(1 for b in bdc_moves if b["pb"] > 0)
+                avg_pb = avg_pb / pb_count if pb_count else 0
+
+                if avg_change <= -1.0 or near_lows >= 3 or (avg_pb > 0 and avg_pb < 0.85):
+                    events.append(Event(
+                        id=f"cred-{uuid.uuid4().hex[:8]}",
+                        source=self.source_id(),
+                        timestamp=now,
+                        category=EventCategory.financial,
+                        severity=EventSeverity.critical,
+                        title=f"PRIVATE CREDIT STRESS: BDC composite "
+                              f"avg {avg_change:+.1f}%, {near_lows}/{len(bdc_moves)} near 52w low"
+                              + (f", avg P/B {avg_pb:.2f}" if avg_pb > 0 else ""),
+                        body=f"Broad BDC selloff indicates systemic private credit concern. "
+                             f"Monitor for: dividend cuts, non-accrual spikes, warehouse margin calls. "
+                             f"Components: {', '.join(b['symbol'] + ' ' + f'{b[\"change_pct\"]:+.1f}%' for b in bdc_moves)}",
+                        metadata={
+                            "avg_change_pct": round(avg_change, 2),
+                            "near_52w_lows": near_lows,
+                            "avg_price_to_book": round(avg_pb, 3) if avg_pb else None,
+                            "components": {b["symbol"]: round(b["change_pct"], 2) for b in bdc_moves},
+                            "scan_type": "credit_composite",
+                            "stress_level": "systemic",
+                        },
+                    ))
+
+        except Exception as e:
+            logger.warning("Credit stress collection failed: %s", e)
+
+        return events
+
+    async def _fetch_quotes(self) -> List[Dict[str, Any]]:
+        """Fetch quotes with fundamentals via Yahoo Finance."""
+        quotes = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for symbol in self._symbols:
+                try:
+                    # Use v8 chart for price data
+                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=5d"
+                    resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                    if resp.status_code != 200:
+                        continue
+                    result = resp.json().get("chart", {}).get("result", [])
+                    if not result:
+                        continue
+                    meta = result[0].get("meta", {})
+                    prev = meta.get("chartPreviousClose", 0)
+                    price = meta.get("regularMarketPrice", 0)
+                    change_pct = ((price - prev) / prev * 100) if prev else 0
+                    fifty_two_low = meta.get("fiftyTwoWeekLow", 0)
+                    fifty_two_high = meta.get("fiftyTwoWeekHigh", 0)
+
+                    quote = {
+                        "symbol": symbol,
+                        "regularMarketPrice": price,
+                        "regularMarketChangePercent": change_pct,
+                        "regularMarketPreviousClose": prev,
+                        "fiftyTwoWeekLow": fifty_two_low,
+                        "fiftyTwoWeekHigh": fifty_two_high,
+                        "priceToBook": 0,
+                        "dividendYield": 0,
+                    }
+
+                    # Try to get P/B and yield from quoteSummary
+                    try:
+                        summary_url = (
+                            f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
+                            f"?modules=defaultKeyStatistics,summaryDetail"
+                        )
+                        s_resp = await client.get(
+                            summary_url, headers={"User-Agent": "Mozilla/5.0"}
+                        )
+                        if s_resp.status_code == 200:
+                            s_data = s_resp.json().get("quoteSummary", {}).get("result", [])
+                            if s_data:
+                                stats = s_data[0].get("defaultKeyStatistics", {})
+                                detail = s_data[0].get("summaryDetail", {})
+                                pb = stats.get("priceToBook", {})
+                                if isinstance(pb, dict):
+                                    pb = pb.get("raw", 0)
+                                dy = detail.get("dividendYield", {})
+                                if isinstance(dy, dict):
+                                    dy = dy.get("raw", 0)
+                                quote["priceToBook"] = pb or 0
+                                quote["dividendYield"] = dy or 0
+                    except Exception:
+                        pass
+
+                    quotes.append(quote)
+                except Exception:
+                    continue
+        return quotes

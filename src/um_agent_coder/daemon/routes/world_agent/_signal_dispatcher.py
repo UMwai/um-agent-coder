@@ -25,6 +25,7 @@ DISCORD_CHANNELS = {
     "signals": "1481636924023373884",  # #trading-signals
     "regime": "1448055533935530044",  # #regime
     "daytrading": "1448706889742553272",  # #daytrading
+    "credit": "1448055533935530044",  # #regime (credit alerts share regime channel)
 }
 
 
@@ -137,6 +138,73 @@ async def dispatch_signals(
                         stats["discord"] += 1
                     except Exception as e:
                         logger.debug("Discord regime alert failed: %s", e)
+
+        # --- 1b. Credit Stress Alerts → #regime ---
+        credit_events = [
+            e for e in events
+            if e.source == "market.credit_stress"
+            and e.severity.value in ("urgent", "critical")
+        ]
+        if credit_events:
+            credit_lines = []
+            for ev in credit_events[:10]:
+                scan = ev.metadata.get("scan_type", "")
+                sym = ev.metadata.get("symbol", "")
+                change = ev.metadata.get("change_pct", 0)
+                pb = ev.metadata.get("price_to_book", 0)
+                stress = ev.metadata.get("stress_level", "")
+
+                if scan == "credit_composite":
+                    credit_lines.append(f"🚨 **{ev.title}**")
+                elif pb:
+                    emoji = "🔴" if stress == "danger" else "🟡"
+                    credit_lines.append(f"{emoji} **{sym}** P/B {pb:.2f} ({change:+.1f}%)")
+                else:
+                    emoji = "📉" if change < 0 else "📊"
+                    credit_lines.append(f"{emoji} **{sym}** {change:+.1f}%")
+
+            credit_text = "\n".join(credit_lines)
+            color = "#dc3545" if any(
+                e.severity.value == "critical" for e in credit_events
+            ) else "#ffc107"
+
+            if slack_webhook:
+                try:
+                    await _post_slack(
+                        client,
+                        slack_webhook,
+                        {
+                            "attachments": [{
+                                "color": color,
+                                "pretext": f"🏦 *Private Credit Stress* ({len(credit_events)} signals)",
+                                "text": credit_text.replace("**", "*"),
+                                "footer": "world-agent | market.credit_stress",
+                            }]
+                        },
+                    )
+                    stats["slack"] += 1
+                except Exception:
+                    pass
+
+            if discord_bot_token:
+                try:
+                    await _post_discord(
+                        client,
+                        discord_bot_token,
+                        DISCORD_CHANNELS["credit"],
+                        {
+                            "embeds": [{
+                                "title": f"🏦 Private Credit Stress ({len(credit_events)} signals)",
+                                "description": credit_text[:4000],
+                                "color": _hex_to_int(color),
+                                "footer": {"text": "world-agent | market.credit_stress"},
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }]
+                        },
+                    )
+                    stats["discord"] += 1
+                except Exception:
+                    pass
 
         # --- 2. Market Movers → single consolidated table ---
         if mover_events:

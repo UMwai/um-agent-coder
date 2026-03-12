@@ -19,6 +19,7 @@ from um_agent_coder.daemon.routes.world_agent._github_write import GitHubWriteCl
 from um_agent_coder.daemon.routes.world_agent._journal import generate_journal
 from um_agent_coder.daemon.routes.world_agent._local_repo_collector import LocalRepoCollector
 from um_agent_coder.daemon.routes.world_agent._market_collectors import (
+    CreditStressCollector,
     CryptoFundingCollector,
     MarketMoversCollector,
     NewsCollector,
@@ -166,6 +167,7 @@ async def _collect_market_events() -> list:
         VolatilityCollector(),
         CryptoFundingCollector(),
         SECFilingsCollector(),
+        CreditStressCollector(),
     ]
 
     async def _safe_collect(c):
