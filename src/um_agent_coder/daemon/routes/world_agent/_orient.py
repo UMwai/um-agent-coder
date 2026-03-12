@@ -117,7 +117,7 @@ async def orient(
     if not goals:
         return "No active goals defined.", []
 
-    from um_agent_coder.daemon.app import get_gemini_client, get_settings
+    from um_agent_coder.daemon.app import get_llm_router, get_settings
 
     settings = get_settings()
     model = settings.world_agent_orientation_model or settings.gemini_model_flash
@@ -125,18 +125,17 @@ async def orient(
     user_prompt = build_orientation_prompt(goals, events, threshold)
 
     try:
-        client = get_gemini_client()
-        if not client:
-            logger.error("Gemini client not available for orientation")
-            return "Orientation failed: Gemini client unavailable.", []
+        router = get_llm_router()
 
-        response = await client.generate(
+        llm_result = await router.generate(
             prompt=user_prompt,
             system_prompt=ORIENTATION_SYSTEM_PROMPT,
             model=model,
             temperature=0.3,
             max_tokens=4096,
+            provider=settings.world_agent_llm_provider or None,
         )
+        response = llm_result["text"]
 
         result = _parse_orientation_response(response)
         summary = result.get("summary", "")

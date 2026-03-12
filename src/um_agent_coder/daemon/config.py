@@ -123,6 +123,14 @@ class DaemonSettings(BaseSettings):
     kb_max_inject_items: int = 5
     kb_extract_model: str = "gemini-3-flash-preview"
 
+    # OpenAI (for World Agent multi-provider routing)
+    openai_api_key: Optional[str] = None
+    openai_model: str = "gpt-5.4"
+
+    # Anthropic (for World Agent multi-provider routing)
+    anthropic_api_key: Optional[str] = None
+    anthropic_model: str = "claude-sonnet-4-6-20250627"
+
     # World Agent
     world_agent_enabled: bool = False
     world_agent_github_repos: str = ""  # Comma-separated "owner/repo"
@@ -130,7 +138,9 @@ class DaemonSettings(BaseSettings):
     world_agent_relevance_threshold: float = 0.3
     world_agent_goals_path: str = "goals/"
     world_agent_orientation_model: str = ""  # Empty = use gemini_model_flash
-    world_agent_max_events_per_batch: int = 50
+    world_agent_decide_model: str = ""  # Empty = use gemini_model_pro
+    world_agent_llm_provider: str = ""  # Empty = auto-detect from model name
+    world_agent_max_events_per_batch: int = 100
 
     # Orchestrator
     checkpoint_dir: str = ".pipeline_checkpoints"

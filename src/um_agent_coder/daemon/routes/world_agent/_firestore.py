@@ -3,7 +3,8 @@
 Uses the same lazy singleton pattern as routes/kb/_store.py.
 Collections: world_agent_goals, world_agent_events/{date},
 world_agent_state/current, world_agent_system/scheduler_state,
-world_agent_cycles/{date}/runs/{cycle_id}, world_agent_journal.
+world_agent_cycles/{date}/runs/{cycle_id}, world_agent_journal,
+world_agent_trade_recs/{date}/recs/{rec_id}.
 """
 
 from __future__ import annotations
@@ -418,3 +419,172 @@ async def list_journal_entries(limit: int = 30) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error("Failed to list journal entries: %s", e)
         return []
+
+
+# --- Trade Recommendations ---
+
+TRADE_RECS_COLLECTION = "world_agent_trade_recs"
+
+
+async def save_trade_recs(
+    cycle_id: str,
+    recs: Dict[str, Any],
+    model: str,
+    sw_version: str,
+    market_context_summary: str = "",
+) -> int:
+    """Persist trade recommendations to Firestore.
+
+    Stores each individual recommendation as its own document for easy querying,
+    plus a summary document for the full batch.
+
+    Path: world_agent_trade_recs/{date}/recs/{rec_id}
+          world_agent_trade_recs/{date}/batches/{cycle_id}
+
+    Returns count of recs saved.
+    """
+    client = _get_client()
+    if not client:
+        return 0
+
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = _now_iso()
+    saved = 0
+
+    try:
+        batch = client.batch()
+
+        # Save the full batch as a summary doc
+        batch_doc = {
+            "cycle_id": cycle_id,
+            "timestamp": now,
+            "model": model,
+            "sw_version": sw_version,
+            "market_regime": recs.get("market_regime", "unknown"),
+            "regime_reasoning": recs.get("regime_reasoning", ""),
+            "market_summary": recs.get("market_summary", ""),
+            "market_context_summary": market_context_summary[:2000],
+            "rec_count": len(recs.get("recommendations", [])),
+            "watchlist": recs.get("watchlist", []),
+        }
+        batch_ref = (
+            client.collection(TRADE_RECS_COLLECTION)
+            .document(date_str)
+            .collection("batches")
+            .document(cycle_id)
+        )
+        batch.set(batch_ref, batch_doc)
+
+        # Save each recommendation individually
+        for i, rec in enumerate(recs.get("recommendations", [])):
+            rec_id = f"{cycle_id}--{i}"
+            rec_doc = {
+                "rec_id": rec_id,
+                "cycle_id": cycle_id,
+                "timestamp": now,
+                "date": date_str,
+                # Model / version lineage
+                "model": model,
+                "sw_version": sw_version,
+                # Trade details
+                "symbol": rec.get("symbol", "?"),
+                "direction": rec.get("direction", "?"),
+                "conviction": rec.get("conviction", "?"),
+                "strategy": rec.get("strategy", "?"),
+                "entry": rec.get("entry"),
+                "stop_loss": rec.get("stop_loss"),
+                "target": rec.get("target"),
+                "size_pct": rec.get("size_pct"),
+                "risk_reward": rec.get("risk_reward", "?"),
+                "timeframe": rec.get("timeframe", "?"),
+                "options_detail": rec.get("options_detail"),
+                # Reasoning / rationale
+                "reasoning": rec.get("reasoning", ""),
+                "risks": rec.get("risks", ""),
+                # Context
+                "market_regime": recs.get("market_regime", "unknown"),
+                # Outcome tracking (filled in later by review process)
+                "outcome": None,  # "win" | "loss" | "scratch" | "expired"
+                "outcome_pnl_pct": None,
+                "outcome_notes": None,
+                "reviewed_at": None,
+            }
+            doc_ref = (
+                client.collection(TRADE_RECS_COLLECTION)
+                .document(date_str)
+                .collection("recs")
+                .document(rec_id)
+            )
+            batch.set(doc_ref, rec_doc)
+            saved += 1
+
+        await batch.commit()
+        logger.info("Saved %d trade recs for cycle %s", saved, cycle_id)
+
+    except Exception as e:
+        logger.error("Failed to save trade recs: %s", e)
+
+    return saved
+
+
+async def list_trade_recs(
+    date_str: Optional[str] = None,
+    symbol: Optional[str] = None,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """List trade recs for a date, optionally filtered by symbol."""
+    client = _get_client()
+    if not client:
+        return []
+    try:
+        if not date_str:
+            date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        query = (
+            client.collection(TRADE_RECS_COLLECTION)
+            .document(date_str)
+            .collection("recs")
+        )
+        if symbol:
+            query = query.where("symbol", "==", symbol.upper())
+        query = query.order_by("timestamp", direction="DESCENDING").limit(limit)
+        results = []
+        async for doc in query.stream():
+            results.append(doc.to_dict())
+        return results
+    except Exception as e:
+        logger.error("Failed to list trade recs: %s", e)
+        return []
+
+
+async def update_trade_rec_outcome(
+    date_str: str,
+    rec_id: str,
+    outcome: str,
+    pnl_pct: Optional[float] = None,
+    notes: Optional[str] = None,
+) -> bool:
+    """Update the outcome of a trade rec (for tracking accuracy).
+
+    outcome: "win" | "loss" | "scratch" | "expired"
+    """
+    client = _get_client()
+    if not client:
+        return False
+    try:
+        doc_ref = (
+            client.collection(TRADE_RECS_COLLECTION)
+            .document(date_str)
+            .collection("recs")
+            .document(rec_id)
+        )
+        await doc_ref.update({
+            "outcome": outcome,
+            "outcome_pnl_pct": pnl_pct,
+            "outcome_notes": notes,
+            "reviewed_at": _now_iso(),
+        })
+        logger.info("Updated trade rec %s outcome: %s", rec_id, outcome)
+        return True
+    except Exception as e:
+        logger.error("Failed to update trade rec outcome: %s", e)
+        return False

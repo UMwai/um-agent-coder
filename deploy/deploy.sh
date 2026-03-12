@@ -19,7 +19,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --timeout 3600 \
   --no-cpu-throttling \
   --set-env-vars "^##^UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db##UM_DAEMON_GCP_PROJECT_ID=${PROJECT_ID}##UM_DAEMON_GEMINI_FIRESTORE_ENABLED=true##UM_DAEMON_WORLD_AGENT_ENABLED=true##UM_DAEMON_WORLD_AGENT_GITHUB_REPOS=UMwai/um-agent-coder,UMwai/um_ai-hedge-fund" \
-  --update-secrets="/home/appuser/.gemini/oauth_creds.json=gemini-oauth-creds:latest,UM_DAEMON_GITHUB_TOKEN=github-pat:latest"
+  --update-secrets="^||^/home/appuser/.gemini/oauth_creds.json=gemini-oauth-creds:latest||GEMINI_CLI_CLIENT_ID=gemini-cli-client-id:latest||GEMINI_CLI_CLIENT_SECRET=gemini-cli-client-secret:latest||UM_DAEMON_GITHUB_TOKEN=github-pat:latest||UM_DAEMON_DISCORD_BOT_TOKEN=DISCORD_BOT_TOKEN:latest||UM_DAEMON_DEFAULT_SLACK_WEBHOOK=SLACK_WEBHOOK_URL:latest||UM_DAEMON_SLACK_SIGNING_SECRET=SLACK_SIGNING_SECRET:latest"
 
 # Grant service account permission to add secret versions
 SA_EMAIL=$(gcloud run services describe "${SERVICE_NAME}" \

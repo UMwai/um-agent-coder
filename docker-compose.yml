@@ -6,11 +6,12 @@ services:
     volumes:
       - ./secrets/gemini:/home/appuser/.gemini:ro
       - daemon-data:/app/data
+    env_file:
+      - .env  # Local secrets — not committed (gitignored)
     environment:
       - UM_DAEMON_HOST=0.0.0.0
       - UM_DAEMON_PORT=8080
       - UM_DAEMON_DB_PATH=/app/data/daemon_tasks.db
-      - UM_DAEMON_API_KEY=${UM_DAEMON_API_KEY:-}
       - UM_DAEMON_GEMINI_MODEL=${UM_DAEMON_GEMINI_MODEL:-gemini-3-flash-preview}
     restart: unless-stopped
 

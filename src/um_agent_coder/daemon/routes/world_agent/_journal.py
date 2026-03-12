@@ -127,14 +127,10 @@ async def _synthesize_via_llm(day_data: Dict[str, Any]) -> Dict[str, Any]:
     import json
 
     try:
-        from um_agent_coder.daemon.app import get_gemini_client, get_settings
-
-        client = get_gemini_client()
-        if not client:
-            logger.warning("Gemini client unavailable, using fallback")
-            return _fallback_synthesis(day_data)
+        from um_agent_coder.daemon.app import get_llm_router, get_settings
 
         settings = get_settings()
+        router = get_llm_router()
         model = settings.gemini_model_flash
 
         cycles = day_data.get("cycles", [])
@@ -175,7 +171,7 @@ async def _synthesize_via_llm(day_data: Dict[str, Any]) -> Dict[str, Any]:
 
 Write the daily journal entry as JSON."""
 
-        response = await client.generate(
+        llm_result = await router.generate(
             prompt=prompt,
             system_prompt=JOURNAL_SYSTEM_PROMPT,
             model=model,
@@ -184,7 +180,7 @@ Write the daily journal entry as JSON."""
         )
 
         # Parse JSON from response
-        text = response if isinstance(response, str) else str(response)
+        text = llm_result["text"]
         if "```json" in text:
             text = text.split("```json", 1)[1].split("```", 1)[0]
         elif "```" in text:

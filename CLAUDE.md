@@ -153,6 +153,134 @@ orchestrator = MultiModelOrchestrator(gemini=gemini, codex=codex, claude=claude)
 result = orchestrator.run("complex task")
 ```
 
+## UMClaw (Cloud Intelligence API)
+
+UMClaw is the deployed FastAPI daemon — the cloud-hosted intelligence layer for um-agent-coder. It provides prompt enhancement, iterative refinement, multi-turn sessions, autonomous world agent cycles, and webhook integrations.
+
+### Access
+
+| Environment | URL |
+|-------------|-----|
+| **Production** | `https://um-agent-daemon-23o5bq3bfq-uc.a.run.app` |
+| **Local** | `http://localhost:8080` |
+
+```bash
+# Start locally
+pip install -e ".[daemon]"
+um-agent-daemon
+
+# Deploy to Cloud Run
+gcloud run deploy um-agent-daemon --source . --region us-central1 --project aivestor-480814 --quiet
+```
+
+Auth: Optional `X-API-Key` header (enforced only when `UM_DAEMON_API_KEY` is set).
+
+### API Endpoints
+
+#### System
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/health` | Service health + task counts |
+| `GET` | `/ui` | Web dashboard |
+
+#### Intelligence Layer (`/api/gemini`)
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/gemini/enhance` | Prompt enhancement + self-eval retry loop |
+| `POST` | `/api/gemini/evaluate` | Standalone 5-dimension eval (accuracy, completeness, clarity, actionability, fulfillment) |
+| `POST` | `/api/gemini/iterate` | Iteration run: generate → evaluate → strategize → retry (background) |
+| `GET` | `/api/gemini/iterate/{id}` | Get iteration status + steps + final score |
+| `POST` | `/api/gemini/iterate/batch` | Batch iteration runs |
+| `GET` | `/api/gemini/iterations` | List all iteration runs |
+| `POST` | `/api/gemini/sessions` | Create multi-turn conversation session |
+| `POST` | `/api/gemini/sessions/{id}/message` | Send message in session |
+| `POST` | `/api/gemini/batch` | Batch query processing (background) |
+| `POST` | `/api/gemini/agent` | Agentic tool-use loop |
+| `POST` | `/api/gemini/extract-files` | Extract code blocks from markdown |
+| `POST` | `/api/gemini/extract-context` | Auto-extract eval context from Python source |
+| `POST` | `/api/gemini/goal-validate/checklist` | Decompose goal into verifiable criteria |
+| `POST` | `/api/gemini/goal-validate/score` | Score output against goal criteria |
+| `GET` | `/api/gemini/models` | List models (optional `?probe=true`) |
+
+#### Tasks (`/api/tasks`)
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/tasks` | Create background task |
+| `GET` | `/api/tasks` | List tasks (filter by status) |
+| `GET` | `/api/tasks/{id}` | Get task |
+| `POST` | `/api/tasks/{id}/cancel` | Cancel task |
+| `GET` | `/api/tasks/{id}/logs` | Get task logs |
+
+#### Knowledge Base (`/api/kb`)
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/kb/items` | Create KB item |
+| `GET` | `/api/kb/items` | List/filter items |
+| `POST` | `/api/kb/search` | Semantic search |
+| `POST` | `/api/kb/extract` | Auto-extract KB candidates from code |
+
+#### World Agent (`/api/world-agent`)
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/world-agent/cycle` | Execute autonomous cycle (orient → decide → act) |
+| `GET` | `/api/world-agent/status` | World state (goals, active cycle, lessons) |
+| `POST` | `/api/world-agent/goals` | Create goal |
+| `GET` | `/api/world-agent/goals` | List goals |
+| `POST` | `/api/world-agent/goals/load-yaml` | Load goals from YAML |
+| `POST` | `/api/world-agent/journal/generate` | Generate daily journal |
+| `POST` | `/api/world-agent/learn/reflect` | Reflect on lessons |
+| `POST` | `/api/world-agent/repos/{owner}/{repo}/pr` | Create GitHub PR |
+
+#### Query Proxy (`/api/query`)
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/query` | Direct query to Gemini/Codex |
+| `GET` | `/api/query/models` | List available models |
+
+#### Webhooks
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/webhooks/github` | GitHub events (issue_comment `/agent`, PR opened) |
+| `POST` | `/slack/events` | Slack @mentions |
+| `POST` | `/webhooks/discord` | Discord `/agent` slash command |
+
+### Daemon Source Layout
+
+```
+src/um_agent_coder/daemon/
+├── app.py              # FastAPI factory + lifespan
+├── config.py           # DaemonSettings (UM_DAEMON_* env vars)
+├── database.py         # SQLite interface
+├── gemini_client.py    # Gemini API client
+├── worker.py           # Background task executor
+├── routes/
+│   ├── gemini/         # Intelligence Layer (enhance, iterate, eval, sessions, agent)
+│   ├── kb/             # Knowledge Base (Firestore-backed CRUD + search)
+│   ├── world_agent/    # World Agent (autonomous cycles, goals, journal, GitHub)
+│   ├── tasks.py        # Task CRUD
+│   ├── query.py        # Query proxy
+│   ├── github.py       # GitHub webhook
+│   ├── slack.py        # Slack webhook
+│   ├── discord.py      # Discord webhook
+│   └── ui.py           # Web dashboard
+```
+
+### Key Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `UM_DAEMON_PORT` | 8080 | Listen port |
+| `UM_DAEMON_API_KEY` | — | API key (auth disabled if unset) |
+| `UM_DAEMON_GEMINI_MODEL` | gemini-3-flash-preview | Default model |
+| `UM_DAEMON_GEMINI_ITERATE_MAX_ITERATIONS` | 5 | Max iteration steps |
+| `UM_DAEMON_GEMINI_ITERATE_SCORE_THRESHOLD` | 0.85 | Quality threshold |
+| `UM_DAEMON_GEMINI_FIRESTORE_ENABLED` | false | Persistence (true on Cloud Run) |
+| `UM_DAEMON_WORLD_AGENT_ENABLED` | false | Enable world agent |
+| `UM_DAEMON_WORLD_AGENT_GITHUB_REPOS` | — | Comma-separated `owner/repo` |
+| `UM_DAEMON_KB_AUTO_EXTRACT_ENABLED` | true | Auto-extract KB items |
+
+See `docs/daemon-api.md` for full API reference and `src/um_agent_coder/daemon/config.py` for all config options.
+
 ## 24/7 CLI Harness
 
 Autonomous task execution via Codex, Gemini, or Claude CLI with roadmap-driven planning.

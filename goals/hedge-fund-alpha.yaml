@@ -1,0 +1,77 @@
+goal:
+  id: "hedge-fund-alpha"
+  name: "Find and Execute Profitable Trades"
+  description: |
+    Iteratively build up the um_ai-hedge-fund's ability to find real
+    trading opportunities and generate ROI. This is the alpha-seeking goal.
+
+    Phase 1 — Signal Quality (current):
+      Wire SignalCollector to live market data sources.
+      Validate signal accuracy with paper-trade backtests.
+      Build signal journal for tracking hit rate by source.
+
+    Phase 2 — Decision Engine:
+      Connect DecisionEngine to real market snapshots.
+      Implement regime detection (risk-on/off/crisis).
+      Validate Kelly position sizing against historical data.
+      EOD evaluation loop scoring signal accuracy.
+
+    Phase 3 — Execution:
+      Wire Tradier executor for options, Alpaca for equities.
+      Paper trade for 2 weeks, track fills vs signals.
+      Implement circuit breakers (max drawdown, daily loss).
+
+    Phase 4 — Live Alpha:
+      Go live with small capital allocation.
+      Daily P&L tracking and attribution.
+      Model improvement loop: suspend bad sources, retrain winners.
+      Expand to crypto-arb (funding rate + basis trades).
+
+    Each cycle should look for what's blocking the next phase and
+    generate tasks to unblock it. Prioritize signal quality over
+    execution speed — bad signals with fast execution lose money.
+  priority: 1
+  status: active
+  constraints:
+    - "NEVER commit API keys, secrets, or account credentials"
+    - "Paper trade before live — no live execution without 2 weeks paper results"
+    - "Circuit breakers must exist before any execution is enabled"
+    - "Risk limits are hard: 25% max drawdown, 3% daily VaR, 10% single position"
+    - "Reuse proven strategies from adjacent repos (um-trading-assistance, ev_trading_platform)"
+    - "All strategy code must have backtests with walk-forward validation"
+  kpis:
+    - metric: "signal_hit_rate"
+      target: "> 55% across all sources"
+      current: "not yet measured"
+    - metric: "paper_trade_sharpe"
+      target: "> 1.5"
+      current: "not yet running"
+    - metric: "signal_sources_active"
+      target: ">= 3 (trading-assistance, daytrader, options-scanner)"
+      current: "0 (code exists, not wired)"
+    - metric: "daily_signals_generated"
+      target: "> 10 actionable signals/day"
+      current: "0"
+    - metric: "backtest_annual_return"
+      target: "> 25%"
+      current: "not yet measured"
+    - metric: "regime_detection_accuracy"
+      target: "> 70%"
+      current: "not yet measured"
+  projects:
+    - repo: "UMwai/um_ai-hedge-fund"
+      role: "Target — alpha generation platform"
+    - repo: "UMwai/um-trading-assistance"
+      role: "Signal source — 80+ ML strategies"
+    - repo: "UMwai/um-daytrader"
+      role: "Signal source — real-time pattern recognition"
+    - repo: "UMwai/ev_trading_platform"
+      role: "Execution — Kelly sizing, Tradier client"
+  event_sources:
+    - "dev.github_events"
+    - "dev.local_repo_scan"
+    - "market.signals"
+  schedule:
+    active_hours: "06:00-17:00 ET"
+    frequency_active: "15min"
+    frequency_idle: "2h"

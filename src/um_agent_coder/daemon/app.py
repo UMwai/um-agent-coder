@@ -20,6 +20,7 @@ _settings: Optional[DaemonSettings] = None
 _db: Optional[Database] = None
 _worker = None  # type: Optional[um_agent_coder.daemon.worker.TaskWorker]
 _gemini_client = None  # type: Optional[um_agent_coder.daemon.gemini_client.GeminiCodeAssistClient]
+_llm_router = None  # type: Optional[um_agent_coder.daemon.llm_router.LLMRouter]
 
 
 def get_settings() -> DaemonSettings:
@@ -46,6 +47,28 @@ def get_gemini_client():
     if _gemini_client is None:
         _gemini_client = GeminiCodeAssistClient()
     return _gemini_client
+
+
+def get_llm_router():
+    """Get the multi-provider LLM router (Gemini + OpenAI + Anthropic)."""
+    from um_agent_coder.daemon.llm_router import LLMRouter
+
+    global _llm_router
+    if _llm_router is None:
+        settings = get_settings()
+        gemini = None
+        try:
+            gemini = get_gemini_client()
+        except Exception:
+            pass
+        _llm_router = LLMRouter(
+            gemini_client=gemini,
+            openai_api_key=settings.openai_api_key,
+            openai_model=settings.openai_model,
+            anthropic_api_key=settings.anthropic_api_key,
+            anthropic_model=settings.anthropic_model,
+        )
+    return _llm_router
 
 
 async def reset_gemini_client(refresh_token: str) -> str | None:
@@ -76,7 +99,7 @@ async def reset_gemini_client(refresh_token: str) -> str | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle manager."""
-    global _settings, _db, _worker, _gemini_client
+    global _settings, _db, _worker, _gemini_client, _llm_router
 
     _settings = DaemonSettings()
     logger.info("Starting daemon with settings: port=%s, db=%s", _settings.port, _settings.db_path)
@@ -97,6 +120,18 @@ async def lifespan(app: FastAPI):
         logger.warning("Gemini client init failed (queries will retry on demand): %s", e)
         _gemini_client = None
 
+    # LLM Router (multi-provider: Gemini + OpenAI + Anthropic)
+    from um_agent_coder.daemon.llm_router import LLMRouter
+
+    _llm_router = LLMRouter(
+        gemini_client=_gemini_client,
+        openai_api_key=_settings.openai_api_key,
+        openai_model=_settings.openai_model,
+        anthropic_api_key=_settings.anthropic_api_key,
+        anthropic_model=_settings.anthropic_model,
+    )
+    logger.info("LLM router initialized: %s", _llm_router.available_providers)
+
     # Worker
     from um_agent_coder.daemon.worker import TaskWorker
 
@@ -109,6 +144,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down daemon...")
     await _worker.stop()
+    if _llm_router:
+        await _llm_router.close()
     if _gemini_client:
         await _gemini_client.close()
     await _db.close()
