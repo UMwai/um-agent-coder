@@ -82,18 +82,17 @@ async def _execute_single_task(
 
     Returns a result dict with iteration_id, status, and output.
     """
-    from um_agent_coder.daemon.app import get_settings
+    from um_agent_coder.daemon.app import get_db, get_settings
     from um_agent_coder.daemon.routes.gemini.iterate import (
-        _run_iteration,
         _build_iterate_response,
+        _run_iteration,
     )
     from um_agent_coder.daemon.routes.gemini.models import (
         GeminiModelTier,
         IterateRequest,
     )
-    from um_agent_coder.daemon.app import get_db
 
-    settings = get_settings()
+    get_settings()
     db = get_db()
 
     iteration_id = f"wa-{task.id}-{uuid.uuid4().hex[:6]}"
@@ -189,7 +188,7 @@ async def _push_result_to_github(
     client = GitHubWriteClient(token=settings.github_token)
     repo = task.project  # "owner/repo"
     branch_name = f"world-agent/{task.id}"
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
     try:
         # Create branch

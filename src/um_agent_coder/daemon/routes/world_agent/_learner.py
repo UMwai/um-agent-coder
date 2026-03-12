@@ -145,8 +145,8 @@ def _build_reflection_prompt(data: Dict[str, Any], existing_lessons: List[Dict[s
     # Existing lessons
     existing_text = ""
     if existing_lessons:
-        for l in existing_lessons:
-            existing_text += f"- [{l.get('priority', '?')}] {l.get('title', '?')}: {l.get('content', '')[:150]}\n"
+        for lesson in existing_lessons:
+            existing_text += f"- [{lesson.get('priority', '?')}] {lesson.get('title', '?')}: {lesson.get('content', '')[:150]}\n"
     else:
         existing_text = "(none yet)"
 
@@ -193,18 +193,15 @@ async def reflect(days: int = 7) -> Dict[str, Any]:
 
     # Synthesize via LLM
     try:
-        from um_agent_coder.daemon.app import get_gemini_client, get_settings
-
-        client = get_gemini_client()
-        if not client:
-            return {"status": "error", "reason": "Gemini client unavailable"}
+        from um_agent_coder.daemon.app import get_llm_router, get_settings
 
         settings = get_settings()
+        router = get_llm_router()
         model = settings.gemini_model_pro
 
         prompt = _build_reflection_prompt(data, existing_lessons)
 
-        response = await client.generate(
+        llm_result = await router.generate(
             prompt=prompt,
             system_prompt=REFLECTION_SYSTEM_PROMPT,
             model=model,
@@ -213,7 +210,7 @@ async def reflect(days: int = 7) -> Dict[str, Any]:
         )
 
         # Parse response
-        text = response if isinstance(response, str) else str(response)
+        text = llm_result["text"]
         if "```json" in text:
             text = text.split("```json", 1)[1].split("```", 1)[0]
         elif "```" in text:
@@ -283,28 +280,27 @@ async def get_decision_context(
     if goal_ids:
         goal_set = set(goal_ids)
         relevant = []
-        for l in lessons:
-            applies_to = ""
+        for lesson in lessons:
             # Check tags for goal IDs
-            for tag in l.get("tags", []):
+            for tag in lesson.get("tags", []):
                 if tag in goal_set or tag == "all":
-                    relevant.append(l)
+                    relevant.append(lesson)
                     break
             # Also check content for goal references
-            content = l.get("content", "").lower()
-            title = l.get("title", "").lower()
+            content = lesson.get("content", "").lower()
+            title = lesson.get("title", "").lower()
             if any(g.lower() in content or g.lower() in title for g in goal_ids):
-                if l not in relevant:
-                    relevant.append(l)
+                if lesson not in relevant:
+                    relevant.append(lesson)
         # If we have goal-specific lessons, prefer them; otherwise use all
         if relevant:
             lessons = relevant
 
     # Format as text for prompt injection
     lines = ["## LEARNED LESSONS (from past experience)"]
-    for l in lessons[:limit]:
-        priority = l.get("priority", "medium")
-        lines.append(f"- [{priority}] **{l.get('title', '?')}**: {l.get('content', '')}")
+    for lesson in lessons[:limit]:
+        priority = lesson.get("priority", "medium")
+        lines.append(f"- [{priority}] **{lesson.get('title', '?')}**: {lesson.get('content', '')}")
 
     lines.append(
         "\nApply these lessons when planning tasks. "
