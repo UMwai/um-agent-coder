@@ -264,3 +264,38 @@ class JournalGenerateRequest(BaseModel):
 class JournalResponse(BaseModel):
     entry: JournalEntry
     generated: bool = Field(default=False, description="Whether this was freshly generated")
+
+
+# --- Repo Review Models ---
+
+
+class ReviewRequest(BaseModel):
+    goal_id: str = Field(..., min_length=1, description="Goal ID to review against")
+    depth: str = Field(default="standard", description="Review depth: quick|standard|deep")
+    repo_path: Optional[str] = Field(
+        default=None, description="Local repo path (optional, resolved from settings)"
+    )
+
+
+class ReviewResponse(BaseModel):
+    repo: str = Field(default="", description="Repo path or name")
+    goal_id: str = Field(default="", description="Goal ID reviewed against")
+    review_summary: str = Field(default="")
+    kpi_assessment: List[Dict[str, Any]] = Field(default_factory=list)
+    gaps: List[Dict[str, Any]] = Field(default_factory=list)
+    recommended_tasks: List[Dict[str, Any]] = Field(default_factory=list)
+    roadmap_path: Optional[str] = Field(default=None, description="Path to generated roadmap")
+    error: Optional[str] = Field(default=None)
+
+
+# --- Task Polling Models ---
+
+
+class PendingTasksResponse(BaseModel):
+    tasks: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class TaskCompleteRequest(BaseModel):
+    success: bool = Field(..., description="Whether the task completed successfully")
+    output: str = Field(default="", description="Task output summary")
+    pr_url: str = Field(default="", description="Pull request URL if created")

@@ -729,10 +729,27 @@ def main():
         help="Show logs for a specific sub-harness",
     )
 
+    # Daemon polling arguments
+    from .daemon_poller import add_poll_args
+
+    add_poll_args(parser)
+
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Handle daemon polling mode (before normal harness logic)
+    if args.poll_daemon:
+        from .daemon_poller import DaemonPoller
+
+        poller = DaemonPoller(
+            daemon_url=args.poll_daemon,
+            poll_interval=args.poll_interval,
+            api_key=args.daemon_api_key,
+        )
+        poller.run_poll_loop(cli=args.cli)
+        return
 
     # Handle meta-harness commands first (before normal harness logic)
     if args.meta_status:

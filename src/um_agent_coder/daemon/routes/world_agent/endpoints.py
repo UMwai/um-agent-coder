@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Body, HTTPException, Path, Query
 
 from um_agent_coder.daemon.routes.world_agent import _firestore as store
 from um_agent_coder.daemon.routes.world_agent import _goals as goal_store
@@ -18,7 +18,25 @@ from um_agent_coder.daemon.routes.world_agent._decide import decide
 from um_agent_coder.daemon.routes.world_agent._github_write import GitHubWriteClient
 from um_agent_coder.daemon.routes.world_agent._journal import generate_journal
 from um_agent_coder.daemon.routes.world_agent._local_repo_collector import LocalRepoCollector
+from um_agent_coder.daemon.routes.world_agent._market_collectors import (
+    CryptoFundingCollector,
+    MarketMoversCollector,
+    NewsCollector,
+    SECFilingsCollector,
+    VolatilityCollector,
+)
 from um_agent_coder.daemon.routes.world_agent._orient import orient
+from um_agent_coder.daemon.routes.world_agent._reviewer import review_repo
+from um_agent_coder.daemon.routes.world_agent._roadmap_gen import (
+    generate_roadmap,
+    write_roadmap,
+)
+from um_agent_coder.daemon.routes.world_agent._signal_dispatcher import dispatch_signals
+from um_agent_coder.daemon.routes.world_agent._trade_recs import (
+    format_trade_recs_discord,
+    format_trade_recs_slack,
+    generate_trade_recs,
+)
 from um_agent_coder.daemon.routes.world_agent.models import (
     CreateBranchRequest,
     CreatePRRequest,
@@ -30,12 +48,20 @@ from um_agent_coder.daemon.routes.world_agent.models import (
     JournalEntry,
     JournalGenerateRequest,
     JournalResponse,
+    PendingTasksResponse,
     PostCommentRequest,
+    ReviewRequest,
+    ReviewResponse,
     StatusResponse,
+    TaskCompleteRequest,
     WorldState,
 )
 
 logger = logging.getLogger(__name__)
+
+# In-memory pending task queue (tasks produced by review, awaiting harness pickup)
+_pending_tasks: list[dict] = []
+_completed_tasks: list[dict] = []
 router = APIRouter()
 
 
@@ -130,6 +156,81 @@ async def _append_cycle_to_journal(
         await store.save_journal_entry(entry.model_dump(mode="json"))
 
 
+async def _collect_market_events() -> list:
+    """Run all market collectors in parallel. Failures are logged, not raised."""
+    import asyncio
+
+    collectors = [
+        MarketMoversCollector(),
+        NewsCollector(),
+        VolatilityCollector(),
+        CryptoFundingCollector(),
+        SECFilingsCollector(),
+    ]
+
+    async def _safe_collect(c):
+        try:
+            return await c.collect()
+        except Exception as e:
+            logger.warning("Market collector %s failed: %s", c.source_id(), e)
+            return []
+
+    results = await asyncio.gather(*[_safe_collect(c) for c in collectors])
+    events = []
+    for batch in results:
+        events.extend(batch)
+    logger.info("Market collectors produced %d events", len(events))
+    return events
+
+
+async def _dispatch_trade_recs(
+    recs: dict,
+    slack_webhook: str | None = None,
+    discord_bot_token: str | None = None,
+) -> None:
+    """Post trade recommendation embeds to Discord #trading-signals and Slack."""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # Discord
+        if discord_bot_token:
+            embeds = format_trade_recs_discord(recs)
+            if embeds:
+                from um_agent_coder.daemon.routes.world_agent._signal_dispatcher import (
+                    DISCORD_CHANNELS,
+                )
+
+                channel = DISCORD_CHANNELS["signals"]
+                # Discord max 10 embeds per message — send in batches
+                for i in range(0, len(embeds), 10):
+                    batch = embeds[i : i + 10]
+                    try:
+                        resp = await client.post(
+                            f"https://discord.com/api/v10/channels/{channel}/messages",
+                            json={"embeds": batch},
+                            headers={"Authorization": f"Bot {discord_bot_token}"},
+                        )
+                        if resp.status_code >= 300:
+                            logger.warning(
+                                "Discord trade recs failed: %d %s",
+                                resp.status_code,
+                                resp.text[:200],
+                            )
+                    except Exception as e:
+                        logger.warning("Discord trade recs error: %s", e)
+
+        # Slack
+        if slack_webhook:
+            attachments = format_trade_recs_slack(recs)
+            if attachments:
+                try:
+                    resp = await client.post(slack_webhook, json={"attachments": attachments})
+                    if resp.status_code >= 300:
+                        logger.warning("Slack trade recs failed: %d", resp.status_code)
+                except Exception as e:
+                    logger.warning("Slack trade recs error: %s", e)
+
+
 async def _notify_slack_cycle(
     cycle_id: str,
     events_collected: int,
@@ -154,15 +255,13 @@ async def _notify_slack_cycle(
     if error:
         color = "#dc3545"
         status_emoji = ":x:"
-        status_text = f"*Cycle Failed*\n`{error[:200]}`"
+        f"*Cycle Failed*\n`{error[:200]}`"
     elif signals_generated > 0 or tasks_created > 0:
         color = "#28a745"
         status_emoji = ":large_green_circle:"
-        status_text = f"*{events_collected}* events | *{signals_generated}* signals | *{tasks_created}* tasks"
     else:
         color = "#6c757d"
         status_emoji = ":white_circle:"
-        status_text = f"*{events_collected}* events | no actionable signals"
 
     fields = [
         {"title": "Cycle", "value": f"`{cycle_id}`", "short": True},
@@ -179,11 +278,13 @@ async def _notify_slack_cycle(
             interp = getattr(s, "interpretation", "")[:80]
             signal_lines.append(f"• [{urgency_val}] {goal}: {interp}")
         if signal_lines:
-            fields.append({
-                "title": f"Signals ({len(signals)})",
-                "value": "\n".join(signal_lines),
-                "short": False,
-            })
+            fields.append(
+                {
+                    "title": f"Signals ({len(signals)})",
+                    "value": "\n".join(signal_lines),
+                    "short": False,
+                }
+            )
 
     # Add planned tasks if any
     if planned_tasks:
@@ -193,11 +294,13 @@ async def _notify_slack_cycle(
             project = getattr(t, "project", "")
             task_lines.append(f"• {project}: {title}")
         if task_lines:
-            fields.append({
-                "title": f"Planned Tasks ({len(planned_tasks)})",
-                "value": "\n".join(task_lines),
-                "short": False,
-            })
+            fields.append(
+                {
+                    "title": f"Planned Tasks ({len(planned_tasks)})",
+                    "value": "\n".join(task_lines),
+                    "short": False,
+                }
+            )
 
     # Add act results if any
     if act_results:
@@ -212,18 +315,22 @@ async def _notify_slack_cycle(
             score_text = f" (score: {score:.2f})" if score else ""
             act_lines.append(f"{emoji} `{task_id}` {status}{score_text}{pr_link}")
         if act_lines:
-            fields.append({
-                "title": f"Executed ({len(act_results)})",
-                "value": "\n".join(act_lines),
-                "short": False,
-            })
+            fields.append(
+                {
+                    "title": f"Executed ({len(act_results)})",
+                    "value": "\n".join(act_lines),
+                    "short": False,
+                }
+            )
 
     if summary:
-        fields.append({
-            "title": "Summary",
-            "value": summary[:500],
-            "short": False,
-        })
+        fields.append(
+            {
+                "title": "Summary",
+                "value": summary[:500],
+                "short": False,
+            }
+        )
 
     payload = {
         "attachments": [
@@ -275,6 +382,10 @@ async def run_cycle(request: CycleRequest):
             local_events = await local_collector.collect()
             all_events.extend(local_events)
 
+        # Market data collectors (run in parallel)
+        market_events = await _collect_market_events()
+        all_events.extend(market_events)
+
         # Cap events per batch
         max_events = settings.world_agent_max_events_per_batch
         all_events = all_events[:max_events]
@@ -311,7 +422,9 @@ async def run_cycle(request: CycleRequest):
                 act_results = await act(planned_tasks, max_concurrent=2)
                 logger.info(
                     "Cycle %s act: %d/%d tasks executed",
-                    cycle_id, len(act_results), len(planned_tasks),
+                    cycle_id,
+                    len(act_results),
+                    len(planned_tasks),
                 )
             except Exception as ae:
                 logger.error("Act step failed in cycle %s: %s", cycle_id, ae)
@@ -373,7 +486,58 @@ async def run_cycle(request: CycleRequest):
         except Exception as je:
             logger.warning("Failed to update journal from cycle: %s", je)
 
-        # Slack notification
+        # 6. Generate trade recommendations from market data
+        trade_recs = {}
+        if market_events:
+            try:
+                trade_recs = await generate_trade_recs(all_events)
+                if trade_recs:
+                    logger.info(
+                        "Cycle %s trade recs: %d recommendations, regime=%s",
+                        cycle_id,
+                        len(trade_recs.get("recommendations", [])),
+                        trade_recs.get("market_regime", "?"),
+                    )
+                    # Persist to Firestore for accuracy tracking
+                    try:
+                        await store.save_trade_recs(
+                            cycle_id=cycle_id,
+                            recs=trade_recs,
+                            model=settings.gemini_model_pro,
+                            sw_version="0.2.0",
+                            market_context_summary=trade_recs.get("market_summary", ""),
+                        )
+                    except Exception as se:
+                        logger.warning("Failed to persist trade recs: %s", se)
+            except Exception as tre:
+                logger.warning("Trade rec generation failed: %s", tre)
+
+        # Dispatch rich signals to Slack + Discord
+        try:
+            await dispatch_signals(
+                events=all_events,
+                signals=signals,
+                planned_tasks=planned_tasks,
+                act_results=act_results,
+                cycle_id=cycle_id,
+                slack_webhook=settings.default_slack_webhook,
+                discord_bot_token=settings.discord_bot_token,
+            )
+        except Exception as de:
+            logger.warning("Signal dispatch failed: %s", de)
+
+        # Dispatch trade recommendations to Discord + Slack
+        if trade_recs:
+            try:
+                await _dispatch_trade_recs(
+                    trade_recs,
+                    slack_webhook=settings.default_slack_webhook,
+                    discord_bot_token=settings.discord_bot_token,
+                )
+            except Exception as tde:
+                logger.warning("Trade rec dispatch failed: %s", tde)
+
+        # Cycle summary notification (Slack only — lightweight status line)
         try:
             await _notify_slack_cycle(
                 cycle_id=cycle_id,
@@ -747,3 +911,173 @@ async def preview_decision_context(
     goal_ids = [goal_id] if goal_id else None
     context = await get_decision_context(goal_ids=goal_ids)
     return {"context": context, "has_lessons": bool(context)}
+
+
+# --- Trade Recommendations ---
+
+
+@router.get("/trade-recs")
+async def get_trade_recs(
+    date: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    symbol: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    """List trade recommendations for a date, optionally filtered by symbol."""
+    recs = await store.list_trade_recs(date_str=date, symbol=symbol, limit=limit)
+    return {"recs": recs, "count": len(recs), "date": date}
+
+
+@router.post("/trade-recs/{date}/{rec_id}/outcome")
+async def update_trade_outcome(
+    date: str = Path(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    rec_id: str = Path(...),
+    outcome: str = Query(..., pattern=r"^(win|loss|scratch|expired)$"),
+    pnl_pct: Optional[float] = Query(default=None),
+    notes: Optional[str] = Query(default=None),
+):
+    """Record the outcome of a trade recommendation for accuracy tracking.
+
+    outcome: win | loss | scratch | expired
+    pnl_pct: realized P&L percentage (e.g. 2.5 for +2.5%, -1.3 for -1.3%)
+    """
+    success = await store.update_trade_rec_outcome(
+        date_str=date,
+        rec_id=rec_id,
+        outcome=outcome,
+        pnl_pct=pnl_pct,
+        notes=notes,
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update outcome")
+    return {"rec_id": rec_id, "outcome": outcome, "pnl_pct": pnl_pct}
+
+
+# ---------------------------------------------------------------------------
+# Repo Review endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/repos/{owner}/{repo}/review", response_model=ReviewResponse)
+async def review_repository(
+    owner: str = Path(...),
+    repo: str = Path(...),
+    request: ReviewRequest = Body(...),  # noqa: B008
+):
+    """Review a repo against a goal, producing gap analysis and recommended tasks.
+
+    Optionally generates a harness-compatible roadmap file.
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    full_name = _validate_repo(owner, repo)
+
+    # Resolve goal
+    goal = await goal_store.get_goal(request.goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail=f"Goal '{request.goal_id}' not found")
+
+    # Resolve repo path — from request, settings, or goal projects
+    repo_path = request.repo_path
+    if not repo_path:
+        local_str = settings.world_agent_local_repos or ""
+        for pair in local_str.split(","):
+            pair = pair.strip()
+            if "=" in pair:
+                name, rpath = pair.split("=", 1)
+                if name.strip() in repo or repo in name.strip():
+                    repo_path = rpath.strip()
+                    break
+
+    if not repo_path:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not resolve local path for {full_name}. "
+            "Set repo_path in request or configure UM_DAEMON_WORLD_AGENT_LOCAL_REPOS.",
+        )
+
+    result = await review_repo(repo_path, goal, depth=request.depth)
+
+    # Generate roadmap if tasks were recommended
+    roadmap_path = None
+    if result.get("recommended_tasks"):
+        roadmap_content = generate_roadmap(
+            review_result=result,
+            goal_id=request.goal_id,
+            goal_name=goal.name,
+            repo_path=repo_path,
+        )
+        roadmap_file = f".harness/roadmaps/roadmap-{request.goal_id}.md"
+        roadmap_path = write_roadmap(roadmap_content, roadmap_file)
+        logger.info("Generated roadmap at %s", roadmap_path)
+
+        _pending_tasks.append(
+            {
+                "id": f"review-{request.goal_id}-{int(time.time())}",
+                "goal_id": request.goal_id,
+                "repo": full_name,
+                "repo_path": repo_path,
+                "title": f"Execute roadmap for {goal.name}",
+                "roadmap_path": roadmap_path,
+                "task_count": len(result["recommended_tasks"]),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    return ReviewResponse(
+        repo=repo_path,
+        goal_id=request.goal_id,
+        review_summary=result.get("review_summary", ""),
+        kpi_assessment=result.get("kpi_assessment", []),
+        gaps=result.get("gaps", []),
+        recommended_tasks=result.get("recommended_tasks", []),
+        roadmap_path=roadmap_path,
+        error=result.get("error"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Task polling endpoints (for local harness bridge)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tasks/pending", response_model=PendingTasksResponse)
+async def list_pending_tasks():
+    """List pending tasks awaiting harness execution."""
+    return PendingTasksResponse(tasks=_pending_tasks)
+
+
+@router.post("/tasks/{task_id}/complete")
+async def complete_task(
+    task_id: str = Path(...),
+    request: TaskCompleteRequest = Body(...),  # noqa: B008
+):
+    """Report task completion from the local harness."""
+    global _pending_tasks
+
+    task = None
+    remaining = []
+    for t in _pending_tasks:
+        if t.get("id") == task_id:
+            task = t
+        else:
+            remaining.append(t)
+    _pending_tasks = remaining
+
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found in pending queue")
+
+    task["completed_at"] = datetime.now(timezone.utc).isoformat()
+    task["success"] = request.success
+    task["output"] = request.output
+    task["pr_url"] = request.pr_url
+    _completed_tasks.append(task)
+
+    logger.info(
+        "Task %s completed: success=%s pr=%s",
+        task_id,
+        request.success,
+        request.pr_url or "none",
+    )
+    return {"status": "ok", "task_id": task_id, "success": request.success}
