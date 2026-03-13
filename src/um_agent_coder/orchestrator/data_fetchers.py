@@ -353,7 +353,9 @@ class YahooFinanceFetcher(DataFetcher):
         results = {}
         for ticker in tickers:
             results[ticker] = self.fetch(ticker)
-            time.sleep(0.5)  # Rate limiting
+            # Only rate limit if we actually made a network request
+            if not results[ticker].cached:
+                time.sleep(0.5)  # Rate limiting
         return results
 
 
