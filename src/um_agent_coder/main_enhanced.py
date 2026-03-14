@@ -98,7 +98,20 @@ def main():
 
     # Require prompt if not listing models
     if not args.prompt:
-        parser.error("prompt is required unless using --list-models")
+        if sys.stdin.isatty():
+            print("\n" + ANSI.style("=" * 60, ANSI.BLUE))
+            print(ANSI.style("WELCOME TO UM AGENT CODER", ANSI.BOLD))
+            print(ANSI.style("=" * 60, ANSI.BLUE))
+            print(ANSI.style("\nEnter your task below (Ctrl+C to exit):", ANSI.CYAN))
+
+            try:
+                while not args.prompt:
+                    args.prompt = input(ANSI.style("> ", ANSI.GREEN)).strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nExiting.")
+                sys.exit(0)
+        else:
+            parser.error("prompt is required unless using --list-models")
 
     # Create a dummy config file if it doesn't exist
     if not os.path.exists(args.config):
