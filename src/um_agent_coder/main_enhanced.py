@@ -10,6 +10,7 @@ from um_agent_coder.config import Config
 from um_agent_coder.llm.factory import LLMFactory
 from um_agent_coder.models import ModelCategory, ModelRegistry
 from um_agent_coder.utils.colors import ANSI
+from um_agent_coder.utils.formatting import format_compact_number
 
 
 def list_available_models():
@@ -22,17 +23,29 @@ def list_available_models():
 
     for category in ModelCategory:
         print(f"\n{ANSI.style(category.value.upper().replace('_', ' '), ANSI.CYAN)} MODELS:")
-        print("-" * 50)
+        print("-" * 60)
 
         models = registry.get_by_category(category)
         for model in sorted(models, key=lambda x: x.performance_score, reverse=True):
-            print(f"\n{model.name} ({model.provider})")
-            print(f"  Performance: {model.performance_score}/100")
-            print(f"  Context: {model.context_window:,} tokens")
+            # Format performance with color
+            perf_color = ANSI.FAIL
+            if model.performance_score >= 90:
+                perf_color = ANSI.GREEN
+            elif model.performance_score >= 80:
+                perf_color = ANSI.WARNING
+
+            perf_str = ANSI.style(f"{model.performance_score}/100", perf_color)
+
+            # Format context with helper
+            context_str = f"{format_compact_number(model.context_window)} tokens"
+
+            print(f"\n{ANSI.style(model.name, ANSI.BOLD)} ({model.provider})")
+            print(f"  Performance {'.' * 16} {perf_str}")
+            print(f"  Context {'.' * 20} {context_str}")
             print(
-                f"  Cost: ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} per 1K tokens (in/out)"
+                f"  Cost {'.' * 23} ${model.cost_per_1k_input:.4f}/${model.cost_per_1k_output:.4f} (per 1k in/out)"
             )
-            print(f"  {model.description}")
+            print(f"  {ANSI.style(model.description, ANSI.BLUE)}")
 
 
 def main():
