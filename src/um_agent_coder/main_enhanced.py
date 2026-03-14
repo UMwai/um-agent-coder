@@ -182,11 +182,12 @@ def main():
                 provider_config["api_key"] = api_key
             else:
                 print(
-                    f"{ANSI.style('Error:', ANSI.FAIL)} {env_var} not found in config or environment"
+                    f"\n{ANSI.style('Error:', ANSI.FAIL)} {env_var} not found in config or environment"
                 )
                 print(
                     f"Please set the {ANSI.style(env_var, ANSI.BOLD)} environment variable or update config.yaml"
                 )
+                print(f"\n{ANSI.style('Tip:', ANSI.CYAN)} You can get an API key from your provider's dashboard.")
                 sys.exit(1)
 
     # Handle Router Mode
