@@ -48,9 +48,9 @@ def list_available_models():
             print(f"  {ANSI.style(model.description, ANSI.BLUE)}")
 
 
-def main():
+def _main_impl():
     """
-    Main function for the enhanced AI coding agent.
+    Main implementation for the enhanced AI coding agent.
     """
     parser = argparse.ArgumentParser(description="UM Agent Coder - Enhanced AI Coding Assistant")
     parser.add_argument("prompt", nargs="?", help="The prompt for the agent.")
@@ -274,6 +274,17 @@ def main():
         agent = Agent(llm)
         response = agent.run(args.prompt)
         print(response)
+
+
+def main():
+    """
+    Main function wrapper with keyboard interrupt handling.
+    """
+    try:
+        _main_impl()
+    except KeyboardInterrupt:
+        print("\n" + ANSI.style("Interrupted by user. Goodbye!", ANSI.WARNING))
+        sys.exit(130)
 
 
 if __name__ == "__main__":
