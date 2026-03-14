@@ -49,13 +49,13 @@ def test_list_models_colors(capsys):
 
         # Check for ANSI color codes
         # High score (95) should be Green
-        assert f"{ANSI.GREEN}95{ANSI.ENDC}" in output
+        assert f"{ANSI.GREEN}95/100{ANSI.ENDC}" in output
 
         # Medium score (85) should be Yellow/Warning
-        assert f"{ANSI.WARNING}85{ANSI.ENDC}" in output
+        assert f"{ANSI.WARNING}85/100{ANSI.ENDC}" in output
 
         # Low score (75) should be Red/Fail
-        assert f"{ANSI.FAIL}75{ANSI.ENDC}" in output
+        assert f"{ANSI.FAIL}75/100{ANSI.ENDC}" in output
 
 
 def test_interactive_prompt_tty(monkeypatch):
