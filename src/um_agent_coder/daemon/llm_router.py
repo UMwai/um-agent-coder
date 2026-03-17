@@ -124,6 +124,7 @@ class LLMRouter:
                 # Lazy retry — mirrors get_gemini_client() pattern used by REST routes
                 try:
                     from um_agent_coder.daemon.app import get_gemini_client
+
                     self._gemini = get_gemini_client()
                 except Exception as exc:
                     logger.warning("Gemini lazy re-init failed: %s", exc)

@@ -51,26 +51,26 @@ EQUITY_WATCHLIST = [
 ]
 CREDIT_WATCHLIST = [
     # BDCs (private credit public window)
-    "ARCC",   # Ares Capital — largest BDC
-    "BXSL",   # Blackstone Secured Lending
-    "OBDC",   # Blue Owl Capital
-    "FSK",    # FS KKR Capital
-    "MAIN",   # Main Street Capital
-    "HTGC",   # Hercules Capital (tech lending)
+    "ARCC",  # Ares Capital — largest BDC
+    "BXSL",  # Blackstone Secured Lending
+    "OBDC",  # Blue Owl Capital
+    "FSK",  # FS KKR Capital
+    "MAIN",  # Main Street Capital
+    "HTGC",  # Hercules Capital (tech lending)
     # CLO equity (first to break)
-    "ECC",    # Eagle Point Credit
-    "OXLC",   # Oxford Lane Capital
+    "ECC",  # Eagle Point Credit
+    "OXLC",  # Oxford Lane Capital
     # Leveraged loans
-    "BKLN",   # Invesco Senior Loan ETF
-    "SRLN",   # SPDR Blackstone Senior Loan ETF
+    "BKLN",  # Invesco Senior Loan ETF
+    "SRLN",  # SPDR Blackstone Senior Loan ETF
     # High yield
-    "HYG",    # iShares HY Corporate Bond
-    "JNK",    # SPDR HY Bond
+    "HYG",  # iShares HY Corporate Bond
+    "JNK",  # SPDR HY Bond
     # Alt managers (contagion transmitters)
-    "APO",    # Apollo
-    "BX",     # Blackstone
-    "ARES",   # Ares Management
-    "OWL",    # Blue Owl Capital (manager)
+    "APO",  # Apollo
+    "BX",  # Blackstone
+    "ARES",  # Ares Management
+    "OWL",  # Blue Owl Capital (manager)
 ]
 CRYPTO_WATCHLIST = ["bitcoin", "ethereum", "solana"]
 VOL_SYMBOLS = ["^VIX"]
@@ -78,12 +78,12 @@ VOL_SYMBOLS = ["^VIX"]
 # Credit stress thresholds
 CREDIT_STRESS_THRESHOLDS = {
     # BDC discount to book: >10% = warning, >20% = danger
-    "bdc_pb_warning": 0.90,    # P/B below 0.90
-    "bdc_pb_danger": 0.80,     # P/B below 0.80
+    "bdc_pb_warning": 0.90,  # P/B below 0.90
+    "bdc_pb_danger": 0.80,  # P/B below 0.80
     # Price drops
-    "credit_move_pct": 1.5,    # Lower threshold for credit instruments
+    "credit_move_pct": 1.5,  # Lower threshold for credit instruments
     # Yield spikes (signals distress)
-    "yield_spike_pct": 12.0,   # BDC yield above 12% = stress
+    "yield_spike_pct": 12.0,  # BDC yield above 12% = stress
 }
 
 
@@ -612,141 +612,169 @@ class CreditStressCollector(EventCollector):
                 fifty_two_low = q.get("fiftyTwoWeekLow", 0)
 
                 if sym in bdcs:
-                    bdc_moves.append({
-                        "symbol": sym,
-                        "change_pct": change_pct,
-                        "price": price,
-                        "pb": pb,
-                        "div_yield": div_yield,
-                        "near_52w_low": (
-                            price <= fifty_two_low * 1.05 if fifty_two_low > 0 else False
-                        ),
-                    })
+                    bdc_moves.append(
+                        {
+                            "symbol": sym,
+                            "change_pct": change_pct,
+                            "price": price,
+                            "pb": pb,
+                            "div_yield": div_yield,
+                            "near_52w_low": (
+                                price <= fifty_two_low * 1.05 if fifty_two_low > 0 else False
+                            ),
+                        }
+                    )
 
                     # Individual BDC stress signals
                     if pb > 0 and pb < CREDIT_STRESS_THRESHOLDS["bdc_pb_danger"]:
-                        events.append(Event(
+                        events.append(
+                            Event(
+                                id=f"cred-{uuid.uuid4().hex[:8]}",
+                                source=self.source_id(),
+                                timestamp=now,
+                                category=EventCategory.financial,
+                                severity=EventSeverity.critical,
+                                title=f"DANGER: {sym} P/B at {pb:.2f} — market rejecting private marks",
+                                body=f"Price ${price:.2f} ({change_pct:+.1f}%). "
+                                f"Yield {div_yield*100:.1f}%. "
+                                f"BDC trading >20% below book = contagion signal.",
+                                metadata={
+                                    "symbol": sym,
+                                    "price_to_book": round(pb, 3),
+                                    "change_pct": round(change_pct, 2),
+                                    "price": price,
+                                    "div_yield": round(div_yield * 100, 2) if div_yield else 0,
+                                    "scan_type": "bdc_stress",
+                                    "stress_level": "danger",
+                                },
+                            )
+                        )
+                    elif pb > 0 and pb < CREDIT_STRESS_THRESHOLDS["bdc_pb_warning"]:
+                        events.append(
+                            Event(
+                                id=f"cred-{uuid.uuid4().hex[:8]}",
+                                source=self.source_id(),
+                                timestamp=now,
+                                category=EventCategory.financial,
+                                severity=EventSeverity.urgent,
+                                title=f"WARNING: {sym} P/B at {pb:.2f} — discount widening",
+                                body=f"Price ${price:.2f} ({change_pct:+.1f}%). "
+                                f"Yield {div_yield*100:.1f}%. "
+                                f"BDC discount >10% = private credit stress.",
+                                metadata={
+                                    "symbol": sym,
+                                    "price_to_book": round(pb, 3),
+                                    "change_pct": round(change_pct, 2),
+                                    "price": price,
+                                    "div_yield": round(div_yield * 100, 2) if div_yield else 0,
+                                    "scan_type": "bdc_stress",
+                                    "stress_level": "warning",
+                                },
+                            )
+                        )
+
+                # CLO equity — the canary
+                if sym in clo_equity:
+                    severity = (
+                        EventSeverity.critical
+                        if change_pct <= -3
+                        else (EventSeverity.urgent if change_pct <= -1.5 else EventSeverity.notable)
+                    )
+                    events.append(
+                        Event(
                             id=f"cred-{uuid.uuid4().hex[:8]}",
                             source=self.source_id(),
                             timestamp=now,
                             category=EventCategory.financial,
-                            severity=EventSeverity.critical,
-                            title=f"DANGER: {sym} P/B at {pb:.2f} — market rejecting private marks",
-                            body=f"Price ${price:.2f} ({change_pct:+.1f}%). "
-                                 f"Yield {div_yield*100:.1f}%. "
-                                 f"BDC trading >20% below book = contagion signal.",
+                            severity=severity,
+                            title=f"CLO equity {sym}: ${price:.2f} ({change_pct:+.1f}%)"
+                            + (
+                                " — NEAR 52W LOW"
+                                if price <= fifty_two_low * 1.05 and fifty_two_low > 0
+                                else ""
+                            ),
+                            body=f"Yield {div_yield*100:.1f}%. "
+                            f"CLO equity is first tranche to absorb loan defaults. "
+                            f"Sustained decline = underlying loan book deteriorating.",
                             metadata={
                                 "symbol": sym,
-                                "price_to_book": round(pb, 3),
                                 "change_pct": round(change_pct, 2),
                                 "price": price,
                                 "div_yield": round(div_yield * 100, 2) if div_yield else 0,
-                                "scan_type": "bdc_stress",
-                                "stress_level": "danger",
+                                "near_52w_low": (
+                                    price <= fifty_two_low * 1.05 if fifty_two_low > 0 else False
+                                ),
+                                "scan_type": "clo_equity",
                             },
-                        ))
-                    elif pb > 0 and pb < CREDIT_STRESS_THRESHOLDS["bdc_pb_warning"]:
-                        events.append(Event(
+                        )
+                    )
+
+                # Loan ETFs — liquidity proxy
+                if (
+                    sym in loan_etfs
+                    and abs(change_pct) >= CREDIT_STRESS_THRESHOLDS["credit_move_pct"]
+                ):
+                    events.append(
+                        Event(
                             id=f"cred-{uuid.uuid4().hex[:8]}",
                             source=self.source_id(),
                             timestamp=now,
                             category=EventCategory.financial,
                             severity=EventSeverity.urgent,
-                            title=f"WARNING: {sym} P/B at {pb:.2f} — discount widening",
-                            body=f"Price ${price:.2f} ({change_pct:+.1f}%). "
-                                 f"Yield {div_yield*100:.1f}%. "
-                                 f"BDC discount >10% = private credit stress.",
+                            title=f"Loan market stress: {sym} {change_pct:+.1f}% to ${price:.2f}",
+                            body="Leveraged loan ETF decline signals credit market liquidity withdrawal.",
                             metadata={
                                 "symbol": sym,
-                                "price_to_book": round(pb, 3),
                                 "change_pct": round(change_pct, 2),
                                 "price": price,
-                                "div_yield": round(div_yield * 100, 2) if div_yield else 0,
-                                "scan_type": "bdc_stress",
-                                "stress_level": "warning",
+                                "scan_type": "loan_stress",
                             },
-                        ))
-
-                # CLO equity — the canary
-                if sym in clo_equity:
-                    severity = EventSeverity.critical if change_pct <= -3 else (
-                        EventSeverity.urgent if change_pct <= -1.5 else EventSeverity.notable
+                        )
                     )
-                    events.append(Event(
-                        id=f"cred-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=severity,
-                        title=f"CLO equity {sym}: ${price:.2f} ({change_pct:+.1f}%)"
-                              + (" — NEAR 52W LOW" if price <= fifty_two_low * 1.05 and fifty_two_low > 0 else ""),
-                        body=f"Yield {div_yield*100:.1f}%. "
-                             f"CLO equity is first tranche to absorb loan defaults. "
-                             f"Sustained decline = underlying loan book deteriorating.",
-                        metadata={
-                            "symbol": sym,
-                            "change_pct": round(change_pct, 2),
-                            "price": price,
-                            "div_yield": round(div_yield * 100, 2) if div_yield else 0,
-                            "near_52w_low": price <= fifty_two_low * 1.05 if fifty_two_low > 0 else False,
-                            "scan_type": "clo_equity",
-                        },
-                    ))
-
-                # Loan ETFs — liquidity proxy
-                if sym in loan_etfs and abs(change_pct) >= CREDIT_STRESS_THRESHOLDS["credit_move_pct"]:
-                    events.append(Event(
-                        id=f"cred-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=EventSeverity.urgent,
-                        title=f"Loan market stress: {sym} {change_pct:+.1f}% to ${price:.2f}",
-                        body="Leveraged loan ETF decline signals credit market liquidity withdrawal.",
-                        metadata={
-                            "symbol": sym,
-                            "change_pct": round(change_pct, 2),
-                            "price": price,
-                            "scan_type": "loan_stress",
-                        },
-                    ))
 
                 # HY ETFs
-                if sym in hy_etfs and abs(change_pct) >= CREDIT_STRESS_THRESHOLDS["credit_move_pct"]:
-                    events.append(Event(
-                        id=f"cred-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=EventSeverity.urgent,
-                        title=f"HY spread widening: {sym} {change_pct:+.1f}% to ${price:.2f}",
-                        body="High yield bond decline = credit spreads blowing out.",
-                        metadata={
-                            "symbol": sym,
-                            "change_pct": round(change_pct, 2),
-                            "price": price,
-                            "scan_type": "hy_stress",
-                        },
-                    ))
+                if (
+                    sym in hy_etfs
+                    and abs(change_pct) >= CREDIT_STRESS_THRESHOLDS["credit_move_pct"]
+                ):
+                    events.append(
+                        Event(
+                            id=f"cred-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.urgent,
+                            title=f"HY spread widening: {sym} {change_pct:+.1f}% to ${price:.2f}",
+                            body="High yield bond decline = credit spreads blowing out.",
+                            metadata={
+                                "symbol": sym,
+                                "change_pct": round(change_pct, 2),
+                                "price": price,
+                                "scan_type": "hy_stress",
+                            },
+                        )
+                    )
 
                 # Alt managers — contagion pathway
                 if sym in alt_mgrs and abs(change_pct) >= 2.0:
-                    events.append(Event(
-                        id=f"cred-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=EventSeverity.urgent,
-                        title=f"Alt manager selloff: {sym} {change_pct:+.1f}% to ${price:.2f}",
-                        body="Alt manager stock decline signals market concern about "
-                             "private credit / PE exposure. Watch for fund redemption risk.",
-                        metadata={
-                            "symbol": sym,
-                            "change_pct": round(change_pct, 2),
-                            "price": price,
-                            "scan_type": "alt_mgr_stress",
-                        },
-                    ))
+                    events.append(
+                        Event(
+                            id=f"cred-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.urgent,
+                            title=f"Alt manager selloff: {sym} {change_pct:+.1f}% to ${price:.2f}",
+                            body="Alt manager stock decline signals market concern about "
+                            "private credit / PE exposure. Watch for fund redemption risk.",
+                            metadata={
+                                "symbol": sym,
+                                "change_pct": round(change_pct, 2),
+                                "price": price,
+                                "scan_type": "alt_mgr_stress",
+                            },
+                        )
+                    )
 
             # Composite BDC stress score
             if bdc_moves:
@@ -757,27 +785,31 @@ class CreditStressCollector(EventCollector):
                 avg_pb = avg_pb / pb_count if pb_count else 0
 
                 if avg_change <= -1.0 or near_lows >= 3 or (avg_pb > 0 and avg_pb < 0.85):
-                    events.append(Event(
-                        id=f"cred-{uuid.uuid4().hex[:8]}",
-                        source=self.source_id(),
-                        timestamp=now,
-                        category=EventCategory.financial,
-                        severity=EventSeverity.critical,
-                        title=f"PRIVATE CREDIT STRESS: BDC composite "
-                              f"avg {avg_change:+.1f}%, {near_lows}/{len(bdc_moves)} near 52w low"
-                              + (f", avg P/B {avg_pb:.2f}" if avg_pb > 0 else ""),
-                        body=f"Broad BDC selloff indicates systemic private credit concern. "
-                             f"Monitor for: dividend cuts, non-accrual spikes, warehouse margin calls. "
-                             f"Components: {', '.join(b['symbol'] + ' ' + str(round(b['change_pct'], 1)) + '%' for b in bdc_moves)}",
-                        metadata={
-                            "avg_change_pct": round(avg_change, 2),
-                            "near_52w_lows": near_lows,
-                            "avg_price_to_book": round(avg_pb, 3) if avg_pb else None,
-                            "components": {b["symbol"]: round(b["change_pct"], 2) for b in bdc_moves},
-                            "scan_type": "credit_composite",
-                            "stress_level": "systemic",
-                        },
-                    ))
+                    events.append(
+                        Event(
+                            id=f"cred-{uuid.uuid4().hex[:8]}",
+                            source=self.source_id(),
+                            timestamp=now,
+                            category=EventCategory.financial,
+                            severity=EventSeverity.critical,
+                            title=f"PRIVATE CREDIT STRESS: BDC composite "
+                            f"avg {avg_change:+.1f}%, {near_lows}/{len(bdc_moves)} near 52w low"
+                            + (f", avg P/B {avg_pb:.2f}" if avg_pb > 0 else ""),
+                            body=f"Broad BDC selloff indicates systemic private credit concern. "
+                            f"Monitor for: dividend cuts, non-accrual spikes, warehouse margin calls. "
+                            f"Components: {', '.join(b['symbol'] + ' ' + str(round(b['change_pct'], 1)) + '%' for b in bdc_moves)}",
+                            metadata={
+                                "avg_change_pct": round(avg_change, 2),
+                                "near_52w_lows": near_lows,
+                                "avg_price_to_book": round(avg_pb, 3) if avg_pb else None,
+                                "components": {
+                                    b["symbol"]: round(b["change_pct"], 2) for b in bdc_moves
+                                },
+                                "scan_type": "credit_composite",
+                                "stress_level": "systemic",
+                            },
+                        )
+                    )
 
         except Exception as e:
             logger.warning("Credit stress collection failed: %s", e)

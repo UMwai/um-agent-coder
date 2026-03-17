@@ -187,7 +187,9 @@ def _main_impl():
                 print(
                     f"Please set the {ANSI.style(env_var, ANSI.BOLD)} environment variable or update config.yaml"
                 )
-                print(f"\n{ANSI.style('Tip:', ANSI.CYAN)} You can get an API key from your provider's dashboard.")
+                print(
+                    f"\n{ANSI.style('Tip:', ANSI.CYAN)} You can get an API key from your provider's dashboard."
+                )
                 sys.exit(1)
 
     # Handle Router Mode

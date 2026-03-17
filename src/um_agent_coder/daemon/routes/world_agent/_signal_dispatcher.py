@@ -141,9 +141,9 @@ async def dispatch_signals(
 
         # --- 1b. Credit Stress Alerts → #regime ---
         credit_events = [
-            e for e in events
-            if e.source == "market.credit_stress"
-            and e.severity.value in ("urgent", "critical")
+            e
+            for e in events
+            if e.source == "market.credit_stress" and e.severity.value in ("urgent", "critical")
         ]
         if credit_events:
             credit_lines = []
@@ -164,9 +164,11 @@ async def dispatch_signals(
                     credit_lines.append(f"{emoji} **{sym}** {change:+.1f}%")
 
             credit_text = "\n".join(credit_lines)
-            color = "#dc3545" if any(
-                e.severity.value == "critical" for e in credit_events
-            ) else "#ffc107"
+            color = (
+                "#dc3545"
+                if any(e.severity.value == "critical" for e in credit_events)
+                else "#ffc107"
+            )
 
             if slack_webhook:
                 try:
@@ -174,12 +176,14 @@ async def dispatch_signals(
                         client,
                         slack_webhook,
                         {
-                            "attachments": [{
-                                "color": color,
-                                "pretext": f"🏦 *Private Credit Stress* ({len(credit_events)} signals)",
-                                "text": credit_text.replace("**", "*"),
-                                "footer": "world-agent | market.credit_stress",
-                            }]
+                            "attachments": [
+                                {
+                                    "color": color,
+                                    "pretext": f"🏦 *Private Credit Stress* ({len(credit_events)} signals)",
+                                    "text": credit_text.replace("**", "*"),
+                                    "footer": "world-agent | market.credit_stress",
+                                }
+                            ]
                         },
                     )
                     stats["slack"] += 1
@@ -193,13 +197,15 @@ async def dispatch_signals(
                         discord_bot_token,
                         DISCORD_CHANNELS["credit"],
                         {
-                            "embeds": [{
-                                "title": f"🏦 Private Credit Stress ({len(credit_events)} signals)",
-                                "description": credit_text[:4000],
-                                "color": _hex_to_int(color),
-                                "footer": {"text": "world-agent | market.credit_stress"},
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }]
+                            "embeds": [
+                                {
+                                    "title": f"🏦 Private Credit Stress ({len(credit_events)} signals)",
+                                    "description": credit_text[:4000],
+                                    "color": _hex_to_int(color),
+                                    "footer": {"text": "world-agent | market.credit_stress"},
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ]
                         },
                     )
                     stats["discord"] += 1
