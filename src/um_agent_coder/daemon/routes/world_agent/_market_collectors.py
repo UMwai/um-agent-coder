@@ -738,8 +738,8 @@ class CreditStressCollector(EventCollector):
                         category=EventCategory.financial,
                         severity=EventSeverity.urgent,
                         title=f"Alt manager selloff: {sym} {change_pct:+.1f}% to ${price:.2f}",
-                        body=f"Alt manager stock decline signals market concern about "
-                             f"private credit / PE exposure. Watch for fund redemption risk.",
+                        body="Alt manager stock decline signals market concern about "
+                             "private credit / PE exposure. Watch for fund redemption risk.",
                         metadata={
                             "symbol": sym,
                             "change_pct": round(change_pct, 2),
