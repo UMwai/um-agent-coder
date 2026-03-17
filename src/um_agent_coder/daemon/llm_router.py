@@ -121,6 +121,13 @@ class LLMRouter:
             )
         else:
             if not self._gemini:
+                # Lazy retry — mirrors get_gemini_client() pattern used by REST routes
+                try:
+                    from um_agent_coder.daemon.app import get_gemini_client
+                    self._gemini = get_gemini_client()
+                except Exception as exc:
+                    logger.warning("Gemini lazy re-init failed: %s", exc)
+            if not self._gemini:
                 raise RuntimeError(
                     "Gemini client not available and no fallback provider configured"
                 )
