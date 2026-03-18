@@ -46,3 +46,7 @@ secrets/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local state/temp files
+.harness/
+.tmp/
