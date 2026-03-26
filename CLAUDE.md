@@ -9,6 +9,24 @@ um-agent-coder is a **meta-harness** - a harness that can manage other harnesses
 - **Autonomous Loop** (30%): 24/7 unattended execution with recovery
 - **Foundation** (20%): CLI routing, progress detection, stuck recovery
 
+## GKE Deployment
+
+UMClaw runs on GKE Autopilot as part of the AI hedge fund ecosystem.
+
+| Property | Value |
+|----------|-------|
+| **Cluster** | `um-hedge-fund` in `us-central1`, project `aivestor-480814` |
+| **Namespace** | `shared-services` |
+| **Pod** | `umclaw` (500m CPU, 1Gi memory) |
+| **Image** | `us-central1-docker.pkg.dev/aivestor-480814/um-hedge-fund/umclaw` |
+| **Internal DNS** | `http://umclaw.shared-services.svc.cluster.local:8080` |
+
+**CI/CD:** Push to `main` triggers `.github/workflows/cd-gke.yaml` which builds the Docker image via Cloud Build and deploys to the GKE `shared-services` namespace.
+
+**Role:** Powers the Consensus Engine (Brain 2) for the hedge fund -- dual-brain trade validation. Every trade decision passes through UMClaw's Gemini-based AI reasoning, scoring each decision 0-1 before execution is approved.
+
+**Note:** The Cloud Run service (`um-agent-daemon`) still exists but GKE is the primary deployment for hedge fund integration.
+
 ## Specifications
 
 All technical specs are in `specs/`:

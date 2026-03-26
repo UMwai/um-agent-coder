@@ -1,0 +1,76 @@
+name: Deploy to GKE Autopilot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'Dockerfile'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: aivestor-480814
+  REGION: us-central1
+  CLUSTER_NAME: um-hedge-fund
+  REGISTRY: us-central1-docker.pkg.dev/aivestor-480814/um-hedge-fund
+  IMAGE_NAME: umclaw
+  K8S_NAMESPACE: shared-services
+  DEPLOYMENT_NAME: umclaw
+
+jobs:
+  deploy-gke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Install GKE auth plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
+
+      - name: Build and push image
+        run: |
+          TAG="${{ github.ref_name }}-$(echo ${{ github.sha }} | head -c 7)"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+
+      - name: Deploy to GKE
+        run: |
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+            ${{ env.DEPLOYMENT_NAME }}=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG }} \
+            -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+            -n ${{ env.K8S_NAMESPACE }} --timeout=120s
+
+      - name: Verify deployment health
+        run: |
+          POD=$(kubectl get pod -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }} -o name | head -1)
+          if [ -n "${POD}" ]; then
+            HEALTH=$(kubectl exec -n ${{ env.K8S_NAMESPACE }} ${POD} -- \
+              curl -sf http://localhost:8080/health 2>/dev/null || echo "health check pending")
+            echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+            echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Health:** \`${HEALTH}\`" >> $GITHUB_STEP_SUMMARY
+          fi
