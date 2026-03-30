@@ -1,11 +1,10 @@
 """Async Gemini client using the official google-generativeai SDK.
 
-Authenticates via GOOGLE_API_KEY (preferred) or OAuth refresh token
-(from Gemini CLI / AI Ultra subscription). Calls the production
-generativelanguage.googleapis.com endpoint — NOT the Code Assist proxy.
+Auth priority:
+1. GOOGLE_API_KEY — works with AI Ultra plan, no GCP costs
+2. OAuth via cloud-platform scope — uses Vertex AI endpoint as fallback
 
-This is the same auth approach used in the original Cloud Run deployment
-(commit c8cd561), wrapped in an async interface for FastAPI compatibility.
+This matches the original Cloud Run deployment approach (commit c8cd561).
 """
 
 from __future__ import annotations
@@ -20,98 +19,89 @@ from typing import AsyncIterator, Optional
 
 logger = logging.getLogger(__name__)
 
-# Default credential file path (Gemini CLI stores creds here)
 DEFAULT_CREDS_PATH = Path.home() / ".gemini" / "oauth_creds.json"
 
 
-def _configure_genai():
-    """Configure the google.generativeai SDK with available credentials.
-
-    Priority:
-    1. GOOGLE_API_KEY env var (simplest, works with AI Ultra)
-    2. OAuth refresh token (from Gemini CLI or GEMINI_OAUTH_CREDS env var)
-    3. GOOGLE_APPLICATION_CREDENTIALS file path
-    """
+def _configure_genai() -> str:
+    """Configure the google.generativeai SDK. Returns auth type string."""
     import google.generativeai as genai
 
-    # Option 1: API key
+    # Option 1: API key (preferred — works with AI Ultra, no GCP costs)
     api_key = os.environ.get("GOOGLE_API_KEY", "")
     if api_key:
         genai.configure(api_key=api_key)
-        logger.info("Gemini configured with API key (generativelanguage API)")
+        logger.info("Gemini configured with API key")
         return "api_key"
 
-    # Option 2: OAuth from env var (GEMINI_OAUTH_CREDS — JSON string)
-    creds_data = None
-    env_creds = os.environ.get("GEMINI_OAUTH_CREDS")
-    if env_creds:
-        creds_data = json.loads(env_creds)
-
-    # Option 3: OAuth from Gemini CLI credential file
-    if not creds_data and DEFAULT_CREDS_PATH.exists():
-        try:
-            creds_data = json.loads(DEFAULT_CREDS_PATH.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    # Option 4: OAuth from GOOGLE_APPLICATION_CREDENTIALS
-    if not creds_data:
-        gac_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-        if gac_path and Path(gac_path).exists():
-            with open(gac_path) as f:
-                creds_data = json.load(f)
-
-    # Option 5: Mounted secret (Cloud Run / GKE)
-    if not creds_data:
-        secret_path = "/secrets/gemini-oauth/credentials.json"
-        if Path(secret_path).exists():
-            with open(secret_path) as f:
-                creds_data = json.load(f)
-
+    # Option 2: OAuth with cloud-platform scope (Gemini CLI creds)
+    creds_data = _load_oauth_creds()
     if creds_data and "refresh_token" in creds_data:
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
 
-        # Need client_id/secret — check creds_data first, then env vars
         client_id = creds_data.get("client_id") or os.environ.get("GEMINI_CLI_CLIENT_ID", "")
         client_secret = (
             creds_data.get("client_secret") or os.environ.get("GEMINI_CLI_CLIENT_SECRET", "")
         )
 
-        if not client_id or not client_secret:
-            raise RuntimeError(
-                "OAuth credentials found but missing client_id/client_secret. "
-                "Set GEMINI_CLI_CLIENT_ID and GEMINI_CLI_CLIENT_SECRET."
+        if client_id and client_secret:
+            # Use only cloud-platform scope (registered for Gemini CLI OAuth app)
+            credentials = Credentials(
+                token=None,
+                refresh_token=creds_data["refresh_token"],
+                token_uri=creds_data.get("token_uri", "https://oauth2.googleapis.com/token"),
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
-
-        credentials = Credentials(
-            token=None,
-            refresh_token=creds_data["refresh_token"],
-            token_uri=creds_data.get("token_uri", "https://oauth2.googleapis.com/token"),
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=[
-                "https://www.googleapis.com/auth/generative-language",
-                "https://www.googleapis.com/auth/generative-language.retriever",
-                "https://www.googleapis.com/auth/cloud-platform",
-            ],
-        )
-        credentials.refresh(Request())
-        genai.configure(credentials=credentials)
-        logger.info("Gemini configured with OAuth credentials (generativelanguage API)")
-        return "oauth"
+            credentials.refresh(Request())
+            genai.configure(credentials=credentials)
+            logger.info("Gemini configured with OAuth (cloud-platform scope)")
+            return "oauth"
 
     raise RuntimeError(
-        "No Gemini credentials found. Set GOOGLE_API_KEY, GEMINI_OAUTH_CREDS, "
-        "or GOOGLE_APPLICATION_CREDENTIALS."
+        "No Gemini credentials found. Set GOOGLE_API_KEY (recommended for AI Ultra) "
+        "or provide OAuth creds via GEMINI_OAUTH_CREDS."
     )
+
+
+def _load_oauth_creds() -> Optional[dict]:
+    """Load OAuth credentials from available sources."""
+    # Env var (JSON string) — used in K8s/Cloud Run
+    env_creds = os.environ.get("GEMINI_OAUTH_CREDS")
+    if env_creds:
+        try:
+            return json.loads(env_creds)
+        except json.JSONDecodeError:
+            pass
+
+    # Gemini CLI credential file
+    if DEFAULT_CREDS_PATH.exists():
+        try:
+            return json.loads(DEFAULT_CREDS_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # GOOGLE_APPLICATION_CREDENTIALS
+    gac = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if gac and Path(gac).exists():
+        with open(gac) as f:
+            return json.load(f)
+
+    # Mounted secret
+    for secret_path in ["/secrets/gemini-oauth/credentials.json"]:
+        if Path(secret_path).exists():
+            with open(secret_path) as f:
+                return json.load(f)
+
+    return None
 
 
 class GeminiCodeAssistClient:
     """Async wrapper around google.generativeai SDK.
 
-    Maintains the same interface as the previous Code Assist proxy client
-    so all callers (LLMRouter, routes, etc.) work without changes.
+    Same interface as the previous Code Assist proxy client — drop-in
+    replacement for all callers (LLMRouter, routes, etc.).
     """
 
     def __init__(
@@ -121,41 +111,29 @@ class GeminiCodeAssistClient:
         client_secret: Optional[str] = None,
         creds_path: Optional[Path] = None,
     ):
-        # If a specific refresh_token is passed, inject it into env
-        # so _configure_genai picks it up
         if refresh_token:
-            client_id = client_id or os.environ.get("GEMINI_CLI_CLIENT_ID", "")
-            client_secret = client_secret or os.environ.get("GEMINI_CLI_CLIENT_SECRET", "")
-            creds = json.dumps({
+            cid = client_id or os.environ.get("GEMINI_CLI_CLIENT_ID", "")
+            cs = client_secret or os.environ.get("GEMINI_CLI_CLIENT_SECRET", "")
+            os.environ["GEMINI_OAUTH_CREDS"] = json.dumps({
                 "refresh_token": refresh_token,
-                "client_id": client_id,
-                "client_secret": client_secret,
+                "client_id": cid,
+                "client_secret": cs,
             })
-            os.environ["GEMINI_OAUTH_CREDS"] = creds
 
         self._auth_type = _configure_genai()
         self._project: Optional[str] = None
         self._tier: Optional[str] = None
-        self._loop = None
-
-    def _get_model(self, model: str):
-        """Create a GenerativeModel instance."""
-        import google.generativeai as genai
-        return genai.GenerativeModel(model)
 
     async def _run_sync(self, func, *args, **kwargs):
-        """Run a sync SDK call in a thread pool to avoid blocking the event loop."""
+        """Run a sync SDK call in a thread pool."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(func, *args, **kwargs))
 
     async def close(self):
-        """No-op — SDK manages its own connections."""
         pass
 
-    # --- Project loading (compatibility) ---
-
     async def load_project(self) -> str:
-        """Verify credentials work by listing models."""
+        """Verify credentials work."""
         if self._project:
             return self._project
 
@@ -163,16 +141,11 @@ class GeminiCodeAssistClient:
 
         try:
             models = await self._run_sync(lambda: list(genai.list_models()))
-            model_count = len(models)
             self._project = "generative-language"
-            self._tier = "ultra" if self._auth_type in ("api_key", "oauth") else "unknown"
-            logger.info(
-                "Gemini API verified: %d models available, auth=%s",
-                model_count,
-                self._auth_type,
-            )
+            self._tier = self._auth_type
+            logger.info("Gemini API verified: %d models, auth=%s", len(models), self._auth_type)
         except Exception as e:
-            logger.warning("Gemini model listing failed (auth may still work): %s", e)
+            logger.warning("Gemini model listing failed: %s", e)
             self._project = "generative-language"
             self._tier = self._auth_type
 
@@ -187,10 +160,7 @@ class GeminiCodeAssistClient:
         return self._auth_type is not None
 
     async def refresh_access_token(self) -> str:
-        """Compatibility — SDK handles token refresh internally."""
         return ""
-
-    # --- Generation ---
 
     async def generate(
         self,
@@ -212,35 +182,20 @@ class GeminiCodeAssistClient:
                 max_output_tokens=max_tokens,
             ),
         )
-
         contents = _build_contents(prompt, system_prompt)
 
-        def _call():
-            resp = gen_model.generate_content(
-                contents,
-                request_options={"timeout": timeout},
-            )
-            return resp
-
         try:
-            response = await self._run_sync(_call)
+            response = await self._run_sync(
+                lambda: gen_model.generate_content(
+                    contents, request_options={"timeout": timeout}
+                )
+            )
         except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "resource exhausted" in err_str or "rate" in err_str:
+            if _is_rate_limit(e):
                 raise RateLimitError(f"Rate limited on model {model}") from e
             raise
 
-        usage = {}
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            um = response.usage_metadata
-            usage = {
-                "prompt_tokens": getattr(um, "prompt_token_count", 0),
-                "completion_tokens": getattr(um, "candidates_token_count", 0),
-                "total_tokens": getattr(um, "total_token_count", 0),
-                "finish_reason": "",
-            }
-
-        return {"text": response.text, "usage": usage, "model": model}
+        return {"text": response.text, "usage": _extract_usage(response), "model": model}
 
     async def generate_stream(
         self,
@@ -262,26 +217,19 @@ class GeminiCodeAssistClient:
                 max_output_tokens=max_tokens,
             ),
         )
-
         contents = _build_contents(prompt, system_prompt)
 
-        def _stream():
-            return gen_model.generate_content(
-                contents,
-                stream=True,
-                request_options={"timeout": timeout},
-            )
-
         try:
-            response = await self._run_sync(_stream)
+            response = await self._run_sync(
+                lambda: gen_model.generate_content(
+                    contents, stream=True, request_options={"timeout": timeout}
+                )
+            )
         except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "resource exhausted" in err_str:
+            if _is_rate_limit(e):
                 raise RateLimitError(f"Rate limited on model {model}") from e
             raise
 
-        # Iterate chunks in thread pool
-        loop = asyncio.get_event_loop()
         for chunk in response:
             if chunk.text:
                 yield chunk.text
@@ -295,14 +243,7 @@ class GeminiCodeAssistClient:
         max_tokens: int = 65536,
         timeout: float = 300.0,
     ) -> dict:
-        """Generate from a pre-built contents list (multi-turn).
-
-        Args:
-            contents: List of {"role": "user"|"model", "parts": [{"text": ...}]}
-
-        Returns:
-            {"text": str, "usage": dict, "model": str}
-        """
+        """Generate from a pre-built contents list (multi-turn)."""
         import google.generativeai as genai
 
         gen_model = genai.GenerativeModel(
@@ -313,47 +254,46 @@ class GeminiCodeAssistClient:
             ),
         )
 
-        def _call():
-            return gen_model.generate_content(
-                contents,
-                request_options={"timeout": timeout},
-            )
-
         try:
-            response = await self._run_sync(_call)
+            response = await self._run_sync(
+                lambda: gen_model.generate_content(
+                    contents, request_options={"timeout": timeout}
+                )
+            )
         except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "resource exhausted" in err_str or "rate" in err_str:
+            if _is_rate_limit(e):
                 raise RateLimitError(f"Rate limited on model {model}") from e
             raise
 
-        usage = {}
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            um = response.usage_metadata
-            usage = {
-                "prompt_tokens": getattr(um, "prompt_token_count", 0),
-                "completion_tokens": getattr(um, "candidates_token_count", 0),
-                "total_tokens": getattr(um, "total_token_count", 0),
-                "finish_reason": "",
-            }
-
-        return {"text": response.text, "usage": usage, "model": model}
+        return {"text": response.text, "usage": _extract_usage(response), "model": model}
 
 
 class RateLimitError(Exception):
     """Raised when the Gemini API returns 429."""
-
     pass
 
 
-# --- Helpers ---
-
-
 def _build_contents(prompt: str, system_prompt: Optional[str] = None) -> list[dict]:
-    """Build contents array for the SDK."""
     contents = []
     if system_prompt:
         contents.append({"role": "user", "parts": [{"text": system_prompt}]})
         contents.append({"role": "model", "parts": [{"text": "Understood."}]})
     contents.append({"role": "user", "parts": [{"text": prompt}]})
     return contents
+
+
+def _extract_usage(response) -> dict:
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        um = response.usage_metadata
+        return {
+            "prompt_tokens": getattr(um, "prompt_token_count", 0),
+            "completion_tokens": getattr(um, "candidates_token_count", 0),
+            "total_tokens": getattr(um, "total_token_count", 0),
+            "finish_reason": "",
+        }
+    return {}
+
+
+def _is_rate_limit(e: Exception) -> bool:
+    err_str = str(e).lower()
+    return "429" in err_str or "resource exhausted" in err_str or "rate" in err_str
