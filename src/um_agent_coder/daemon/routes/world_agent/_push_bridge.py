@@ -44,7 +44,7 @@ async def push_recs_to_command_center(
 
     # Build headers
     headers = {"Content-Type": "application/json"}
-    ecosystem_token = os.environ.get("ECOSYSTEM_TOKEN", "")
+    ecosystem_token = os.environ.get("ECOSYSTEM_TOKEN", "").strip()
     if ecosystem_token:
         headers["X-Ecosystem-Token"] = ecosystem_token
 
