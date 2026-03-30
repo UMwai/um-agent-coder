@@ -142,6 +142,9 @@ class DaemonSettings(BaseSettings):
     world_agent_llm_provider: str = ""  # Empty = auto-detect from model name
     world_agent_max_events_per_batch: int = 100
 
+    # Command Center push bridge
+    command_center_url: str = ""  # e.g. "https://command-center-staging-23o5bq3bfq-uc.a.run.app"
+
     # Orchestrator
     checkpoint_dir: str = ".pipeline_checkpoints"
     verbose: bool = True
