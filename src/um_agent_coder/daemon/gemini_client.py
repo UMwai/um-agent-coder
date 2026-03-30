@@ -1,8 +1,11 @@
-"""Async client for Google's Code Assist API (cloudcode-pa.googleapis.com).
+"""Async client for Google's Generative Language API (generativelanguage.googleapis.com).
 
-Uses the Gemini CLI's OAuth credentials to call the API directly,
-bypassing the CLI subprocess. Supports streaming, auto token refresh,
-and round-robin model selection.
+Uses OAuth credentials from the user's Google AI Ultra subscription or a
+GOOGLE_API_KEY to call the production Gemini API directly — NOT the
+Code Assist proxy (cloudcode-pa) which has CLI-tier rate limits.
+
+Supports streaming, auto token refresh, and multi-turn conversations.
+Drop-in replacement for the previous GeminiCodeAssistClient.
 """
 
 from __future__ import annotations
@@ -11,7 +14,6 @@ import json
 import logging
 import os
 import time
-import uuid
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
@@ -20,47 +22,17 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # --- Constants ---
-CODE_ASSIST_BASE = "https://cloudcode-pa.googleapis.com"
-CODE_ASSIST_API_VERSION = "v1internal"
-CODE_ASSIST_ENDPOINT = f"{CODE_ASSIST_BASE}/{CODE_ASSIST_API_VERSION}"
-
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-# User-Agent the CLI sends — influences rate limit tier assignment
-GEMINI_CLI_USER_AGENT = "GeminiCLI/0.32.1/{model} (linux; x64)"
+# OAuth scopes for Generative Language API (Google AI Ultra)
+GEMINI_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/generative-language",
+    "https://www.googleapis.com/auth/generative-language.retriever",
+]
 
-# Default credential file path
+# Default credential file path (Gemini CLI stores creds here)
 DEFAULT_CREDS_PATH = Path.home() / ".gemini" / "oauth_creds.json"
-
-
-def _load_cli_oauth_app() -> tuple[str, str]:
-    """Load the Gemini CLI's OAuth client ID and secret.
-
-    These are the CLI's registered OAuth application credentials (public,
-    embedded in the open-source Gemini CLI). They identify the application,
-    not the user. Loaded from env vars or from the user's oauth_creds.json.
-    """
-    client_id = os.environ.get("GEMINI_CLI_CLIENT_ID", "")
-    client_secret = os.environ.get("GEMINI_CLI_CLIENT_SECRET", "")
-    if client_id and client_secret:
-        return client_id, client_secret
-
-    # Fall back to reading from the credential file which may contain them
-    creds_path = DEFAULT_CREDS_PATH
-    if creds_path.exists():
-        try:
-            data = json.loads(creds_path.read_text())
-            cid = data.get("client_id", "")
-            cs = data.get("client_secret", "")
-            if cid and cs:
-                return cid, cs
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    raise RuntimeError(
-        "Gemini CLI OAuth app credentials not found. Set GEMINI_CLI_CLIENT_ID "
-        "and GEMINI_CLI_CLIENT_SECRET environment variables."
-    )
 
 
 def _parse_sse_text(line: str) -> tuple[str, dict]:
@@ -71,8 +43,7 @@ def _parse_sse_text(line: str) -> tuple[str, dict]:
         data = json.loads(line[6:])
     except json.JSONDecodeError:
         return "", {}
-    resp = data.get("response", data)
-    candidates = resp.get("candidates", [])
+    candidates = data.get("candidates", [])
     if not candidates:
         return "", data
     text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
@@ -81,9 +52,8 @@ def _parse_sse_text(line: str) -> tuple[str, dict]:
 
 def _extract_usage(data: dict) -> dict:
     """Extract token usage and finish reason from the last SSE chunk."""
-    resp = data.get("response", data)
-    meta = resp.get("usageMetadata", {})
-    candidates = resp.get("candidates", [])
+    meta = data.get("usageMetadata", {})
+    candidates = data.get("candidates", [])
     finish_reason = candidates[0].get("finishReason", "") if candidates else ""
     return {
         "prompt_tokens": meta.get("promptTokenCount", 0),
@@ -94,10 +64,14 @@ def _extract_usage(data: dict) -> dict:
 
 
 class GeminiCodeAssistClient:
-    """Async client for the Code Assist API.
+    """Async client for the Generative Language API.
 
-    Handles OAuth token refresh, project loading, and streaming generation.
-    Thread-safe for concurrent use from FastAPI handlers.
+    Supports two auth modes:
+    1. API key (GOOGLE_API_KEY) — simplest, works with AI Ultra
+    2. OAuth refresh token — from Gemini CLI or manual setup
+
+    Maintains the same interface as the previous Code Assist proxy client
+    so all callers (LLMRouter, routes, etc.) work without changes.
     """
 
     def __init__(
@@ -107,35 +81,35 @@ class GeminiCodeAssistClient:
         client_secret: Optional[str] = None,
         creds_path: Optional[Path] = None,
     ):
-        if client_id and client_secret:
-            self._client_id = client_id
-            self._client_secret = client_secret
-        else:
-            self._client_id, self._client_secret = _load_cli_oauth_app()
+        # Check for API key first (simplest path)
+        self._api_key = os.environ.get("GOOGLE_API_KEY", "")
 
-        # Load refresh token
-        if refresh_token:
-            self._refresh_token = refresh_token
+        if self._api_key:
+            logger.info("Gemini client using API key auth (generativelanguage API)")
+            self._refresh_token = ""
+            self._client_id = ""
+            self._client_secret = ""
         else:
-            path = creds_path or DEFAULT_CREDS_PATH
-            env_creds = os.environ.get("GEMINI_OAUTH_CREDS")
-            if path.exists():
-                creds = json.loads(path.read_text())
-                self._refresh_token = creds["refresh_token"]
-            elif env_creds:
-                creds = json.loads(env_creds)
-                self._refresh_token = creds["refresh_token"]
+            # OAuth flow
+            if client_id and client_secret:
+                self._client_id = client_id
+                self._client_secret = client_secret
             else:
-                raise FileNotFoundError(
-                    f"Gemini OAuth credentials not found at {path}. "
-                    "Set GEMINI_OAUTH_CREDS env var or run `npx @google/gemini-cli auth` first."
-                )
+                self._client_id, self._client_secret = _load_cli_oauth_app()
 
-        # Token state
+            # Load refresh token
+            if refresh_token:
+                self._refresh_token = refresh_token
+            else:
+                self._refresh_token = _load_refresh_token(creds_path)
+
+            logger.info("Gemini client using OAuth auth (generativelanguage API)")
+
+        # Token state (OAuth only)
         self._access_token: Optional[str] = None
         self._token_expiry: float = 0.0
 
-        # Project state (from loadCodeAssist)
+        # Compatibility: tier/project for callers that check these
         self._project: Optional[str] = None
         self._tier: Optional[str] = None
 
@@ -155,6 +129,9 @@ class GeminiCodeAssistClient:
 
     async def refresh_access_token(self) -> str:
         """Refresh the OAuth access token. Caches until expiry."""
+        if self._api_key:
+            return ""  # Not needed for API key auth
+
         if self._access_token and time.time() < self._token_expiry - 60:
             return self._access_token
 
@@ -171,42 +148,51 @@ class GeminiCodeAssistClient:
         resp.raise_for_status()
         data = resp.json()
         self._access_token = data["access_token"]
-        # expires_in is typically 3600s
         self._token_expiry = time.time() + data.get("expires_in", 3600)
         logger.debug("Refreshed Gemini access token (expires in %ds)", data.get("expires_in", 0))
         return self._access_token
 
-    async def _auth_headers(self, model: str = "") -> dict[str, str]:
+    async def _auth_headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            # API key auth — passed as query param, not header
+            return headers
         token = await self.refresh_access_token()
-        ua = GEMINI_CLI_USER_AGENT.format(model=model or "unknown")
-        return {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "User-Agent": ua,
-        }
+        headers["Authorization"] = f"Bearer {token}"
+        return headers
 
-    # --- Project loading ---
+    def _auth_params(self) -> dict[str, str]:
+        """Query params for auth (API key mode)."""
+        if self._api_key:
+            return {"key": self._api_key}
+        return {}
+
+    # --- Project loading (compatibility) ---
 
     async def load_project(self) -> str:
-        """Call loadCodeAssist to get the project ID. Caches result."""
+        """Verify credentials work by listing models. Sets tier info."""
         if self._project:
             return self._project
 
         http = await self._get_http()
         headers = await self._auth_headers()
-        resp = await http.post(
-            f"{CODE_ASSIST_ENDPOINT}:loadCodeAssist",
+        params = self._auth_params()
+
+        resp = await http.get(
+            f"{GEMINI_API_BASE}/models",
             headers=headers,
-            json={},
+            params=params,
         )
         resp.raise_for_status()
         data = resp.json()
-        self._project = data.get("cloudaicompanionProject", "")
-        tier_data = data.get("currentTier", {})
-        self._tier = (
-            tier_data.get("id", "unknown") if isinstance(tier_data, dict) else str(tier_data)
+        model_count = len(data.get("models", []))
+        self._project = "generative-language"
+        self._tier = "ultra" if self._api_key or self._refresh_token else "unknown"
+        logger.info(
+            "Gemini API verified: %d models available, auth=%s",
+            model_count,
+            "api_key" if self._api_key else "oauth",
         )
-        logger.info("Loaded Code Assist project=%s tier=%s", self._project, self._tier)
         return self._project
 
     @property
@@ -215,38 +201,39 @@ class GeminiCodeAssistClient:
 
     @property
     def authenticated(self) -> bool:
-        return self._refresh_token is not None
+        return bool(self._api_key or self._refresh_token)
 
     # --- Generation ---
 
+    def _build_url(self, model: str, method: str = "generateContent") -> str:
+        return f"{GEMINI_API_BASE}/models/{model}:{method}"
+
     def _build_payload(
         self,
-        prompt: str,
-        model: str,
-        project: str,
+        contents: list[dict],
         *,
-        system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 65536,
     ) -> dict:
+        return {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+            },
+        }
+
+    def _prompt_to_contents(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+    ) -> list[dict]:
         contents = []
         if system_prompt:
             contents.append({"role": "user", "parts": [{"text": system_prompt}]})
             contents.append({"role": "model", "parts": [{"text": "Understood."}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
-
-        return {
-            "model": model,
-            "project": project,
-            "user_prompt_id": str(uuid.uuid4()),
-            "request": {
-                "contents": contents,
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_tokens,
-                },
-            },
-        }
+        return contents
 
     async def generate(
         self,
@@ -263,16 +250,14 @@ class GeminiCodeAssistClient:
         Returns:
             {"text": str, "usage": {"prompt_tokens": int, ...}, "model": str}
         """
-        project = await self.load_project()
-        headers = await self._auth_headers(model)
+        contents = self._prompt_to_contents(prompt, system_prompt)
         payload = self._build_payload(
-            prompt,
-            model,
-            project,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            contents, temperature=temperature, max_tokens=max_tokens
         )
+
+        headers = await self._auth_headers()
+        params = {**self._auth_params(), "alt": "sse"}
+        url = self._build_url(model, "streamGenerateContent")
 
         http = await self._get_http()
         full_text = ""
@@ -280,12 +265,7 @@ class GeminiCodeAssistClient:
         last_data = {}
 
         async with http.stream(
-            "POST",
-            f"{CODE_ASSIST_ENDPOINT}:streamGenerateContent",
-            headers=headers,
-            json=payload,
-            params={"alt": "sse"},
-            timeout=timeout,
+            "POST", url, headers=headers, json=payload, params=params, timeout=timeout,
         ) as resp:
             if resp.status_code == 429:
                 raise RateLimitError(f"Rate limited on model {model}")
@@ -313,25 +293,18 @@ class GeminiCodeAssistClient:
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         """Yield text chunks as an async generator."""
-        project = await self.load_project()
-        headers = await self._auth_headers(model)
+        contents = self._prompt_to_contents(prompt, system_prompt)
         payload = self._build_payload(
-            prompt,
-            model,
-            project,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            contents, temperature=temperature, max_tokens=max_tokens
         )
+
+        headers = await self._auth_headers()
+        params = {**self._auth_params(), "alt": "sse"}
+        url = self._build_url(model, "streamGenerateContent")
 
         http = await self._get_http()
         async with http.stream(
-            "POST",
-            f"{CODE_ASSIST_ENDPOINT}:streamGenerateContent",
-            headers=headers,
-            json=payload,
-            params={"alt": "sse"},
-            timeout=timeout,
+            "POST", url, headers=headers, json=payload, params=params, timeout=timeout,
         ) as resp:
             if resp.status_code == 429:
                 raise RateLimitError(f"Rate limited on model {model}")
@@ -354,26 +327,17 @@ class GeminiCodeAssistClient:
 
         Args:
             contents: List of {"role": "user"|"model", "parts": [{"text": ...}]}
-                      dicts representing the full conversation history.
 
         Returns:
             {"text": str, "usage": {"prompt_tokens": int, ...}, "model": str}
         """
-        project = await self.load_project()
-        headers = await self._auth_headers(model)
+        payload = self._build_payload(
+            contents, temperature=temperature, max_tokens=max_tokens
+        )
 
-        payload = {
-            "model": model,
-            "project": project,
-            "user_prompt_id": str(uuid.uuid4()),
-            "request": {
-                "contents": contents,
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_tokens,
-                },
-            },
-        }
+        headers = await self._auth_headers()
+        params = {**self._auth_params(), "alt": "sse"}
+        url = self._build_url(model, "streamGenerateContent")
 
         http = await self._get_http()
         full_text = ""
@@ -381,12 +345,7 @@ class GeminiCodeAssistClient:
         last_data = {}
 
         async with http.stream(
-            "POST",
-            f"{CODE_ASSIST_ENDPOINT}:streamGenerateContent",
-            headers=headers,
-            json=payload,
-            params={"alt": "sse"},
-            timeout=timeout,
+            "POST", url, headers=headers, json=payload, params=params, timeout=timeout,
         ) as resp:
             if resp.status_code == 429:
                 raise RateLimitError(f"Rate limited on model {model}")
@@ -405,6 +364,52 @@ class GeminiCodeAssistClient:
 
 
 class RateLimitError(Exception):
-    """Raised when the Code Assist API returns 429."""
+    """Raised when the Gemini API returns 429."""
 
     pass
+
+
+# --- Credential helpers ---
+
+
+def _load_cli_oauth_app() -> tuple[str, str]:
+    """Load the Gemini CLI's OAuth client ID and secret."""
+    client_id = os.environ.get("GEMINI_CLI_CLIENT_ID", "")
+    client_secret = os.environ.get("GEMINI_CLI_CLIENT_SECRET", "")
+    if client_id and client_secret:
+        return client_id, client_secret
+
+    creds_path = DEFAULT_CREDS_PATH
+    if creds_path.exists():
+        try:
+            data = json.loads(creds_path.read_text())
+            cid = data.get("client_id", "")
+            cs = data.get("client_secret", "")
+            if cid and cs:
+                return cid, cs
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    raise RuntimeError(
+        "Gemini CLI OAuth app credentials not found. Set GEMINI_CLI_CLIENT_ID "
+        "and GEMINI_CLI_CLIENT_SECRET, or set GOOGLE_API_KEY for API key auth."
+    )
+
+
+def _load_refresh_token(creds_path: Optional[Path] = None) -> str:
+    """Load the OAuth refresh token from file or env var."""
+    path = creds_path or DEFAULT_CREDS_PATH
+    env_creds = os.environ.get("GEMINI_OAUTH_CREDS")
+
+    if path.exists():
+        creds = json.loads(path.read_text())
+        return creds["refresh_token"]
+    elif env_creds:
+        creds = json.loads(env_creds)
+        return creds["refresh_token"]
+
+    raise FileNotFoundError(
+        f"Gemini OAuth credentials not found at {path}. "
+        "Set GEMINI_OAUTH_CREDS env var, set GOOGLE_API_KEY, "
+        "or run `npx @google/gemini-cli auth` first."
+    )

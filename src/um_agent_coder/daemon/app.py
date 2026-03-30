@@ -109,7 +109,7 @@ async def lifespan(app: FastAPI):
     await _db.connect()
     logger.info("Database connected: %s", _settings.db_path)
 
-    # Gemini Code Assist client
+    # Gemini client (generativelanguage API)
     from um_agent_coder.daemon.gemini_client import GeminiCodeAssistClient
 
     try:
