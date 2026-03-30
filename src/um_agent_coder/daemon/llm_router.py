@@ -6,6 +6,7 @@ Falls back to Gemini when other providers aren't configured.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -132,7 +133,7 @@ class LLMRouter:
                 raise RuntimeError(
                     "Gemini client not available and no fallback provider configured"
                 )
-            return await self._gemini.generate(
+            return await self._generate_gemini_with_fallback(
                 prompt,
                 model or "gemini-3-flash-preview",
                 system_prompt=system_prompt,
@@ -140,6 +141,47 @@ class LLMRouter:
                 max_tokens=max_tokens,
                 timeout=timeout,
             )
+
+    async def _generate_gemini_with_fallback(
+        self,
+        prompt: str,
+        model: str,
+        *,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 65536,
+        timeout: float = 300.0,
+    ) -> dict:
+        """Call Gemini with retry + automatic fallback to Flash on rate limit."""
+        from um_agent_coder.daemon.gemini_client import RateLimitError
+
+        FLASH = "gemini-3-flash-preview"
+        for attempt, use_model in enumerate(
+            [model, model, FLASH] if model != FLASH else [FLASH, FLASH]
+        ):
+            try:
+                return await self._gemini.generate(
+                    prompt,
+                    use_model,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                )
+            except RateLimitError:
+                if use_model != FLASH and attempt < 2:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        "Rate limited on %s, retrying in %ds (attempt %d)",
+                        use_model, wait, attempt + 1,
+                    )
+                    await asyncio.sleep(wait)
+                elif use_model == model and model != FLASH:
+                    logger.warning(
+                        "Rate limited on %s, falling back to %s", model, FLASH
+                    )
+                else:
+                    raise
 
     async def _generate_openai(
         self,
