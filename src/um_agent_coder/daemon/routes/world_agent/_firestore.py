@@ -586,3 +586,56 @@ async def update_trade_rec_outcome(
     except Exception as e:
         logger.error("Failed to update trade rec outcome: %s", e)
         return False
+
+
+async def append_outcome_to_journal(
+    date_str: str,
+    rec_id: str,
+    outcome: str,
+    pnl_pct: float | None = None,
+) -> bool:
+    """Append a trade outcome to today's journal entry for reflection.
+
+    Updates the journal document with an outcomes array tracking
+    win/loss/scratch counts and cumulative PnL.
+    """
+    client = _get_client()
+    if not client:
+        return False
+    try:
+        from google.cloud.firestore_v1 import ArrayUnion, Increment  # type: ignore[attr-defined]
+
+        journal_ref = client.collection("world_agent_journal").document(date_str)
+
+        # Try to update existing journal, create if absent
+        doc = await journal_ref.get()
+        outcome_entry = {
+            "rec_id": rec_id,
+            "outcome": outcome,
+            "pnl_pct": pnl_pct,
+            "timestamp": _now_iso(),
+        }
+
+        if doc.exists:
+            await journal_ref.update({
+                "trade_outcomes": ArrayUnion([outcome_entry]),
+                f"outcome_counts.{outcome}": Increment(1),
+                "outcome_counts.total": Increment(1),
+                "outcome_counts.cumulative_pnl_pct": Increment(pnl_pct or 0.0),
+            })
+        else:
+            await journal_ref.set({
+                "date": date_str,
+                "trade_outcomes": [outcome_entry],
+                "outcome_counts": {
+                    outcome: 1,
+                    "total": 1,
+                    "cumulative_pnl_pct": pnl_pct or 0.0,
+                },
+            })
+
+        logger.info("Appended outcome to journal %s: %s pnl=%.1f%%", date_str, outcome, pnl_pct or 0)
+        return True
+    except Exception as e:
+        logger.warning("Failed to append outcome to journal: %s", e)
+        return False

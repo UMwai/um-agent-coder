@@ -36,6 +36,7 @@ from um_agent_coder.daemon.routes.world_agent._signal_dispatcher import dispatch
 from um_agent_coder.daemon.routes.world_agent._trade_recs import (
     format_trade_recs_discord,
     format_trade_recs_slack,
+    generate_premarket_recs,
     generate_trade_recs,
 )
 from um_agent_coder.daemon.routes.world_agent.models import (
@@ -489,10 +490,16 @@ async def run_cycle(request: CycleRequest):
             logger.warning("Failed to update journal from cycle: %s", je)
 
         # 6. Generate trade recommendations from market data
+        #    Use premarket recs during pre-market window (11:00-13:30 UTC = 7:00-9:30 ET)
         trade_recs = {}
         if market_events:
             try:
-                trade_recs = await generate_trade_recs(all_events)
+                now_utc = datetime.now(timezone.utc)
+                is_premarket = 11 <= now_utc.hour <= 13 and now_utc.hour * 60 + now_utc.minute < 13 * 60 + 30
+                if is_premarket:
+                    trade_recs = await generate_premarket_recs(all_events)
+                else:
+                    trade_recs = await generate_trade_recs(all_events)
                 if trade_recs:
                     logger.info(
                         "Cycle %s trade recs: %d recommendations, regime=%s",
@@ -511,6 +518,20 @@ async def run_cycle(request: CycleRequest):
                         )
                     except Exception as se:
                         logger.warning("Failed to persist trade recs: %s", se)
+
+                    # Push to Command Center webhook (zero-latency path)
+                    if settings.command_center_url:
+                        try:
+                            from um_agent_coder.daemon.routes.world_agent._push_bridge import (
+                                push_recs_to_command_center,
+                            )
+                            await push_recs_to_command_center(
+                                recs=trade_recs,
+                                cycle_id=cycle_id,
+                                command_center_url=settings.command_center_url,
+                            )
+                        except Exception as pe:
+                            logger.warning("Push to command center failed: %s", pe)
             except Exception as tre:
                 logger.warning("Trade rec generation failed: %s", tre)
 
@@ -554,6 +575,16 @@ async def run_cycle(request: CycleRequest):
             )
         except Exception as se:
             logger.warning("Failed to send Slack notification: %s", se)
+
+        # Update Goal KPIs with real performance data (non-blocking)
+        if settings.command_center_url:
+            try:
+                from um_agent_coder.daemon.routes.world_agent._kpi_updater import update_kpis
+                kpi_result = await update_kpis(command_center_url=settings.command_center_url)
+                if kpi_result:
+                    logger.info("KPI update: %s", kpi_result)
+            except Exception as ke:
+                logger.debug("KPI update failed (non-critical): %s", ke)
 
         return CycleResponse(
             cycle_id=cycle_id,
@@ -626,6 +657,103 @@ async def get_status():
         cycle_count=cycle_count,
         enabled=settings.world_agent_enabled,
     )
+
+
+# --- Event-Triggered Fast Cycle ---
+
+
+@router.post("/cycle/event-triggered")
+async def event_triggered_cycle(
+    trigger_type: str = Query(..., description="vix_spike, credit_stress, breaking_news"),
+    trigger_data: dict = Body(default={}),
+):
+    """Run an immediate fast cycle triggered by a market event.
+
+    Skips GitHub/local collectors and full OODA pipeline. Runs only:
+    1. Market data collectors (parallel)
+    2. Trade rec generation
+    3. Push bridge to command center
+
+    Typical latency: ~5-10s vs ~30s for a full cycle.
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    start = time.time()
+    cycle_id = (
+        f"event-{trigger_type}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        f"-{uuid.uuid4().hex[:4]}"
+    )
+
+    logger.info("Event-triggered cycle: type=%s data=%s", trigger_type, trigger_data)
+
+    try:
+        # 1. Collect market events only (fast path)
+        market_events = await _collect_market_events()
+
+        # 2. Generate trade recs from events + trigger context
+        trade_recs = {}
+        if market_events:
+            trade_recs = await generate_trade_recs(market_events)
+
+            if trade_recs:
+                # Persist to Firestore
+                try:
+                    await store.save_trade_recs(
+                        cycle_id=cycle_id,
+                        recs=trade_recs,
+                        model=settings.gemini_model_pro,
+                        sw_version="0.2.0",
+                        market_context_summary=f"Event-triggered ({trigger_type}): "
+                        + trade_recs.get("market_summary", ""),
+                    )
+                except Exception:
+                    pass
+
+                # 3. Push to command center
+                if settings.command_center_url:
+                    try:
+                        from um_agent_coder.daemon.routes.world_agent._push_bridge import (
+                            push_recs_to_command_center,
+                        )
+                        await push_recs_to_command_center(
+                            recs=trade_recs,
+                            cycle_id=cycle_id,
+                            command_center_url=settings.command_center_url,
+                        )
+                    except Exception as pe:
+                        logger.warning("Event push failed: %s", pe)
+
+                # Dispatch to Discord/Slack
+                try:
+                    await _dispatch_trade_recs(
+                        trade_recs,
+                        slack_webhook=settings.default_slack_webhook,
+                        discord_bot_token=settings.discord_bot_token,
+                    )
+                except Exception:
+                    pass
+
+        duration_ms = int((time.time() - start) * 1000)
+        num_recs = len(trade_recs.get("recommendations", []))
+        logger.info(
+            "Event-triggered cycle %s completed: %dms, %d recs, regime=%s",
+            cycle_id, duration_ms, num_recs, trade_recs.get("market_regime", "?"),
+        )
+
+        return {
+            "cycle_id": cycle_id,
+            "trigger_type": trigger_type,
+            "events_collected": len(market_events),
+            "recommendations": num_recs,
+            "market_regime": trade_recs.get("market_regime", "unknown"),
+            "duration_ms": duration_ms,
+        }
+
+    except Exception as exc:
+        logger.error("Event-triggered cycle failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # --- Goals ---
@@ -951,6 +1079,13 @@ async def update_trade_outcome(
     )
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update outcome")
+
+    # Feed outcome into journal for reflection/learning
+    try:
+        await store.append_outcome_to_journal(date, rec_id, outcome, pnl_pct)
+    except Exception:
+        pass  # non-critical — the outcome is already persisted
+
     return {"rec_id": rec_id, "outcome": outcome, "pnl_pct": pnl_pct}
 
 

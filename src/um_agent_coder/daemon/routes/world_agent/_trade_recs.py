@@ -179,10 +179,53 @@ def _parse_trade_recs(text: str) -> Dict[str, Any]:
     return {}
 
 
+async def _fetch_command_center_regime(command_center_url: str) -> dict:
+    """Fetch live regime from Command Center (best-effort, non-blocking)."""
+    if not command_center_url:
+        return {}
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{command_center_url}/regime/current")
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception:
+        pass
+    return {}
+
+
+def _regime_prompt_override(regime_data: dict) -> str:
+    """Generate a regime-specific prompt override for trade rec generation."""
+    regime = regime_data.get("regime", "unknown")
+    vix = regime_data.get("vix", 0)
+
+    if regime == "crisis":
+        return (
+            f"\n\nCRITICAL REGIME OVERRIDE: Market is in CRISIS (VIX={vix:.1f}). "
+            "Reduce ALL position sizes by 75%. Favor DEFENSIVE strategies only: "
+            "put spreads, VIX calls, treasury exposure, cash. "
+            "NO new longs unless hedging existing positions. "
+            "Maximum conviction for any single trade: MEDIUM."
+        )
+    elif regime == "risk-off":
+        return (
+            f"\n\nREGIME OVERRIDE: Risk-off environment (VIX={vix:.1f}). "
+            "Reduce sizes by 50%. Favor short premium, put spreads, mean reversion "
+            "on oversold names. Avoid momentum longs. Tighter stops."
+        )
+    elif regime == "risk-on":
+        return (
+            "\n\nREGIME NOTE: Risk-on environment. Full position sizes allowed. "
+            "Favor momentum, breakout strategies, and directional plays."
+        )
+    return ""
+
+
 async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
     """Generate trade recommendations from market events via Gemini.
 
     Returns structured dict with regime, recommendations, watchlist, summary.
+    Fetches live regime from Command Center for regime-adaptive prompts.
     """
     from um_agent_coder.daemon.app import get_gemini_client, get_settings
 
@@ -196,6 +239,10 @@ async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
     if not market_context.strip():
         return {}
 
+    # Fetch live regime from Command Center for adaptive prompts
+    regime_data = await _fetch_command_center_regime(settings.command_center_url)
+    regime_override = _regime_prompt_override(regime_data)
+
     now = datetime.now(timezone.utc)
     user_prompt = (
         f"## CURRENT TIME\n{now.strftime('%Y-%m-%d %H:%M UTC')} "
@@ -205,10 +252,12 @@ async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
         f"Use the ACTUAL prices shown above. Do not invent any data."
     )
 
+    system_prompt = TRADE_REC_SYSTEM_PROMPT + regime_override
+
     try:
         response = await client.generate(
             prompt=user_prompt,
-            system_prompt=TRADE_REC_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             model=settings.gemini_model_pro,
             temperature=0.3,
             max_tokens=8192,
@@ -226,6 +275,70 @@ async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error("Trade rec generation failed: %s", e)
+        return {}
+
+
+PREMARKET_PROMPT_ADDON = """\
+
+## PRE-MARKET CONTEXT
+This analysis runs BEFORE market open (7:00-9:30 ET). Generate pre-market orders:
+- Analyze overnight futures, Asian/European session moves, pre-market movers.
+- Focus on GAP analysis: which stocks gapped up/down and what's the likely open?
+- Generate LIMIT orders at specific prices (not market orders).
+- Include opening range breakout (ORB) setups for the first 15 minutes.
+- Tag every recommendation with "timeframe": "premarket".
+- Emphasis on tighter stops (pre-market volatility is higher).
+- Consider earnings pre-market reactions if any.
+"""
+
+
+async def generate_premarket_recs(events: List[Event]) -> Dict[str, Any]:
+    """Generate pre-market specific recommendations with limit order staging."""
+    from um_agent_coder.daemon.app import get_gemini_client, get_settings
+
+    settings = get_settings()
+    client = get_gemini_client()
+    if not client:
+        return {}
+
+    market_context = _build_market_context(events)
+    if not market_context.strip():
+        return {}
+
+    regime_data = await _fetch_command_center_regime(settings.command_center_url)
+    regime_override = _regime_prompt_override(regime_data)
+
+    now = datetime.now(timezone.utc)
+    user_prompt = (
+        f"## CURRENT TIME\n{now.strftime('%Y-%m-%d %H:%M UTC')} (PRE-MARKET)\n\n"
+        f"{market_context}\n\n"
+        f"Generate pre-market trade recommendations with LIMIT orders staged for market open. "
+        f"Use the ACTUAL prices shown above."
+    )
+
+    system_prompt = TRADE_REC_SYSTEM_PROMPT + PREMARKET_PROMPT_ADDON + regime_override
+
+    try:
+        response = await client.generate(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            model=settings.gemini_model_pro,
+            temperature=0.3,
+            max_tokens=8192,
+        )
+        text = response["text"] if isinstance(response, dict) else str(response)
+        recs = _parse_trade_recs(text)
+
+        # Force timeframe to "premarket" for all recs
+        for rec in recs.get("recommendations", []):
+            rec["timeframe"] = "premarket"
+
+        if recs:
+            logger.info("Pre-market recs: %d recommendations", len(recs.get("recommendations", [])))
+        return recs
+
+    except Exception as e:
+        logger.error("Pre-market rec generation failed: %s", e)
         return {}
 
 

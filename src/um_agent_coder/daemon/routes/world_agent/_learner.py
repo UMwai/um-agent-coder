@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from um_agent_coder.daemon.routes.world_agent import _firestore as store
+from um_agent_coder.daemon.routes.world_agent import _goals as goal_store
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,25 @@ async def _gather_reflection_data(days: int = 7) -> Dict[str, Any]:
         if c.get("error"):
             all_errors.append(c["error"][:200])
 
+    # Gather trade rec outcomes for accuracy reflection
+    trade_outcomes = {}
+    try:
+        from um_agent_coder.daemon.routes.world_agent._kpi_updater import _compute_rec_accuracy
+        trade_outcomes = await _compute_rec_accuracy()
+    except Exception:
+        pass
+
+    # Gather current KPI snapshots from goals
+    kpi_snapshot = {}
+    try:
+        goals = await goal_store.get_all_goals(status="active")
+        for g in goals:
+            kpis = {kpi.metric: {"target": kpi.target, "current": kpi.current} for kpi in g.kpis}
+            if kpis:
+                kpi_snapshot[g.id] = kpis
+    except Exception:
+        pass
+
     return {
         "days": days,
         "journals": journals,
@@ -103,7 +123,39 @@ async def _gather_reflection_data(days: int = 7) -> Dict[str, Any]:
         "signals_by_goal": signals_by_goal,
         "tasks_by_goal": tasks_by_goal,
         "tasks_by_cli": tasks_by_cli,
+        "trade_outcomes": trade_outcomes,
+        "kpi_snapshot": kpi_snapshot,
     }
+
+
+def _format_trade_outcomes(outcomes: dict) -> str:
+    """Format trade rec outcomes for the reflection prompt."""
+    if not outcomes or outcomes.get("total", 0) == 0:
+        return "(no trade outcomes yet)"
+    total = outcomes["total"]
+    wins = outcomes.get("wins", 0)
+    losses = outcomes.get("losses", 0)
+    scratches = outcomes.get("scratches", 0)
+    win_rate = outcomes.get("win_rate", 0)
+    pnl = outcomes.get("total_pnl_pct", 0)
+    return (
+        f"Total evaluated: {total} | Wins: {wins} | Losses: {losses} | Scratch: {scratches}\n"
+        f"Win rate: {win_rate:.1f}% | Cumulative PnL: {pnl:+.1f}%"
+    )
+
+
+def _format_kpi_snapshot(kpi_snapshot: dict) -> str:
+    """Format KPI snapshot for the reflection prompt."""
+    if not kpi_snapshot:
+        return "(no KPI data)"
+    lines = []
+    for goal_id, kpis in kpi_snapshot.items():
+        lines.append(f"### {goal_id}")
+        for metric, vals in kpis.items():
+            target = vals.get("target", "?")
+            current = vals.get("current", "not measured")
+            lines.append(f"  - {metric}: current={current}, target={target}")
+    return "\n".join(lines)
 
 
 def _build_reflection_prompt(data: Dict[str, Any], existing_lessons: List[Dict[str, Any]]) -> str:
@@ -167,10 +219,20 @@ Total tasks planned: {data['total_tasks_planned']}
 ## Errors ({len(data.get('errors', []))})
 {chr(10).join(f'- {e}' for e in data.get('errors', [])[:10]) or '(none)'}
 
+## Trade Recommendation Accuracy
+{_format_trade_outcomes(data.get('trade_outcomes', {}))}
+
+## Goal KPI Status
+{_format_kpi_snapshot(data.get('kpi_snapshot', {}))}
+
 ## Existing Lessons (update or mark obsolete if needed)
 {existing_text}
 
-Analyze these patterns and produce lessons to improve future task planning."""
+Analyze these patterns and produce lessons to improve future task planning.
+Pay special attention to:
+- Trade recommendation accuracy trends (are we getting better or worse?)
+- KPI progress toward targets (which KPIs are falling short?)
+- Signal source quality (which sources produce winners vs losers?)"""
 
 
 async def reflect(days: int = 7) -> Dict[str, Any]:
