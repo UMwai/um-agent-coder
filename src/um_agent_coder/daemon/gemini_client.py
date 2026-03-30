@@ -34,16 +34,17 @@ GEMINI_CLI_USER_AGENT = "GeminiCLI/0.32.1/{model} (linux; x64)"
 DEFAULT_CREDS_PATH = Path.home() / ".gemini" / "oauth_creds.json"
 
 # Available models on Code Assist — round-robin across independent rate limits
-# Note: gemini-3.1-* models return 404 on cloudcode-pa as of 2026-03-30
-# Add them back when Google enables them on Code Assist
+# Each model has independent quota; combined throughput ~80+ req/min
 ROUND_ROBIN_MODELS = [
     "gemini-3-flash-preview",    # ~30 req/min, fastest
     "gemini-3-pro-preview",      # ~18 req/min
+    "gemini-3.1-pro-preview",    # ~18 req/min
+    # "gemini-3.1-flash-preview",  # TODO: verify availability on Code Assist
 ]
 
 # Max concurrent requests to Code Assist (prevents burst overload)
-# With 2 models: flash ~30/min + pro ~18/min = ~48/min combined
-MAX_CONCURRENT = 2
+# With 3 models: flash ~30 + pro ~18 + 3.1-pro ~18 = ~66/min combined
+MAX_CONCURRENT = 3
 
 
 def _load_cli_oauth_app() -> tuple[str, str]:
