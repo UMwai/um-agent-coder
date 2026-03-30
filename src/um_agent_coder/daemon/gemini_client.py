@@ -36,15 +36,15 @@ DEFAULT_CREDS_PATH = Path.home() / ".gemini" / "oauth_creds.json"
 # Available models on Code Assist — round-robin across independent rate limits
 # Each model has independent quota; combined throughput ~80+ req/min
 ROUND_ROBIN_MODELS = [
-    "gemini-3-flash-preview",    # ~30 req/min, fastest
-    "gemini-3-pro-preview",      # ~18 req/min
-    "gemini-3.1-pro-preview",    # ~18 req/min
-    # "gemini-3.1-flash-preview",  # TODO: verify availability on Code Assist
+    "gemini-3-flash-preview",         # ~30 req/min, fastest
+    "gemini-3-pro-preview",           # ~18 req/min
+    "gemini-3.1-pro-preview",         # ~18 req/min
+    "gemini-3.1-flash-lite-preview",  # cheapest, high-volume
 ]
 
 # Max concurrent requests to Code Assist (prevents burst overload)
-# With 3 models: flash ~30 + pro ~18 + 3.1-pro ~18 = ~66/min combined
-MAX_CONCURRENT = 3
+# With 4 models: flash ~30 + pro ~18 + 3.1-pro ~18 + 3.1-flash-lite ~30 = ~96/min
+MAX_CONCURRENT = 4
 
 
 def _load_cli_oauth_app() -> tuple[str, str]:
