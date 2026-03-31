@@ -235,7 +235,7 @@ class GeminiCodeAssistClient:
             contents.append({"role": "model", "parts": [{"text": "Understood."}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
 
-        return {
+        payload = {
             "model": model,
             "project": project,
             "user_prompt_id": str(uuid.uuid4()),
@@ -247,6 +247,14 @@ class GeminiCodeAssistClient:
                 },
             },
         }
+
+        # Enable G1 AI Ultra credits — tells the Code Assist API to use
+        # the user's Google One AI Ultra subscription quota instead of the
+        # free standard-tier limits.  Matches the CLI's converter.js format.
+        if os.environ.get("GEMINI_ENABLE_CREDITS", "").lower() in ("1", "true"):
+            payload["enabled_credit_types"] = ["GOOGLE_ONE_AI"]
+
+        return payload
 
     async def generate(
         self,
