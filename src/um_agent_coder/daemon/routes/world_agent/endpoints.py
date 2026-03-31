@@ -665,7 +665,7 @@ async def get_status():
 @router.post("/cycle/event-triggered")
 async def event_triggered_cycle(
     trigger_type: str = Query(..., description="vix_spike, credit_stress, breaking_news"),
-    trigger_data: dict = Body(default={}),
+    trigger_data: dict = Body(default={}),  # noqa: B008
 ):
     """Run an immediate fast cycle triggered by a market event.
 

@@ -7,7 +7,6 @@ with actual pipeline performance, trade rec accuracy, and signal quality.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 import httpx
 
@@ -107,7 +106,6 @@ async def update_kpis(command_center_url: str = "") -> dict:
 async def _compute_rec_accuracy() -> dict:
     """Compute win/loss/scratch rates from Firestore trade rec outcomes."""
     try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         recs = await store.list_trade_recs(limit=200)
 
         total = 0
