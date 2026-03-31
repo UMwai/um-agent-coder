@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Working Style
+
+- **Commit and push after every task** — always to a feature branch, never directly to `main`.
+
 ## Project Vision
 
 um-agent-coder is a **meta-harness** - a harness that can manage other harnesses. Core capabilities:
