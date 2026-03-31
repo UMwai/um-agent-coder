@@ -12,6 +12,7 @@ on:
 env:
   PROJECT_ID: aivestor-480814
   REGION: us-central1
+  CLUSTER_ZONE: us-central1-a
   CLUSTER_NAME: um-hedge-fund
   REGISTRY: us-central1-docker.pkg.dev/aivestor-480814/um-hedge-fund
   IMAGE_NAME: umclaw
@@ -45,7 +46,7 @@ jobs:
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
+            --zone=${{ env.CLUSTER_ZONE }} --project=${{ env.PROJECT_ID }}
 
       - name: Build and push image
         run: |
