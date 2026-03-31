@@ -56,7 +56,9 @@ async def update_kpis(command_center_url: str = "") -> dict:
 
                 # Active signal sources
                 sources = day_data.get("sources", {})
-                active_sources = len([s for s in sources.values() if s.get("total_decisions", 0) > 0])
+                active_sources = len(
+                    [s for s in sources.values() if s.get("total_decisions", 0) > 0]
+                )
                 if active_sources > 0:
                     goal_updates["signal_sources_active"] = str(active_sources)
 
@@ -90,10 +92,15 @@ async def update_kpis(command_center_url: str = "") -> dict:
                 try:
                     await goal_store.update_goal(
                         goal.id,
-                        {"kpis": [
-                            {**kpi.model_dump(), "current": kpi_updates.get(kpi.metric, kpi.current)}
-                            for kpi in goal.kpis
-                        ]},
+                        {
+                            "kpis": [
+                                {
+                                    **kpi.model_dump(),
+                                    "current": kpi_updates.get(kpi.metric, kpi.current),
+                                }
+                                for kpi in goal.kpis
+                            ]
+                        },
                     )
                     updates[goal.id] = kpi_updates
                     logger.info("Updated KPIs for %s: %s", goal.id, kpi_updates)

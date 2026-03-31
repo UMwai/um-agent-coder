@@ -98,6 +98,7 @@ async def _gather_reflection_data(days: int = 7) -> Dict[str, Any]:
     trade_outcomes = {}
     try:
         from um_agent_coder.daemon.routes.world_agent._kpi_updater import _compute_rec_accuracy
+
         trade_outcomes = await _compute_rec_accuracy()
     except Exception:
         pass

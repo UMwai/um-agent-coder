@@ -495,7 +495,9 @@ async def run_cycle(request: CycleRequest):
         if market_events:
             try:
                 now_utc = datetime.now(timezone.utc)
-                is_premarket = 11 <= now_utc.hour <= 13 and now_utc.hour * 60 + now_utc.minute < 13 * 60 + 30
+                is_premarket = (
+                    11 <= now_utc.hour <= 13 and now_utc.hour * 60 + now_utc.minute < 13 * 60 + 30
+                )
                 if is_premarket:
                     trade_recs = await generate_premarket_recs(all_events)
                 else:
@@ -525,6 +527,7 @@ async def run_cycle(request: CycleRequest):
                             from um_agent_coder.daemon.routes.world_agent._push_bridge import (
                                 push_recs_to_command_center,
                             )
+
                             await push_recs_to_command_center(
                                 recs=trade_recs,
                                 cycle_id=cycle_id,
@@ -580,6 +583,7 @@ async def run_cycle(request: CycleRequest):
         if settings.command_center_url:
             try:
                 from um_agent_coder.daemon.routes.world_agent._kpi_updater import update_kpis
+
                 kpi_result = await update_kpis(command_center_url=settings.command_center_url)
                 if kpi_result:
                     logger.info("KPI update: %s", kpi_result)
@@ -717,6 +721,7 @@ async def event_triggered_cycle(
                         from um_agent_coder.daemon.routes.world_agent._push_bridge import (
                             push_recs_to_command_center,
                         )
+
                         await push_recs_to_command_center(
                             recs=trade_recs,
                             cycle_id=cycle_id,
@@ -739,7 +744,10 @@ async def event_triggered_cycle(
         num_recs = len(trade_recs.get("recommendations", []))
         logger.info(
             "Event-triggered cycle %s completed: %dms, %d recs, regime=%s",
-            cycle_id, duration_ms, num_recs, trade_recs.get("market_regime", "?"),
+            cycle_id,
+            duration_ms,
+            num_recs,
+            trade_recs.get("market_regime", "?"),
         )
 
         return {

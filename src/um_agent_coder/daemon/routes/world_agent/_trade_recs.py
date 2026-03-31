@@ -185,6 +185,7 @@ async def _fetch_command_center_regime(command_center_url: str) -> dict:
         return {}
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{command_center_url}/regime/current")
             if resp.status_code == 200:

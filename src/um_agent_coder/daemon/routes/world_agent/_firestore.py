@@ -617,24 +617,30 @@ async def append_outcome_to_journal(
         }
 
         if doc.exists:
-            await journal_ref.update({
-                "trade_outcomes": ArrayUnion([outcome_entry]),
-                f"outcome_counts.{outcome}": Increment(1),
-                "outcome_counts.total": Increment(1),
-                "outcome_counts.cumulative_pnl_pct": Increment(pnl_pct or 0.0),
-            })
+            await journal_ref.update(
+                {
+                    "trade_outcomes": ArrayUnion([outcome_entry]),
+                    f"outcome_counts.{outcome}": Increment(1),
+                    "outcome_counts.total": Increment(1),
+                    "outcome_counts.cumulative_pnl_pct": Increment(pnl_pct or 0.0),
+                }
+            )
         else:
-            await journal_ref.set({
-                "date": date_str,
-                "trade_outcomes": [outcome_entry],
-                "outcome_counts": {
-                    outcome: 1,
-                    "total": 1,
-                    "cumulative_pnl_pct": pnl_pct or 0.0,
-                },
-            })
+            await journal_ref.set(
+                {
+                    "date": date_str,
+                    "trade_outcomes": [outcome_entry],
+                    "outcome_counts": {
+                        outcome: 1,
+                        "total": 1,
+                        "cumulative_pnl_pct": pnl_pct or 0.0,
+                    },
+                }
+            )
 
-        logger.info("Appended outcome to journal %s: %s pnl=%.1f%%", date_str, outcome, pnl_pct or 0)
+        logger.info(
+            "Appended outcome to journal %s: %s pnl=%.1f%%", date_str, outcome, pnl_pct or 0
+        )
         return True
     except Exception as e:
         logger.warning("Failed to append outcome to journal: %s", e)
