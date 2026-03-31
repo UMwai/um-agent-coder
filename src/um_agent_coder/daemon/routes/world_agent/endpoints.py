@@ -1044,6 +1044,70 @@ async def preview_decision_context(
     return {"context": context, "has_lessons": bool(context)}
 
 
+# --- Macro Regime ---
+
+
+@router.get("/macro-regime")
+async def get_macro_regime():
+    """Score the current macro regime using market data + Gemini Pro analysis.
+
+    Returns regime classification, position sizing multiplier, directional bias,
+    and sector recommendations based on VIX, yields, credit spreads, and commodities.
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    from um_agent_coder.daemon.routes.world_agent._macro_regime import score_macro_regime
+
+    try:
+        result = await score_macro_regime()
+        return result
+    except Exception as e:
+        logger.error("Macro regime scoring failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Macro regime scoring failed: {e}")
+
+
+# --- Generic Outcome Tracking ---
+
+
+@router.post("/outcomes")
+async def record_generic_outcome(
+    payload: dict = Body(...),  # noqa: B008
+):
+    """Record a trade outcome for any position (not just UMClaw recommendations).
+
+    Accepts: {"symbol": "AAPL", "direction": "LONG", "pnl_pct": 0.05,
+              "entry_date": "2026-03-20", "exit_date": "2026-03-30",
+              "source": "gpu-scanner", "notes": ""}
+    Saves to Firestore collection 'trade_outcomes' for learning/reflection.
+    """
+    symbol = payload.get("symbol", "")
+    direction = payload.get("direction", "")
+    pnl_pct = float(payload.get("pnl_pct", 0.0))
+    entry_date = payload.get("entry_date", "")
+    exit_date = payload.get("exit_date", "")
+    source = payload.get("source", "")
+    notes = payload.get("notes", "")
+
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    ok = await store.save_generic_outcome(
+        symbol=symbol,
+        direction=direction,
+        pnl_pct=pnl_pct,
+        entry_date=entry_date,
+        exit_date=exit_date,
+        source=source,
+        notes=notes,
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to save outcome")
+
+    return {"status": "recorded", "symbol": symbol, "pnl_pct": pnl_pct}
+
+
 # --- Trade Recommendations ---
 
 

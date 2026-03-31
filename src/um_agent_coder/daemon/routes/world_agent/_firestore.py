@@ -641,6 +641,59 @@ async def append_outcome_to_journal(
         return False
 
 
+# --- Generic Trade Outcomes ---
+
+TRADE_OUTCOMES_COLLECTION = "trade_outcomes"
+
+
+async def save_generic_outcome(
+    symbol: str,
+    direction: str,
+    pnl_pct: float,
+    entry_date: str,
+    exit_date: str,
+    source: str = "",
+    notes: str = "",
+) -> bool:
+    """Save a generic trade outcome (not tied to a specific rec_id).
+
+    Path: trade_outcomes/{exit_date}/outcomes/{auto_id}
+    """
+    client = _get_client()
+    if not client:
+        return False
+    try:
+        import uuid as _uuid
+
+        date_key = exit_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        doc_id = f"out-{_uuid.uuid4().hex[:12]}"
+        outcome = "win" if pnl_pct > 0 else "loss" if pnl_pct < 0 else "scratch"
+        doc_data = {
+            "id": doc_id,
+            "symbol": symbol.upper(),
+            "direction": direction.upper(),
+            "pnl_pct": pnl_pct,
+            "outcome": outcome,
+            "entry_date": entry_date,
+            "exit_date": exit_date,
+            "source": source,
+            "notes": notes,
+            "recorded_at": _now_iso(),
+        }
+        doc_ref = (
+            client.collection(TRADE_OUTCOMES_COLLECTION)
+            .document(date_key)
+            .collection("outcomes")
+            .document(doc_id)
+        )
+        await doc_ref.set(doc_data)
+        logger.info("Saved generic outcome: %s %s pnl=%.2f%% source=%s", symbol, outcome, pnl_pct, source)
+        return True
+    except Exception as e:
+        logger.error("Failed to save generic outcome: %s", e)
+        return False
+
+
 # --- Position Snapshots ---
 
 POSITIONS_COLLECTION = "position_snapshots"
