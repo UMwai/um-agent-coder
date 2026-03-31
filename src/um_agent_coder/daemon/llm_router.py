@@ -148,7 +148,8 @@ class LLMRouter:
                 if self._codex_fallback_enabled:
                     logger.warning("Gemini unavailable — using Codex fallback")
                     return await self._generate_codex(
-                        prompt, system_prompt=system_prompt,
+                        prompt,
+                        system_prompt=system_prompt,
                     )
                 raise RuntimeError(
                     "Gemini client not available and no fallback provider configured"
@@ -169,7 +170,8 @@ class LLMRouter:
                 if isinstance(exc, RateLimitError) and self._codex_fallback_enabled:
                     logger.warning("Gemini rate limited: %s — falling back to Codex CLI", exc)
                     return await self._generate_codex(
-                        prompt, system_prompt=system_prompt,
+                        prompt,
+                        system_prompt=system_prompt,
                     )
                 raise
 
@@ -188,7 +190,8 @@ class LLMRouter:
                 timeout=self._codex_fallback_timeout,
             )
         return await self._codex_client.generate(
-            prompt, system_prompt=system_prompt,
+            prompt,
+            system_prompt=system_prompt,
         )
 
     async def _generate_openai(

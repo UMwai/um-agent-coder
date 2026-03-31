@@ -51,9 +51,7 @@ class CodexSubprocessClient:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=self._timeout
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self._timeout)
         except asyncio.TimeoutError:
             try:
                 proc.kill()
@@ -108,7 +106,12 @@ class CodexSubprocessClient:
             raise RuntimeError("Codex CLI returned empty response")
 
         if not usage:
-            usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "finish_reason": "stop"}
+            usage = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "finish_reason": "stop",
+            }
 
         logger.info("Codex fallback: got %d chars in %dms", len(text), elapsed_ms)
 

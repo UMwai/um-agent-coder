@@ -548,7 +548,9 @@ async def run_cycle(request: CycleRequest):
             except Exception as tre:
                 logger.warning("Trade rec generation failed: %s", tre)
         elif settings.after_hours_skip_trade_recs and is_after_hours:
-            logger.info("Cycle %s: skipping trade_recs (after-hours, %02d:00 UTC)", cycle_id, now_utc.hour)
+            logger.info(
+                "Cycle %s: skipping trade_recs (after-hours, %02d:00 UTC)", cycle_id, now_utc.hour
+            )
 
         # Dispatch rich signals to Slack + Discord
         try:
