@@ -1391,3 +1391,93 @@ async def complete_task(
         request.pr_url or "none",
     )
     return {"status": "ok", "task_id": task_id, "success": request.success}
+
+
+# ---------------------------------------------------------------------------
+# Earnings Intelligence
+# ---------------------------------------------------------------------------
+
+
+@router.post("/earnings-analysis")
+async def earnings_analysis_endpoint(
+    body: dict = Body(...),  # noqa: B008
+):
+    """Analyze earnings for a symbol — pre-earnings risk or post-earnings reaction.
+
+    Pre mode (default):
+        {"symbol": "AAPL", "mode": "pre"}
+        Returns historical surprise analysis, IV crush warning, HOLD/EXIT/REDUCE rec.
+
+    Post mode:
+        {"symbol": "AAPL", "mode": "post", "actual_eps": 1.52, "est_eps": 1.45}
+        Returns beat/miss analysis, reaction score, position adjustment rec.
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    symbol = body.get("symbol")
+    if not symbol:
+        raise HTTPException(status_code=400, detail="'symbol' is required")
+
+    mode = body.get("mode", "pre")
+    if mode not in ("pre", "post"):
+        raise HTTPException(status_code=400, detail="'mode' must be 'pre' or 'post'")
+
+    if mode == "post":
+        if "actual_eps" not in body or "est_eps" not in body:
+            raise HTTPException(
+                status_code=400,
+                detail="Post mode requires 'actual_eps' and 'est_eps'",
+            )
+
+    from um_agent_coder.daemon.routes.world_agent._earnings_intelligence import (
+        analyze_earnings,
+    )
+
+    result = await analyze_earnings(
+        symbol=symbol,
+        mode=mode,
+        actual_eps=body.get("actual_eps"),
+        est_eps=body.get("est_eps"),
+    )
+
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SEC Filing Analysis
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sec-analysis")
+async def sec_analysis_endpoint(
+    body: dict = Body(...),  # noqa: B008
+):
+    """Analyze recent SEC filings for a list of symbols.
+
+    Accepts: {"symbols": ["AAPL", "NVDA", "TSLA"]}
+
+    Checks EDGAR for recent 8-K filings (7 days), classifies material vs routine,
+    deep-analyzes material filings via Gemini Pro, quick-screens routine via Flash.
+    Also checks insider transactions.
+
+    Returns: {"filings": [...], "insider_transactions": [...]}
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    symbols = body.get("symbols", [])
+    if not symbols or not isinstance(symbols, list):
+        raise HTTPException(status_code=400, detail="'symbols' must be a non-empty list")
+
+    from um_agent_coder.daemon.routes.world_agent._sec_analyzer import (
+        analyze_sec_filings,
+    )
+
+    result = await analyze_sec_filings(symbols)
+    return result
