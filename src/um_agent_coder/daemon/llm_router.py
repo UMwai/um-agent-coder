@@ -2,6 +2,7 @@
 
 Routes generate() calls to Gemini, OpenAI, or Anthropic based on model name.
 Falls back to Gemini when other providers aren't configured.
+On Gemini RateLimitError, optionally falls back to Codex CLI subprocess.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ class LLMRouter:
 
     Wraps Gemini (Code Assist), OpenAI, and Anthropic behind a unified
     generate() interface matching GeminiCodeAssistClient.generate() return shape.
+
+    When Gemini returns 429, falls back to Codex CLI subprocess if enabled.
     """
 
     def __init__(
@@ -28,6 +31,9 @@ class LLMRouter:
         openai_model: str = "gpt-5.4",
         anthropic_api_key: Optional[str] = None,
         anthropic_model: str = "claude-sonnet-4-6-20250627",
+        codex_fallback_enabled: bool = False,
+        codex_cli_path: str = "codex",
+        codex_fallback_timeout: int = 45,
     ):
         self._gemini = gemini_client
         self._openai_key = openai_api_key
@@ -36,11 +42,19 @@ class LLMRouter:
         self._anthropic_model = anthropic_model
         self._http: Optional[httpx.AsyncClient] = None
 
+        # Codex CLI fallback
+        self._codex_fallback_enabled = codex_fallback_enabled
+        self._codex_cli_path = codex_cli_path
+        self._codex_fallback_timeout = codex_fallback_timeout
+        self._codex_client = None  # lazy init
+
         providers = ["gemini" if gemini_client else None]
         if openai_api_key:
             providers.append("openai")
         if anthropic_api_key:
             providers.append("anthropic")
+        if codex_fallback_enabled:
+            providers.append("codex-fallback")
         logger.info("LLMRouter initialized: providers=%s", [p for p in providers if p])
 
     async def _get_http(self) -> httpx.AsyncClient:
@@ -61,6 +75,8 @@ class LLMRouter:
             providers.append("openai")
         if self._anthropic_key:
             providers.append("anthropic")
+        if self._codex_fallback_enabled:
+            providers.append("codex-fallback")
         return providers
 
     def resolve_provider(self, model: str) -> str:
@@ -129,17 +145,51 @@ class LLMRouter:
                 except Exception as exc:
                     logger.warning("Gemini lazy re-init failed: %s", exc)
             if not self._gemini:
+                if self._codex_fallback_enabled:
+                    logger.warning("Gemini unavailable — using Codex fallback")
+                    return await self._generate_codex(
+                        prompt, system_prompt=system_prompt,
+                    )
                 raise RuntimeError(
                     "Gemini client not available and no fallback provider configured"
                 )
-            return await self._gemini.generate(
-                prompt,
-                model or "gemini-3-flash-preview",
-                system_prompt=system_prompt,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout,
+            try:
+                return await self._gemini.generate(
+                    prompt,
+                    model or "gemini-3-flash-preview",
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                )
+            except Exception as exc:
+                # Check for rate limit (429) — fall back to Codex CLI
+                from um_agent_coder.daemon.gemini_client import RateLimitError
+
+                if isinstance(exc, RateLimitError) and self._codex_fallback_enabled:
+                    logger.warning("Gemini rate limited: %s — falling back to Codex CLI", exc)
+                    return await self._generate_codex(
+                        prompt, system_prompt=system_prompt,
+                    )
+                raise
+
+    async def _generate_codex(
+        self,
+        prompt: str,
+        *,
+        system_prompt: Optional[str] = None,
+    ) -> dict:
+        """Fall back to Codex CLI subprocess when Gemini is rate-limited."""
+        if self._codex_client is None:
+            from um_agent_coder.daemon.codex_client import CodexSubprocessClient
+
+            self._codex_client = CodexSubprocessClient(
+                cli_path=self._codex_cli_path,
+                timeout=self._codex_fallback_timeout,
             )
+        return await self._codex_client.generate(
+            prompt, system_prompt=system_prompt,
+        )
 
     async def _generate_openai(
         self,

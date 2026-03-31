@@ -228,13 +228,10 @@ async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
     Returns structured dict with regime, recommendations, watchlist, summary.
     Fetches live regime from Command Center for regime-adaptive prompts.
     """
-    from um_agent_coder.daemon.app import get_gemini_client, get_settings
+    from um_agent_coder.daemon.app import get_llm_router, get_settings
 
     settings = get_settings()
-    client = get_gemini_client()
-    if not client:
-        logger.error("Gemini client not available for trade recs")
-        return {}
+    router = get_llm_router()
 
     market_context = _build_market_context(events)
     if not market_context.strip():
@@ -256,7 +253,7 @@ async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
     system_prompt = TRADE_REC_SYSTEM_PROMPT + regime_override
 
     try:
-        response = await client.generate(
+        response = await router.generate(
             prompt=user_prompt,
             system_prompt=system_prompt,
             model=settings.gemini_model_pro,
@@ -295,12 +292,10 @@ This analysis runs BEFORE market open (7:00-9:30 ET). Generate pre-market orders
 
 async def generate_premarket_recs(events: List[Event]) -> Dict[str, Any]:
     """Generate pre-market specific recommendations with limit order staging."""
-    from um_agent_coder.daemon.app import get_gemini_client, get_settings
+    from um_agent_coder.daemon.app import get_llm_router, get_settings
 
     settings = get_settings()
-    client = get_gemini_client()
-    if not client:
-        return {}
+    router = get_llm_router()
 
     market_context = _build_market_context(events)
     if not market_context.strip():
@@ -320,7 +315,7 @@ async def generate_premarket_recs(events: List[Event]) -> Dict[str, Any]:
     system_prompt = TRADE_REC_SYSTEM_PROMPT + PREMARKET_PROMPT_ADDON + regime_override
 
     try:
-        response = await client.generate(
+        response = await router.generate(
             prompt=user_prompt,
             system_prompt=system_prompt,
             model=settings.gemini_model_pro,

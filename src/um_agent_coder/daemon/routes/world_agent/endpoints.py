@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -408,6 +409,10 @@ async def run_cycle(request: CycleRequest):
 
         summary, signals = await orient(goals, all_events, threshold)
 
+        # Throttle: space LLM calls to avoid Gemini rate limits
+        if settings.llm_inter_call_delay > 0:
+            await asyncio.sleep(settings.llm_inter_call_delay)
+
         # 3. Decide: convert signals into planned tasks
         repos = _allowed_repos()
         planned_tasks = await decide(goals, signals, repos)
@@ -491,10 +496,15 @@ async def run_cycle(request: CycleRequest):
 
         # 6. Generate trade recommendations from market data
         #    Use premarket recs during pre-market window (11:00-13:30 UTC = 7:00-9:30 ET)
+        #    Skip after-hours to conserve LLM quota
         trade_recs = {}
-        if market_events:
+        now_utc = datetime.now(timezone.utc)
+        is_after_hours = now_utc.hour >= settings.after_hours_cutoff_utc
+        if market_events and not (settings.after_hours_skip_trade_recs and is_after_hours):
+            # Throttle: space LLM calls
+            if settings.llm_inter_call_delay > 0:
+                await asyncio.sleep(settings.llm_inter_call_delay)
             try:
-                now_utc = datetime.now(timezone.utc)
                 is_premarket = (
                     11 <= now_utc.hour <= 13 and now_utc.hour * 60 + now_utc.minute < 13 * 60 + 30
                 )
@@ -537,6 +547,8 @@ async def run_cycle(request: CycleRequest):
                             logger.warning("Push to command center failed: %s", pe)
             except Exception as tre:
                 logger.warning("Trade rec generation failed: %s", tre)
+        elif settings.after_hours_skip_trade_recs and is_after_hours:
+            logger.info("Cycle %s: skipping trade_recs (after-hours, %02d:00 UTC)", cycle_id, now_utc.hour)
 
         # Dispatch rich signals to Slack + Discord
         try:

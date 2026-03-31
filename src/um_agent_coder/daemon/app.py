@@ -67,6 +67,9 @@ def get_llm_router():
             openai_model=settings.openai_model,
             anthropic_api_key=settings.anthropic_api_key,
             anthropic_model=settings.anthropic_model,
+            codex_fallback_enabled=settings.codex_fallback_enabled,
+            codex_cli_path=settings.codex_cli_path,
+            codex_fallback_timeout=settings.codex_fallback_timeout,
         )
     return _llm_router
 
@@ -129,6 +132,9 @@ async def lifespan(app: FastAPI):
         openai_model=_settings.openai_model,
         anthropic_api_key=_settings.anthropic_api_key,
         anthropic_model=_settings.anthropic_model,
+        codex_fallback_enabled=_settings.codex_fallback_enabled,
+        codex_cli_path=_settings.codex_cli_path,
+        codex_fallback_timeout=_settings.codex_fallback_timeout,
     )
     logger.info("LLM router initialized: %s", _llm_router.available_providers)
 

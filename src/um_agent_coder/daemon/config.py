@@ -142,6 +142,16 @@ class DaemonSettings(BaseSettings):
     world_agent_llm_provider: str = ""  # Empty = auto-detect from model name
     world_agent_max_events_per_batch: int = 100
 
+    # LLM rate-limit throttling
+    llm_inter_call_delay: int = 5  # seconds between LLM calls in a cycle
+    after_hours_skip_trade_recs: bool = True
+    after_hours_cutoff_utc: int = 21  # 21:00 UTC = 4pm ET
+
+    # Codex CLI fallback (when Gemini is rate-limited)
+    codex_fallback_enabled: bool = True
+    codex_cli_path: str = "codex"
+    codex_fallback_timeout: int = 45
+
     # Command Center push bridge
     command_center_url: str = ""  # e.g. "https://command-center-staging-23o5bq3bfq-uc.a.run.app"
 
