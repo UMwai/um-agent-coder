@@ -19,9 +19,14 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
+from collections import deque
+
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Per-model requests/min — configurable via env
+PER_MODEL_RPM = int(os.environ.get("UM_DAEMON_QUERY_RATE_LIMIT", "20"))
 
 # --- Constants ---
 CODE_ASSIST_BASE = "https://cloudcode-pa.googleapis.com"
@@ -158,6 +163,15 @@ class GeminiCodeAssistClient:
         self._model_index = 0
         self._model_cooldowns: dict[str, float] = {}  # model -> earliest_retry_time
 
+        # Per-model sliding window rate limiter (prevents burst 429s)
+        self._model_timestamps: dict[str, deque] = {
+            m: deque(maxlen=PER_MODEL_RPM) for m in ROUND_ROBIN_MODELS
+        }
+
+        # Usage tracking
+        self._daily_calls = 0
+        self._daily_reset = time.time()
+
     async def _get_http(self) -> httpx.AsyncClient:
         if self._http is None or self._http.is_closed:
             self._http = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
@@ -191,6 +205,37 @@ class GeminiCodeAssistClient:
         """Put a model on cooldown after a 429."""
         self._model_cooldowns[model] = time.time() + seconds
         logger.debug("Model %s on cooldown for %.0fs", model, seconds)
+
+    async def _wait_for_slot(self, model: str):
+        """Sliding window rate limiter — wait if model is at its per-minute limit."""
+        if model not in self._model_timestamps:
+            self._model_timestamps[model] = deque(maxlen=PER_MODEL_RPM)
+
+        window = self._model_timestamps[model]
+        now = time.time()
+
+        # Purge entries older than 60s
+        while window and window[0] < now - 60:
+            window.popleft()
+
+        # If at limit, wait until oldest entry expires
+        if len(window) >= PER_MODEL_RPM:
+            wait = window[0] + 60 - now + 0.1
+            if wait > 0:
+                logger.debug("Rate limiter: waiting %.1fs for %s slot", wait, model)
+                await asyncio.sleep(wait)
+
+        window.append(time.time())
+
+        # Track daily usage
+        if time.time() - self._daily_reset > 86400:
+            self._daily_calls = 0
+            self._daily_reset = time.time()
+        self._daily_calls += 1
+
+    @property
+    def daily_call_count(self) -> int:
+        return self._daily_calls
 
     # --- OAuth token management ---
 
@@ -312,6 +357,7 @@ class GeminiCodeAssistClient:
                 use_model = self._next_model()
 
             async with self._semaphore:
+                await self._wait_for_slot(use_model)
                 try:
                     headers = await self._auth_headers(use_model)
                     payload = self._build_payload(
@@ -408,6 +454,7 @@ class GeminiCodeAssistClient:
         model_to_use = self._next_model(model)
 
         async with self._semaphore:
+            await self._wait_for_slot(model_to_use)
             headers = await self._auth_headers(model_to_use)
             payload = self._build_payload(
                 contents, model_to_use, project,
