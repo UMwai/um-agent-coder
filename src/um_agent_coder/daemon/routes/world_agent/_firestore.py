@@ -639,3 +639,72 @@ async def append_outcome_to_journal(
     except Exception as e:
         logger.warning("Failed to append outcome to journal: %s", e)
         return False
+
+
+# --- Position Snapshots ---
+
+POSITIONS_COLLECTION = "position_snapshots"
+
+
+async def save_positions_snapshot(positions: List[Dict[str, Any]]) -> str:
+    """Save a position snapshot to Firestore with timestamp.
+
+    Stores as: position_snapshots/{date}/snapshots/{snapshot_id}
+    Also updates position_snapshots/latest as a quick-access pointer.
+
+    Returns the snapshot document ID, or empty string on failure.
+    """
+    client = _get_client()
+    if not client:
+        return ""
+    try:
+        now = _now_iso()
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        snapshot_id = f"snap-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+
+        doc_data = {
+            "snapshot_id": snapshot_id,
+            "timestamp": now,
+            "date": date_str,
+            "position_count": len(positions),
+            "positions": positions,
+            "symbols": sorted({p.get("symbol", "?") for p in positions}),
+        }
+
+        # Save dated snapshot for history
+        doc_ref = (
+            client.collection(POSITIONS_COLLECTION)
+            .document(date_str)
+            .collection("snapshots")
+            .document(snapshot_id)
+        )
+        await doc_ref.set(doc_data)
+
+        # Upsert the 'latest' pointer for quick retrieval
+        latest_ref = client.collection(POSITIONS_COLLECTION).document("latest")
+        await latest_ref.set(doc_data)
+
+        logger.info("Saved position snapshot %s with %d positions", snapshot_id, len(positions))
+        return snapshot_id
+    except Exception as e:
+        logger.error("Failed to save position snapshot: %s", e)
+        return ""
+
+
+async def get_positions_snapshot() -> List[Dict[str, Any]]:
+    """Retrieve the latest position snapshot from Firestore.
+
+    Returns the list of position dicts, or empty list if none found.
+    """
+    client = _get_client()
+    if not client:
+        return []
+    try:
+        doc = await client.collection(POSITIONS_COLLECTION).document("latest").get()
+        if not doc.exists:
+            return []
+        data = doc.to_dict()
+        return data.get("positions", [])
+    except Exception as e:
+        logger.error("Failed to get latest position snapshot: %s", e)
+        return []

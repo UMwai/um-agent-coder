@@ -33,6 +33,7 @@ from um_agent_coder.daemon.routes.world_agent._roadmap_gen import (
     write_roadmap,
 )
 from um_agent_coder.daemon.routes.world_agent._signal_dispatcher import dispatch_signals
+from um_agent_coder.daemon.routes.world_agent._thesis_validator import validate_theses
 from um_agent_coder.daemon.routes.world_agent._trade_recs import (
     format_trade_recs_discord,
     format_trade_recs_slack,
@@ -1087,6 +1088,114 @@ async def update_trade_outcome(
         pass  # non-critical — the outcome is already persisted
 
     return {"rec_id": rec_id, "outcome": outcome, "pnl_pct": pnl_pct}
+
+
+# --- Position Sync ---
+
+
+@router.post("/positions/sync")
+async def sync_positions(
+    body: dict = Body(...),
+):
+    """Sync current portfolio positions to Firestore for position-aware intelligence.
+
+    Accepts: {"positions": [{"symbol": "AAPL", "direction": "LONG", "quantity": 100, ...}]}
+    Each position should include: symbol, direction, quantity, cost_basis, current_price,
+    unrealized_pnl, pnl_pct, entry_date, and optionally thesis.
+
+    Returns: {"synced": N, "snapshot_id": "...", "timestamp": "..."}
+    """
+    positions = body.get("positions", [])
+    if not isinstance(positions, list):
+        raise HTTPException(status_code=400, detail="'positions' must be a list")
+
+    snapshot_id = await store.save_positions_snapshot(positions)
+    if not snapshot_id:
+        raise HTTPException(status_code=500, detail="Failed to save position snapshot")
+
+    now = datetime.now(timezone.utc).isoformat()
+    logger.info("Position sync: %d positions saved as %s", len(positions), snapshot_id)
+
+    return {
+        "synced": len(positions),
+        "snapshot_id": snapshot_id,
+        "timestamp": now,
+    }
+
+
+@router.get("/positions/latest")
+async def get_latest_positions():
+    """Retrieve the latest position snapshot."""
+    positions = await store.get_positions_snapshot()
+    return {
+        "positions": positions,
+        "count": len(positions),
+    }
+
+
+# --- Thesis Validator ---
+
+
+@router.post("/validate-theses")
+async def validate_theses_endpoint(
+    body: dict = Body(default={}),
+):
+    """Validate trade theses for held positions against current market events.
+
+    Accepts optional: {"positions": [...]} to override stored positions.
+    If not provided, fetches the latest position snapshot from Firestore.
+
+    Collects fresh market events, then uses Gemini Pro to cross-reference
+    each position's thesis against real market data.
+
+    Returns validation results with HOLD/EXIT/REDUCE/ADD verdicts.
+    """
+    settings = _get_settings()
+    if not settings.world_agent_enabled:
+        raise HTTPException(status_code=503, detail="World agent is disabled")
+
+    start = time.time()
+
+    # Get positions: from request body or latest Firestore snapshot
+    positions = body.get("positions")
+    if not positions:
+        positions = await store.get_positions_snapshot()
+
+    if not positions:
+        raise HTTPException(
+            status_code=400,
+            detail="No positions provided and no snapshot found. "
+            "Sync positions first via POST /positions/sync.",
+        )
+
+    # Collect fresh market events
+    market_events = await _collect_market_events()
+
+    # Run thesis validation
+    result = await validate_theses(positions, market_events)
+
+    duration_ms = int((time.time() - start) * 1000)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Thesis validation failed — no result from LLM")
+
+    result["duration_ms"] = duration_ms
+    result["positions_reviewed"] = len(positions)
+    result["events_analyzed"] = len(market_events)
+
+    validations = result.get("validations", [])
+    exits = [v for v in validations if v.get("verdict") == "EXIT"]
+    reduces = [v for v in validations if v.get("verdict") == "REDUCE"]
+
+    logger.info(
+        "Thesis validation complete: %d positions, %d EXIT, %d REDUCE, %dms",
+        len(positions),
+        len(exits),
+        len(reduces),
+        duration_ms,
+    )
+
+    return result
 
 
 # ---------------------------------------------------------------------------

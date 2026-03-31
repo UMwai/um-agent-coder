@@ -36,6 +36,9 @@ Rules:
   crypto basis trades (funding rate arbitrage), mean reversion, momentum.
 - For options: mention specific strategy (covered call, put spread, iron condor, etc.)
 - Include risk/reward ratio for each trade.
+- Do NOT recommend entering positions we already hold unless it is a scale-in with clear reasoning.
+- Flag any recommendation that conflicts with a currently held position (e.g. recommending SHORT on a LONG hold).
+- If we hold a position, you may recommend adding to it (scale-in) but must note it explicitly.
 
 Return a JSON object:
 {
@@ -221,11 +224,37 @@ def _regime_prompt_override(regime_data: dict) -> str:
     return ""
 
 
+def _build_positions_section(positions: List[Dict[str, Any]]) -> str:
+    """Build a CURRENT POSITIONS section for the trade rec prompt."""
+    if not positions:
+        return ""
+
+    lines = ["\n## CURRENT POSITIONS (already held — do NOT duplicate)"]
+    for p in positions:
+        symbol = p.get("symbol", "?")
+        direction = p.get("direction", "?")
+        quantity = p.get("quantity", 0)
+        cost_basis = p.get("cost_basis", 0)
+        current_price = p.get("current_price", 0)
+        unrealized_pnl = p.get("unrealized_pnl", 0)
+        pnl_pct = p.get("pnl_pct", 0)
+        entry_date = p.get("entry_date", "?")
+
+        lines.append(
+            f"- {symbol} {direction} x{quantity} | "
+            f"Cost: ${cost_basis:,.2f} | Now: ${current_price:,.2f} | "
+            f"P&L: ${unrealized_pnl:+,.2f} ({pnl_pct:+.1%}) | Since: {entry_date}"
+        )
+
+    return "\n".join(lines)
+
+
 async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
     """Generate trade recommendations from market events via Gemini.
 
     Returns structured dict with regime, recommendations, watchlist, summary.
     Fetches live regime from Command Center for regime-adaptive prompts.
+    Position-aware: fetches latest position snapshot to avoid duplicate entries.
     """
     from um_agent_coder.daemon.app import get_gemini_client, get_settings
 
@@ -243,11 +272,21 @@ async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
     regime_data = await _fetch_command_center_regime(settings.command_center_url)
     regime_override = _regime_prompt_override(regime_data)
 
+    # Fetch current positions to make recs position-aware
+    positions_section = ""
+    try:
+        from um_agent_coder.daemon.routes.world_agent._firestore import get_positions_snapshot
+        positions = await get_positions_snapshot()
+        positions_section = _build_positions_section(positions)
+    except Exception as e:
+        logger.debug("Could not fetch position snapshot (non-critical): %s", e)
+
     now = datetime.now(timezone.utc)
     user_prompt = (
         f"## CURRENT TIME\n{now.strftime('%Y-%m-%d %H:%M UTC')} "
         f"({'market hours' if 14 <= now.hour <= 21 else 'after hours'})\n\n"
-        f"{market_context}\n\n"
+        f"{market_context}"
+        f"{positions_section}\n\n"
         f"Analyze this market data and produce trade recommendations. "
         f"Use the ACTUAL prices shown above. Do not invent any data."
     )
