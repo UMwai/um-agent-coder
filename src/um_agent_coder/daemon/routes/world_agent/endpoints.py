@@ -191,36 +191,67 @@ async def _dispatch_trade_recs(
     slack_webhook: str | None = None,
     discord_bot_token: str | None = None,
 ) -> None:
-    """Post trade recommendation embeds to Discord #trading-signals and Slack."""
+    """Post a single compact trade recs message to Discord + Slack."""
     import httpx
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        # Discord
-        if discord_bot_token:
-            embeds = format_trade_recs_discord(recs)
-            if embeds:
-                from um_agent_coder.daemon.routes.world_agent._signal_dispatcher import (
-                    DISCORD_CHANNELS,
-                )
+    recommendations = recs.get("recommendations", [])[:6]
+    if not recommendations:
+        return
 
-                channel = DISCORD_CHANNELS["signals"]
-                # Discord max 10 embeds per message — send in batches
-                for i in range(0, len(embeds), 10):
-                    batch = embeds[i : i + 10]
-                    try:
-                        resp = await client.post(
-                            f"https://discord.com/api/v10/channels/{channel}/messages",
-                            json={"embeds": batch},
-                            headers={"Authorization": f"Bot {discord_bot_token}"},
-                        )
-                        if resp.status_code >= 300:
-                            logger.warning(
-                                "Discord trade recs failed: %d %s",
-                                resp.status_code,
-                                resp.text[:200],
-                            )
-                    except Exception as e:
-                        logger.warning("Discord trade recs error: %s", e)
+    regime = recs.get("market_regime", "unknown")
+    regime_emoji = {"risk-on": "🟢", "neutral": "⚪", "risk-off": "🟡", "crisis": "🔴"}.get(
+        regime, "❓"
+    )
+    regime_color = {"risk-on": 0x28A745, "neutral": 0x6C757D, "risk-off": 0xFFC107, "crisis": 0xDC3545}.get(
+        regime, 0x6C757D
+    )
+
+    # Build compact table
+    lines = [f"{regime_emoji} **{regime.upper()}** — {len(recommendations)} plays\n"]
+    for rec in recommendations:
+        sym = rec.get("symbol", "?")
+        direction = rec.get("direction", "?")
+        entry = rec.get("entry", 0)
+        target = rec.get("target", 0)
+        stop = rec.get("stop_loss", 0)
+        rr = rec.get("risk_reward", "?")
+        conviction = rec.get("conviction", "?")
+        reasoning = rec.get("reasoning", "")[:100]
+
+        dir_e = "🟢" if direction == "LONG" else "🔴"
+        conv_e = {"HIGH": "🔥", "MEDIUM": "⚡", "LOW": "💡"}.get(conviction, "")
+
+        def _p(v):
+            return f"${v:,.0f}" if v >= 100 else f"${v:,.2f}" if v else "—"
+
+        lines.append(
+            f"{dir_e} **{sym}** {conv_e}{conviction[0]} "
+            f"`{_p(entry)}→{_p(target)}` stop `{_p(stop)}` R:R `{rr}`"
+        )
+        if reasoning:
+            lines.append(f"  _{reasoning}_")
+
+    description = "\n".join(lines)
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # Discord — single embed
+        if discord_bot_token:
+            from um_agent_coder.daemon.routes.world_agent._signal_dispatcher import DISCORD_CHANNELS
+            try:
+                resp = await client.post(
+                    f"https://discord.com/api/v10/channels/{DISCORD_CHANNELS['signals']}/messages",
+                    json={"embeds": [{
+                        "title": f"💰 Trade Recs ({len(recommendations)})",
+                        "description": description[:4000],
+                        "color": regime_color,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }]},
+                    headers={"Authorization": f"Bot {discord_bot_token}"},
+                )
+                if resp.status_code >= 300:
+                    logger.warning("Discord trade recs failed: %d %s", resp.status_code, resp.text[:200])
+            except Exception as e:
+                logger.warning("Discord trade recs error: %s", e)
 
         # Slack
         if slack_webhook:
