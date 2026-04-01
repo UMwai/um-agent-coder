@@ -383,6 +383,10 @@ class GeminiCodeAssistClient:
             },
         }
 
+        # Enable G1 AI Ultra credits for multi-turn calls too
+        if os.environ.get("GEMINI_ENABLE_CREDITS", "").lower() in ("1", "true"):
+            payload["enabled_credit_types"] = ["GOOGLE_ONE_AI"]
+
         http = await self._get_http()
         full_text = ""
         usage = {}

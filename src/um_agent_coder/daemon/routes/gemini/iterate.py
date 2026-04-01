@@ -458,6 +458,10 @@ async def _run_iteration(iteration_id: str, req: IterateRequest):
                                 )
                             )
 
+            # --- Throttle between generate and evaluate to respect Gemini rate limits ---
+            if settings.llm_inter_call_delay > 0:
+                await asyncio.sleep(settings.llm_inter_call_delay)
+
             # --- Evaluate (accuracy-first cascade + fulfillment) ---
             eval_start = time.monotonic()
             accuracy_passed = True
