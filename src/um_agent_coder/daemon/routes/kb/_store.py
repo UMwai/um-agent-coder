@@ -86,7 +86,7 @@ async def create_item(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
     try:
-        _, doc_ref = client.collection(_collection_name()).add(doc_data)
+        _, doc_ref = await client.collection(_collection_name()).add(doc_data)
         doc_data["id"] = doc_ref.id
         logger.info("Created KB item %s: %s", doc_ref.id, data["title"])
         return doc_data
