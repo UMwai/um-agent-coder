@@ -128,5 +128,5 @@ class CodexSubprocessClient:
         return {
             "text": text,
             "usage": usage,
-            "model": "codex/gpt-5.2",
+            "model": "codex/gpt-5.4",
         }
