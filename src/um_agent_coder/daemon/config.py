@@ -143,7 +143,7 @@ class DaemonSettings(BaseSettings):
     world_agent_max_events_per_batch: int = 100
 
     # LLM rate-limit throttling
-    llm_inter_call_delay: int = 5  # seconds between LLM calls in a cycle
+    llm_inter_call_delay: int = 10  # seconds between LLM calls in a cycle
     after_hours_skip_trade_recs: bool = True
     after_hours_cutoff_utc: int = 21  # 21:00 UTC = 4pm ET
 
