@@ -45,6 +45,13 @@ class CycleSource(str, Enum):
     self_scheduled = "self"
 
 
+class NarrativeDrift(str, Enum):
+    reinforced = "reinforced"
+    challenged = "challenged"
+    shifting = "shifting"
+    unchanged = "unchanged"
+
+
 # --- Core Data Models ---
 
 
@@ -299,3 +306,49 @@ class TaskCompleteRequest(BaseModel):
     success: bool = Field(..., description="Whether the task completed successfully")
     output: str = Field(default="", description="Task output summary")
     pr_url: str = Field(default="", description="Pull request URL if created")
+
+
+# --- Narrative Intelligence Models ---
+
+
+class NarrativeState(BaseModel):
+    """Per-ticker snapshot of the valuation story the market is pricing."""
+
+    ticker: str = Field(..., description="Ticker symbol")
+    dominant_narrative: str = Field(
+        default="", description="1-2 sentence story the market is pricing"
+    )
+    themes: List[str] = Field(
+        default_factory=list,
+        description="Tagged categories: ai_infrastructure, margin_expansion, etc.",
+    )
+    confidence: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="How consensus is this story"
+    )
+    drivers: List[str] = Field(
+        default_factory=list, description="What sustains the story"
+    )
+    risks: List[str] = Field(
+        default_factory=list, description="What breaks it"
+    )
+    freshness_days: int = Field(
+        default=0, description="Days since last catalyst reinforced"
+    )
+    multiple_direction: str = Field(
+        default="stable", description="expanding | compressing | stable"
+    )
+    last_drift: NarrativeDrift = Field(default=NarrativeDrift.unchanged)
+    drift_detail: str = Field(default="", description="Explanation of drift if any")
+    updated_at: str = Field(default="")
+    cycle_id: str = Field(default="", description="Cycle that last updated this")
+
+
+class NarrativeAnalysisResult(BaseModel):
+    """Batch result from a narrative LLM call."""
+
+    tickers: List[NarrativeState] = Field(default_factory=list)
+    narrative_signals: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Signals for drifting narratives"
+    )
+    analysis_model: str = Field(default="")
+    analysis_duration_ms: int = Field(default=0)

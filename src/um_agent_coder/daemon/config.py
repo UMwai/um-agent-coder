@@ -142,6 +142,11 @@ class DaemonSettings(BaseSettings):
     world_agent_llm_provider: str = ""  # Empty = auto-detect from model name
     world_agent_max_events_per_batch: int = 100
 
+    # Narrative Intelligence
+    world_agent_narrative_enabled: bool = False
+    world_agent_narrative_model: str = ""  # Empty = use gemini_model_flash
+    world_agent_narrative_max_tickers: int = 20
+
     # LLM rate-limit throttling
     llm_inter_call_delay: int = 10  # seconds between LLM calls in a cycle
     after_hours_skip_trade_recs: bool = True

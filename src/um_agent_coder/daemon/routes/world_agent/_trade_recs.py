@@ -67,6 +67,11 @@ Return a JSON object:
   "market_summary": "2-3 sentence overall market assessment"
 }
 
+If NARRATIVE CONTEXT is provided, use it to modulate conviction:
+- Narrative-reinforced + technical signal = raise conviction
+- Technical signal + narrative-deteriorating = reduce size or flag "narrative risk" in reasoning
+- Never generate trades based solely on narrative drift — it modulates, not overrides
+
 If there are no good trades, return empty recommendations with a clear market_summary explaining why.
 """
 
@@ -222,7 +227,9 @@ def _regime_prompt_override(regime_data: dict) -> str:
     return ""
 
 
-async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
+async def generate_trade_recs(
+    events: List[Event], narrative_context: str = ""
+) -> Dict[str, Any]:
     """Generate trade recommendations from market events via Gemini.
 
     Returns structured dict with regime, recommendations, watchlist, summary.
@@ -242,10 +249,11 @@ async def generate_trade_recs(events: List[Event]) -> Dict[str, Any]:
     regime_override = _regime_prompt_override(regime_data)
 
     now = datetime.now(timezone.utc)
+    narrative_section = f"\n\n{narrative_context}" if narrative_context else ""
     user_prompt = (
         f"## CURRENT TIME\n{now.strftime('%Y-%m-%d %H:%M UTC')} "
         f"({'market hours' if 14 <= now.hour <= 21 else 'after hours'})\n\n"
-        f"{market_context}\n\n"
+        f"{market_context}{narrative_section}\n\n"
         f"Analyze this market data and produce trade recommendations. "
         f"Use the ACTUAL prices shown above. Do not invent any data."
     )
@@ -290,7 +298,9 @@ This analysis runs BEFORE market open (7:00-9:30 ET). Generate pre-market orders
 """
 
 
-async def generate_premarket_recs(events: List[Event]) -> Dict[str, Any]:
+async def generate_premarket_recs(
+    events: List[Event], narrative_context: str = ""
+) -> Dict[str, Any]:
     """Generate pre-market specific recommendations with limit order staging."""
     from um_agent_coder.daemon.app import get_llm_router, get_settings
 
@@ -305,9 +315,10 @@ async def generate_premarket_recs(events: List[Event]) -> Dict[str, Any]:
     regime_override = _regime_prompt_override(regime_data)
 
     now = datetime.now(timezone.utc)
+    narrative_section = f"\n\n{narrative_context}" if narrative_context else ""
     user_prompt = (
         f"## CURRENT TIME\n{now.strftime('%Y-%m-%d %H:%M UTC')} (PRE-MARKET)\n\n"
-        f"{market_context}\n\n"
+        f"{market_context}{narrative_section}\n\n"
         f"Generate pre-market trade recommendations with LIMIT orders staged for market open. "
         f"Use the ACTUAL prices shown above."
     )

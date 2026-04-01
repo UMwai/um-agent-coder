@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -494,6 +495,35 @@ async def run_cycle(request: CycleRequest):
         except Exception as je:
             logger.warning("Failed to update journal from cycle: %s", je)
 
+        # 5b. Narrative intelligence — track valuation stories per ticker
+        narrative_context = ""
+        if settings.world_agent_narrative_enabled and market_events:
+            if settings.llm_inter_call_delay > 0:
+                await asyncio.sleep(settings.llm_inter_call_delay)
+            try:
+                from um_agent_coder.daemon.routes.world_agent._narrative import (
+                    analyze_narratives,
+                    build_narrative_context_for_trade_recs,
+                    extract_tickers_from_events,
+                )
+
+                tickers = extract_tickers_from_events(all_events)
+                narrative_result = await analyze_narratives(
+                    events=all_events, tickers=tickers, cycle_id=cycle_id,
+                )
+                if narrative_result:
+                    narrative_context = build_narrative_context_for_trade_recs(
+                        narrative_result
+                    )
+                    logger.info(
+                        "Cycle %s narrative: %d tickers analyzed, %d drift signals",
+                        cycle_id,
+                        len(narrative_result.get("tickers", [])),
+                        len(narrative_result.get("narrative_signals", [])),
+                    )
+            except Exception as ne:
+                logger.warning("Narrative analysis failed: %s", ne)
+
         # 6. Generate trade recommendations from market data
         #    Use premarket recs during pre-market window (11:00-13:30 UTC = 7:00-9:30 ET)
         #    Skip after-hours to conserve LLM quota
@@ -509,9 +539,13 @@ async def run_cycle(request: CycleRequest):
                     11 <= now_utc.hour <= 13 and now_utc.hour * 60 + now_utc.minute < 13 * 60 + 30
                 )
                 if is_premarket:
-                    trade_recs = await generate_premarket_recs(all_events)
+                    trade_recs = await generate_premarket_recs(
+                        all_events, narrative_context=narrative_context
+                    )
                 else:
-                    trade_recs = await generate_trade_recs(all_events)
+                    trade_recs = await generate_trade_recs(
+                        all_events, narrative_context=narrative_context
+                    )
                 if trade_recs:
                     logger.info(
                         "Cycle %s trade recs: %d recommendations, regime=%s",
@@ -1109,6 +1143,55 @@ async def update_trade_outcome(
         pass  # non-critical — the outcome is already persisted
 
     return {"rec_id": rec_id, "outcome": outcome, "pnl_pct": pnl_pct}
+
+
+# ---------------------------------------------------------------------------
+# Narrative Intelligence endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/narrative")
+async def list_narratives(
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """List all active narrative states."""
+    from um_agent_coder.daemon.routes.kb import _store as kb_store
+
+    items = await kb_store.list_items(
+        item_type="narrative-state", status="active", limit=limit,
+    )
+    states = []
+    for item in items:
+        try:
+            content = item.get("content", "{}")
+            state = json.loads(content) if isinstance(content, str) else content
+            state["kb_id"] = item.get("id", "")
+            states.append(state)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {"narratives": states, "count": len(states)}
+
+
+@router.get("/narrative/{ticker}")
+async def get_narrative(ticker: str = Path(...)):
+    """Get current narrative state for a ticker."""
+    from um_agent_coder.daemon.routes.kb import _store as kb_store
+
+    items = await kb_store.list_items(
+        item_type="narrative-state",
+        status="active",
+        tag=f"ticker-{ticker.lower()}",
+        limit=1,
+    )
+    if not items:
+        raise HTTPException(status_code=404, detail=f"No narrative state for {ticker}")
+    content = items[0].get("content", "{}")
+    try:
+        state = json.loads(content) if isinstance(content, str) else content
+    except (json.JSONDecodeError, TypeError):
+        state = {}
+    state["kb_id"] = items[0].get("id", "")
+    return state
 
 
 # ---------------------------------------------------------------------------
