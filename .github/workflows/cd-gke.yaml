@@ -12,8 +12,8 @@ on:
 env:
   PROJECT_ID: aivestor-480814
   REGION: us-central1
-  CLUSTER_ZONE: us-central1-a
-  CLUSTER_NAME: um-hedge-fund
+  REGION: us-central1
+  CLUSTER_NAME: um-hedge-fund-v2
   REGISTRY: us-central1-docker.pkg.dev/aivestor-480814/um-hedge-fund
   IMAGE_NAME: umclaw
   K8S_NAMESPACE: shared-services
