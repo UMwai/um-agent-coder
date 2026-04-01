@@ -96,7 +96,7 @@ async def _execute_single_task(
         IterateRequest,
     )
 
-    get_settings()
+    settings = get_settings()
     db = get_db()
 
     iteration_id = f"wa-{task.id}-{uuid.uuid4().hex[:6]}"
@@ -107,10 +107,18 @@ async def _execute_single_task(
     effort_map = {"small": 3, "medium": 5, "large": 8}
     max_iters = effort_map.get(task.estimated_effort, 5)
 
+    # Model from config — defaults to flash to conserve pro quota for intelligence
+    act_model_map = {
+        "flash": GeminiModelTier.flash,
+        "pro": GeminiModelTier.pro,
+        "pro-3.1": GeminiModelTier.pro_3_1,
+    }
+    act_model = act_model_map.get(settings.world_agent_act_model, GeminiModelTier.flash)
+
     req = IterateRequest(
         prompt=prompt,
         system_prompt=system_prompt,
-        model=GeminiModelTier.pro_3_1,
+        model=act_model,
         max_iterations=max_iters,
         score_threshold=0.85,
         temperature=0.4,

@@ -425,10 +425,17 @@ async def run_cycle(request: CycleRequest):
             await store.save_events(task_dicts)  # reuse events store for now
 
         # 4. Act: execute planned tasks via Gemini iterate engine
+        #    Cap tasks per cycle to conserve LLM quota
         act_results = []
         if planned_tasks:
+            capped_tasks = planned_tasks[: settings.world_agent_act_max_tasks]
+            if len(planned_tasks) > len(capped_tasks):
+                logger.info(
+                    "Cycle %s: capped act tasks %d → %d",
+                    cycle_id, len(planned_tasks), len(capped_tasks),
+                )
             try:
-                act_results = await act(planned_tasks, max_concurrent=2)
+                act_results = await act(capped_tasks, max_concurrent=2)
                 logger.info(
                     "Cycle %s act: %d/%d tasks executed",
                     cycle_id,

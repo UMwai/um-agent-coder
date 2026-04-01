@@ -147,6 +147,10 @@ class DaemonSettings(BaseSettings):
     world_agent_narrative_model: str = ""  # Empty = use gemini_model_flash
     world_agent_narrative_max_tickers: int = 20
 
+    # Act step tuning
+    world_agent_act_model: str = "flash"  # flash | pro | pro-3.1 — model for code gen tasks
+    world_agent_act_max_tasks: int = 3    # max tasks executed per cycle
+
     # LLM rate-limit throttling
     llm_inter_call_delay: int = 10  # seconds between LLM calls in a cycle
     after_hours_skip_trade_recs: bool = True
