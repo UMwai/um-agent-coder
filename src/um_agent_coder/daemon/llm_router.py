@@ -154,26 +154,46 @@ class LLMRouter:
                 raise RuntimeError(
                     "Gemini client not available and no fallback provider configured"
                 )
-            try:
-                return await self._gemini.generate(
-                    prompt,
-                    model or "gemini-3-flash-preview",
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    timeout=timeout,
-                )
-            except Exception as exc:
-                # Check for rate limit (429) — fall back to Codex CLI
-                from um_agent_coder.daemon.gemini_client import RateLimitError
+            # Fallback chain: 3.1-pro → 3-flash → Codex/gpt-5.4
+            # Handles both rate limits (429) and capacity exhaustion
+            from um_agent_coder.daemon.gemini_client import RateLimitError
 
-                if isinstance(exc, RateLimitError) and self._codex_fallback_enabled:
-                    logger.warning("Gemini rate limited: %s — falling back to Codex CLI", exc)
-                    return await self._generate_codex(
+            requested_model = model or "gemini-3-flash-preview"
+            is_pro = "pro" in requested_model
+
+            # Build fallback sequence based on model hierarchy
+            fallback_models = [requested_model]
+            if is_pro and "gemini-3-flash-preview" not in fallback_models:
+                fallback_models.append("gemini-3-flash-preview")
+
+            for i, try_model in enumerate(fallback_models):
+                try:
+                    return await self._gemini.generate(
                         prompt,
+                        try_model,
                         system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
                     )
-                raise
+                except RateLimitError as exc:
+                    if i < len(fallback_models) - 1:
+                        next_model = fallback_models[i + 1]
+                        logger.warning(
+                            "Gemini %s unavailable: %s — falling back to %s",
+                            try_model,
+                            exc,
+                            next_model,
+                        )
+                        continue
+                    # All Gemini models exhausted — try Codex
+                    if self._codex_fallback_enabled:
+                        logger.warning("All Gemini models exhausted — falling back to Codex CLI")
+                        return await self._generate_codex(
+                            prompt,
+                            system_prompt=system_prompt,
+                        )
+                    raise
 
     async def _generate_codex(
         self,
