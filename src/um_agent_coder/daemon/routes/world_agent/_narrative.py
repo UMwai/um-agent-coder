@@ -212,9 +212,11 @@ async def persist_narrative_states(
     persisted = 0
 
     for state in states:
-        ticker = state.get("ticker", "")
+        ticker = state.get("ticker", "") or state.get("symbol", "")
         if not ticker:
+            logger.warning("Narrative state missing ticker field: %s", list(state.keys()))
             continue
+        state["ticker"] = ticker  # normalize
 
         tag = f"ticker-{ticker.lower()}"
 
@@ -299,6 +301,16 @@ async def analyze_narratives(
     parsed = parse_narrative_response(text)
     ticker_states = parsed.get("tickers", [])
     narrative_signals = parsed.get("narrative_signals", [])
+
+    if ticker_states:
+        sample = ticker_states[0]
+        logger.info(
+            "Narrative parse sample — keys: %s, ticker=%s",
+            list(sample.keys())[:8],
+            sample.get("ticker", sample.get("symbol", "MISSING")),
+        )
+    else:
+        logger.warning("Narrative parse returned 0 ticker states from %d chars", len(text))
 
     # Persist updated states
     if ticker_states:
