@@ -41,15 +41,25 @@ class CodexSubprocessClient:
         if system_prompt:
             full_prompt = f"System: {system_prompt}\n\nUser: {prompt}"
 
-        cmd = [self._cli_path, "exec", "--json", "--full-auto", full_prompt]
+        cmd = [
+            self._cli_path,
+            "exec",
+            "--json",
+            "--skip-git-repo-check",  # don't scan repo
+            "-C",
+            "/tmp",  # run from /tmp to avoid loading project context
+            full_prompt,
+        ]
         logger.info("Codex fallback: invoking %s (timeout=%ds)", self._cli_path, self._timeout)
         t0 = time.monotonic()
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd="/tmp",
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self._timeout)
         except asyncio.TimeoutError:

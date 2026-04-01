@@ -150,7 +150,7 @@ class DaemonSettings(BaseSettings):
     # Codex CLI fallback (when Gemini is rate-limited)
     codex_fallback_enabled: bool = True
     codex_cli_path: str = "codex"
-    codex_fallback_timeout: int = 45
+    codex_fallback_timeout: int = 60
 
     # Command Center push bridge
     command_center_url: str = ""  # e.g. "https://command-center-staging-23o5bq3bfq-uc.a.run.app"
