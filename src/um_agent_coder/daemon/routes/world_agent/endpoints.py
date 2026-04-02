@@ -1330,3 +1330,195 @@ async def complete_task(
         request.pr_url or "none",
     )
     return {"status": "ok", "task_id": task_id, "success": request.success}
+
+
+# ---------------------------------------------------------------------------
+# Premarket Futures
+# ---------------------------------------------------------------------------
+
+_FUTURES_SYMBOLS = {
+    "ES=F": {"name": "S&P 500 E-mini", "etf": "SPY"},
+    "NQ=F": {"name": "Nasdaq 100 E-mini", "etf": "QQQ"},
+    "YM=F": {"name": "Dow E-mini", "etf": "DIA"},
+    "RTY=F": {"name": "Russell 2000 E-mini", "etf": "IWM"},
+    "CL=F": {"name": "Crude Oil", "etf": "USO"},
+    "GC=F": {"name": "Gold", "etf": "GLD"},
+    "^VIX": {"name": "VIX", "etf": None},
+}
+
+
+async def _fetch_futures_quotes() -> list[dict]:
+    """Fetch overnight futures prices from Yahoo Finance."""
+    import aiohttp
+
+    results = []
+    headers = {"User-Agent": "Mozilla/5.0"}
+    timeout = aiohttp.ClientTimeout(total=10)
+
+    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        for symbol, meta in _FUTURES_SYMBOLS.items():
+            try:
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.json()
+                    chart = data.get("chart", {}).get("result", [{}])[0]
+                    indicators = chart.get("indicators", {}).get("quote", [{}])[0]
+                    closes = indicators.get("close", [])
+                    opens = indicators.get("open", [])
+                    meta_info = chart.get("meta", {})
+
+                    current_price = meta_info.get("regularMarketPrice", 0)
+                    prev_close = meta_info.get("previousClose", 0) or meta_info.get("chartPreviousClose", 0)
+
+                    if current_price and prev_close and prev_close > 0:
+                        change = current_price - prev_close
+                        change_pct = (change / prev_close) * 100
+
+                        results.append({
+                            "symbol": symbol,
+                            "name": meta["name"],
+                            "etf": meta["etf"],
+                            "price": round(current_price, 2),
+                            "prev_close": round(prev_close, 2),
+                            "change": round(change, 2),
+                            "change_pct": round(change_pct, 2),
+                        })
+            except Exception as exc:
+                logger.debug(f"Futures fetch {symbol}: {exc}")
+
+    return results
+
+
+@router.get("/premarket-futures")
+async def get_premarket_futures(
+    analyze: bool = Query(default=False, description="Run LLM analysis on futures context"),
+):
+    """Fetch premarket futures data with overnight moves and optional AI analysis.
+
+    Returns futures prices (ES, NQ, YM, RTY, CL, GC, VIX) with change from
+    previous close. When analyze=True, uses Gemini to assess regime impact
+    and generate position sizing recommendations.
+
+    Call this at 6-7 AM ET before market open to detect overnight events
+    (geopolitical, macro, earnings) reflected in futures pricing.
+    """
+    futures = await _fetch_futures_quotes()
+
+    if not futures:
+        return {"futures": [], "summary": "No futures data available", "regime_adjustment": None}
+
+    # Quick summary without LLM
+    es = next((f for f in futures if f["symbol"] == "ES=F"), None)
+    nq = next((f for f in futures if f["symbol"] == "NQ=F"), None)
+    vix = next((f for f in futures if f["symbol"] == "^VIX"), None)
+
+    es_chg = es["change_pct"] if es else 0
+    nq_chg = nq["change_pct"] if nq else 0
+    vix_price = vix["price"] if vix else 0
+
+    # Determine severity
+    avg_chg = (es_chg + nq_chg) / 2 if es and nq else es_chg or nq_chg
+    if abs(avg_chg) >= 2.0:
+        severity = "critical"
+    elif abs(avg_chg) >= 1.0:
+        severity = "high"
+    elif abs(avg_chg) >= 0.5:
+        severity = "moderate"
+    else:
+        severity = "low"
+
+    # Regime adjustment suggestion
+    if severity == "critical":
+        sizing_mult = 0.25
+        regime_suggestion = "crisis" if avg_chg < 0 else "euphoria"
+    elif severity == "high":
+        sizing_mult = 0.50
+        regime_suggestion = "risk-off" if avg_chg < 0 else "risk-on"
+    elif severity == "moderate":
+        sizing_mult = 0.75
+        regime_suggestion = "cautious" if avg_chg < 0 else "neutral"
+    else:
+        sizing_mult = 1.0
+        regime_suggestion = "neutral"
+
+    direction = "bearish" if avg_chg < 0 else "bullish" if avg_chg > 0 else "flat"
+
+    summary = (
+        f"Futures {direction}: ES {es_chg:+.2f}%, NQ {nq_chg:+.2f}% "
+        f"| VIX {vix_price:.1f} | Severity: {severity} "
+        f"| Suggested regime: {regime_suggestion} | Sizing: {sizing_mult:.0%}"
+    )
+
+    result = {
+        "futures": futures,
+        "summary": summary,
+        "direction": direction,
+        "severity": severity,
+        "avg_change_pct": round(avg_chg, 2),
+        "regime_adjustment": {
+            "suggested_regime": regime_suggestion,
+            "sizing_multiplier": sizing_mult,
+            "reason": f"Overnight futures move {avg_chg:+.2f}% ({severity})",
+        },
+        "vix": vix_price,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Optional LLM analysis for deeper context
+    if analyze:
+        try:
+            from um_agent_coder.daemon.app import get_llm_router
+            from um_agent_coder.daemon.config import settings
+
+            futures_text = "\n".join(
+                f"  {f['name']} ({f['symbol']}): ${f['price']:.2f} ({f['change_pct']:+.2f}%)"
+                for f in futures
+            )
+
+            prompt = f"""Analyze the overnight futures moves and provide trading guidance:
+
+{futures_text}
+
+Provide a JSON response with:
+1. "narrative": 1-2 sentence explanation of what drove the move (geopolitical, macro, earnings, technical)
+2. "regime": one of [crisis, risk-off, cautious, neutral, risk-on, euphoria]
+3. "sizing_multiplier": 0.0-1.0 (how much to scale position sizes)
+4. "action_items": list of 2-3 specific actions (e.g., "exit long tech", "add VIX hedge", "hold defensives")
+5. "invalidation": what would change this assessment (e.g., "ES recovers above 5500")
+"""
+            llm_router = get_llm_router()
+            response = await llm_router.generate(
+                prompt=prompt,
+                system_prompt="You are a quantitative portfolio risk manager analyzing premarket futures for an AI hedge fund. Respond with valid JSON only.",
+                model=settings.gemini_model_flash,
+                temperature=0.2,
+                max_tokens=1024,
+            )
+
+            # Parse LLM response
+            try:
+                import re
+                json_match = re.search(r"\{.*\}", response, re.DOTALL)
+                if json_match:
+                    analysis = json.loads(json_match.group())
+                    result["analysis"] = analysis
+                    # Override regime suggestion with LLM's assessment
+                    if "regime" in analysis:
+                        result["regime_adjustment"]["suggested_regime"] = analysis["regime"]
+                    if "sizing_multiplier" in analysis:
+                        result["regime_adjustment"]["sizing_multiplier"] = analysis["sizing_multiplier"]
+            except (json.JSONDecodeError, AttributeError):
+                result["analysis"] = {"raw": response}
+
+        except Exception as exc:
+            logger.warning(f"Premarket futures LLM analysis failed: {exc}")
+            result["analysis_error"] = str(exc)
+
+    logger.info(
+        "Premarket futures: %s | ES %+.2f%% NQ %+.2f%% VIX %.1f | %s",
+        direction, es_chg, nq_chg, vix_price, severity,
+    )
+
+    return result
