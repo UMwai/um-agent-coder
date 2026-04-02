@@ -1,4 +1,4 @@
-name: Deploy to GKE Autopilot
+name: Deploy UMClaw to GKE
 
 on:
   push:
@@ -12,10 +12,9 @@ on:
 env:
   PROJECT_ID: aivestor-480814
   REGION: us-central1
-  REGION: us-central1
   CLUSTER_NAME: um-hedge-fund-v2
-  REGISTRY: us-central1-docker.pkg.dev/aivestor-480814/um-hedge-fund
-  IMAGE_NAME: umclaw
+  REGISTRY: us-central1-docker.pkg.dev/aivestor-480814/cloud-run-source-deploy
+  IMAGE_NAME: um-agent-daemon
   K8S_NAMESPACE: shared-services
   DEPLOYMENT_NAME: umclaw
 
@@ -46,11 +45,11 @@ jobs:
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
-            --zone=${{ env.CLUSTER_ZONE }} --project=${{ env.PROJECT_ID }}
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
 
       - name: Build and push image
         run: |
-          TAG="${{ github.ref_name }}-$(echo ${{ github.sha }} | head -c 7)"
+          TAG="main-$(echo ${{ github.sha }} | head -c 7)"
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${TAG}"
@@ -67,11 +66,12 @@ jobs:
 
       - name: Verify deployment health
         run: |
+          sleep 10
           POD=$(kubectl get pod -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }} -o name | head -1)
           if [ -n "${POD}" ]; then
             HEALTH=$(kubectl exec -n ${{ env.K8S_NAMESPACE }} ${POD} -- \
               curl -sf http://localhost:8080/health 2>/dev/null || echo "health check pending")
-            echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+            echo "## UMClaw Deployment" >> $GITHUB_STEP_SUMMARY
             echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}\`" >> $GITHUB_STEP_SUMMARY
             echo "**Health:** \`${HEALTH}\`" >> $GITHUB_STEP_SUMMARY
           fi
