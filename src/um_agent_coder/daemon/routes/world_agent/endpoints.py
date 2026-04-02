@@ -1349,42 +1349,38 @@ _FUTURES_SYMBOLS = {
 
 async def _fetch_futures_quotes() -> list[dict]:
     """Fetch overnight futures prices from Yahoo Finance."""
-    import aiohttp
+    import httpx
 
     results = []
     headers = {"User-Agent": "Mozilla/5.0"}
-    timeout = aiohttp.ClientTimeout(total=10)
 
-    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
         for symbol, meta in _FUTURES_SYMBOLS.items():
             try:
                 url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        continue
-                    data = await resp.json()
-                    chart = data.get("chart", {}).get("result", [{}])[0]
-                    indicators = chart.get("indicators", {}).get("quote", [{}])[0]
-                    closes = indicators.get("close", [])
-                    opens = indicators.get("open", [])
-                    meta_info = chart.get("meta", {})
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                chart = data.get("chart", {}).get("result", [{}])[0]
+                meta_info = chart.get("meta", {})
 
-                    current_price = meta_info.get("regularMarketPrice", 0)
-                    prev_close = meta_info.get("previousClose", 0) or meta_info.get("chartPreviousClose", 0)
+                current_price = meta_info.get("regularMarketPrice", 0)
+                prev_close = meta_info.get("previousClose", 0) or meta_info.get("chartPreviousClose", 0)
 
-                    if current_price and prev_close and prev_close > 0:
-                        change = current_price - prev_close
-                        change_pct = (change / prev_close) * 100
+                if current_price and prev_close and prev_close > 0:
+                    change = current_price - prev_close
+                    change_pct = (change / prev_close) * 100
 
-                        results.append({
-                            "symbol": symbol,
-                            "name": meta["name"],
-                            "etf": meta["etf"],
-                            "price": round(current_price, 2),
-                            "prev_close": round(prev_close, 2),
-                            "change": round(change, 2),
-                            "change_pct": round(change_pct, 2),
-                        })
+                    results.append({
+                        "symbol": symbol,
+                        "name": meta["name"],
+                        "etf": meta["etf"],
+                        "price": round(current_price, 2),
+                        "prev_close": round(prev_close, 2),
+                        "change": round(change, 2),
+                        "change_pct": round(change_pct, 2),
+                    })
             except Exception as exc:
                 logger.debug(f"Futures fetch {symbol}: {exc}")
 
